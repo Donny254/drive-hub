@@ -6,42 +6,42 @@
 
 @layer base {
   :root {
-    --background: 0 0% 5%;
-    --foreground: 0 0% 95%;
+    --background: 0 0% 98%;
+    --foreground: 0 0% 10%;
 
-    --card: 0 0% 8%;
-    --card-foreground: 0 0% 95%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
 
-    --popover: 0 0% 8%;
-    --popover-foreground: 0 0% 95%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
 
-    --primary: 25 95% 53%;
-    --primary-foreground: 0 0% 5%;
+    --primary: 168 76% 42%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 0 0% 12%;
-    --secondary-foreground: 0 0% 95%;
+    --secondary: 0 0% 94%;
+    --secondary-foreground: 0 0% 10%;
 
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 60%;
+    --muted: 0 0% 92%;
+    --muted-foreground: 0 0% 45%;
 
-    --accent: 25 95% 53%;
-    --accent-foreground: 0 0% 5%;
+    --accent: 168 76% 42%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 0 0% 18%;
-    --input: 0 0% 18%;
-    --ring: 25 95% 53%;
+    --border: 0 0% 88%;
+    --input: 0 0% 88%;
+    --ring: 168 76% 42%;
 
     --radius: 0.5rem;
 
     /* Custom brand tokens */
-    --gradient-hero: linear-gradient(135deg, hsl(0 0% 5%) 0%, hsl(0 0% 10%) 50%, hsl(25 30% 10%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(0 0% 10%) 0%, hsl(0 0% 6%) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(25 95% 53%) 0%, hsl(35 95% 55%) 100%);
-    --shadow-glow: 0 0 40px hsl(25 95% 53% / 0.3);
-    --shadow-card: 0 10px 40px hsl(0 0% 0% / 0.5);
+    --gradient-hero: linear-gradient(135deg, hsl(0 0% 95%) 0%, hsl(0 0% 98%) 50%, hsl(168 30% 95%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(0 0% 97%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(168 76% 42%) 0%, hsl(158 70% 48%) 100%);
+    --shadow-glow: 0 0 40px hsl(168 76% 42% / 0.25);
+    --shadow-card: 0 10px 40px hsl(0 0% 0% / 0.08);
     
     /* Typography */
     --font-display: 'Bebas Neue', sans-serif;
@@ -51,6 +51,38 @@
   .dark {
     --background: 0 0% 5%;
     --foreground: 0 0% 95%;
+
+    --card: 0 0% 8%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 168 76% 42%;
+    --primary-foreground: 0 0% 5%;
+
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 95%;
+
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 60%;
+
+    --accent: 168 76% 42%;
+    --accent-foreground: 0 0% 5%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 168 76% 42%;
+
+    /* Custom brand tokens - dark */
+    --gradient-hero: linear-gradient(135deg, hsl(0 0% 5%) 0%, hsl(0 0% 10%) 50%, hsl(168 30% 10%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 10%) 0%, hsl(0 0% 6%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(168 76% 42%) 0%, hsl(158 70% 48%) 100%);
+    --shadow-glow: 0 0 40px hsl(168 76% 42% / 0.3);
+    --shadow-card: 0 10px 40px hsl(0 0% 0% / 0.5);
   }
 }
 
@@ -118,7 +150,7 @@
   }
   
   @keyframes pulseGlow {
-    0%, 100% { box-shadow: 0 0 20px hsl(25 95% 53% / 0.3); }
-    50% { box-shadow: 0 0 40px hsl(25 95% 53% / 0.5); }
+    0%, 100% { box-shadow: 0 0 20px hsl(168 76% 42% / 0.3); }
+    50% { box-shadow: 0 0 40px hsl(168 76% 42% / 0.5); }
   }
 }
