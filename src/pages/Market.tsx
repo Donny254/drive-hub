@@ -4,6 +4,7 @@ import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Car, Fuel, Gauge, Calendar, DollarSign } from "lucide-react";
+import MarketSlider from "@/components/market/MarketSlider";
 
 const cars = [
   {
@@ -78,6 +79,30 @@ const cars = [
     type: "buy",
     featured: false,
   },
+  {
+    id: 7,
+    name: "Range Rover Sport SVR",
+    price: 135000,
+    year: 2024,
+    mileage: "3,000 mi",
+    fuel: "Petrol",
+    power: "575 HP",
+    image: "https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=600",
+    type: "buy",
+    featured: true,
+  },
+  {
+    id: 8,
+    name: "Mercedes G63 AMG",
+    price: 600,
+    year: 2024,
+    mileage: "Daily Rate",
+    fuel: "Petrol",
+    power: "577 HP",
+    image: "https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?w=600",
+    type: "rent",
+    featured: true,
+  },
 ];
 
 const tabs = [
@@ -98,28 +123,33 @@ const Market = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="pt-20">
-        {/* Hero */}
-        <section className="py-16 bg-secondary">
-          <div className="container mx-auto px-4">
-            <h1 className="font-display text-5xl md:text-6xl tracking-wider text-center animate-fade-in">
-              CAR <span className="text-primary">MARKET</span>
-            </h1>
-            <p className="text-center text-muted-foreground mt-4 max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: "0.1s" }}>
-              Find your dream car or list yours for sale. Premium vehicles from trusted sellers.
-            </p>
+        {/* Ad Slider Banner */}
+        <MarketSlider />
 
-            {/* Tabs */}
-            <div className="flex justify-center gap-2 mt-10 animate-fade-in" style={{ animationDelay: "0.2s" }}>
-              {tabs.map((tab) => (
-                <Button
-                  key={tab.id}
-                  variant={activeTab === tab.id ? "hero" : "secondary"}
-                  size="lg"
-                  onClick={() => setActiveTab(tab.id)}
-                >
-                  {tab.label}
-                </Button>
-              ))}
+        {/* Filter Tabs */}
+        <section className="py-8 bg-secondary/50 border-b border-border">
+          <div className="container mx-auto px-4">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              <div>
+                <h2 className="font-display text-2xl tracking-wider">
+                  EXPLORE OUR <span className="text-primary">COLLECTION</span>
+                </h2>
+                <p className="text-muted-foreground text-sm mt-1">
+                  Premium vehicles for Kenya's most discerning clients
+                </p>
+              </div>
+              <div className="flex gap-2">
+                {tabs.map((tab) => (
+                  <Button
+                    key={tab.id}
+                    variant={activeTab === tab.id ? "hero" : "secondary"}
+                    size="sm"
+                    onClick={() => setActiveTab(tab.id)}
+                  >
+                    {tab.label}
+                  </Button>
+                ))}
+              </div>
             </div>
           </div>
         </section>
