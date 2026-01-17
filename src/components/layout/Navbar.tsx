@@ -22,7 +22,7 @@ const Navbar = () => {
         <div className="flex items-center justify-between h-20">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
-            <span className="font-display text-3xl text-primary tracking-wider">VELOCITY</span>
+            <span className="font-display text-3xl text-primary tracking-wider">WheelsnationKe</span>
           </Link>
 
           {/* Desktop Navigation */}
@@ -45,9 +45,11 @@ const Navbar = () => {
           {/* Theme Toggle & CTA Button */}
           <div className="hidden md:flex items-center gap-4">
             <ThemeToggle />
-            <Button variant="hero" size="default">
-              Get Started
-            </Button>
+            <a href="#contact">
+              <Button variant="hero" size="default">
+                Contact
+              </Button>
+            </a>
           </div>
 
           {/* Mobile Menu Button */}
@@ -80,9 +82,11 @@ const Navbar = () => {
                   {link.name}
                 </Link>
               ))}
-              <Button variant="hero" size="default" className="mt-4">
-                Get Started
-              </Button>
+              <a href="#contact" onClick={() => setIsOpen(false)}>
+                <Button variant="hero" size="default" className="mt-4 w-full">
+                  Contact
+                </Button>
+              </a>
             </div>
           </div>
         )}
