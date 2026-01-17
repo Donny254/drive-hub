@@ -3,12 +3,12 @@ import { Facebook, Instagram, Twitter, Youtube } from "lucide-react";
 
 const Footer = () => {
   return (
-    <footer className="bg-secondary border-t border-border">
+    <footer id="contact" className="bg-secondary border-t border-border">
       <div className="container mx-auto px-4 py-16">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
           {/* Brand */}
           <div className="md:col-span-1">
-            <span className="font-display text-3xl text-primary tracking-wider">VELOCITY</span>
+            <span className="font-display text-3xl text-primary tracking-wider">WheelsnationKe</span>
             <p className="mt-4 text-muted-foreground text-sm">
               Your ultimate destination for automotive excellence. Buy, sell, service, and celebrate car culture.
             </p>
@@ -63,7 +63,7 @@ const Footer = () => {
         </div>
 
         <div className="border-t border-border mt-12 pt-8 text-center text-muted-foreground text-sm">
-          <p>© 2024 Velocity. All rights reserved.</p>
+          <p>© 2024 WheelsnationKe. All rights reserved.</p>
         </div>
       </div>
     </footer>
