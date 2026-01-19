@@ -4,31 +4,33 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
-import Market from "./pages/Market";
-import Services from "./pages/Services";
-import Events from "./pages/Events";
-import Store from "./pages/Store";
+import Markets from "./pages/Markets";
+import Pools from "./pages/Pools";
+import Staking from "./pages/Staking";
+import Loans from "./pages/Loans";
+import Portfolio from "./pages/Portfolio";
 import NotFound from "./pages/NotFound";
-import ChatBot from "./components/ChatBot";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/market" element={<Market />} />
-          <Route path="/services" element={<Services />} />
-          <Route path="/events" element={<Events />} />
-          <Route path="/store" element={<Store />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-        <ChatBot />
-      </BrowserRouter>
+      <div className="dark">
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/markets" element={<Markets />} />
+            <Route path="/pools" element={<Pools />} />
+            <Route path="/staking" element={<Staking />} />
+            <Route path="/loans" element={<Loans />} />
+            <Route path="/portfolio" element={<Portfolio />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </div>
     </TooltipProvider>
   </QueryClientProvider>
 );
