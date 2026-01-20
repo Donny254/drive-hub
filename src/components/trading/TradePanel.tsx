@@ -21,7 +21,7 @@ export function TradePanel({ asset, balance = { base: 0.5, quote: 10000 } }: Tra
   const [leverage, setLeverage] = useState(1);
 
   const total = parseFloat(amount || '0') * parseFloat(price || '0');
-  const maxBuy = balance.quote / parseFloat(price || asset.price);
+  const maxBuy = balance.quote / parseFloat(price || String(asset.price));
   const maxSell = balance.base;
 
   const handleSliderChange = (value: number[]) => {
@@ -120,10 +120,10 @@ export function TradePanel({ asset, balance = { base: 0.5, quote: 10000 } }: Tra
 
           {/* Amount Input */}
           <div className="mb-3">
-            <div className="flex items-center justify-between mb-1">
+            <div className="flex justify-between items-center mb-1">
               <label className="text-xs text-muted-foreground">Amount ({asset.symbol})</label>
               <span className="text-xs text-muted-foreground">
-                Avail: {side === 'buy' ? maxBuy.toFixed(4) : balance.base.toFixed(4)} {asset.symbol}
+                Available: {side === 'buy' ? `$${balance.quote.toLocaleString()}` : `${balance.base} ${asset.symbol}`}
               </span>
             </div>
             <Input
@@ -135,21 +135,21 @@ export function TradePanel({ asset, balance = { base: 0.5, quote: 10000 } }: Tra
             />
           </div>
 
-          {/* Percentage Slider */}
+          {/* Slider */}
           <div className="mb-4">
             <Slider
               value={sliderValue}
               onValueChange={handleSliderChange}
               max={100}
               step={1}
-              className="mb-2"
+              className="my-3"
             />
             <div className="flex justify-between gap-2">
               {percentButtons.map((percent) => (
                 <button
                   key={percent}
-                  className="flex-1 text-xs py-1 rounded bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
                   onClick={() => handleSliderChange([percent])}
+                  className="flex-1 text-xs py-1.5 rounded bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground transition-all"
                 >
                   {percent}%
                 </button>
@@ -158,19 +158,17 @@ export function TradePanel({ asset, balance = { base: 0.5, quote: 10000 } }: Tra
           </div>
 
           {/* Total */}
-          <div className="mb-4 p-3 rounded-lg bg-secondary/30 border border-border/50">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">Total</span>
-              <span className="font-mono font-semibold text-foreground">
-                ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
+          <div className="p-3 rounded-lg bg-secondary/30 mb-4">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Total</span>
+              <span className="font-mono font-semibold">${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
           </div>
 
           {/* Submit Button */}
-          <Button 
+          <Button
             className={cn(
-              "w-full font-semibold text-lg py-6",
+              "w-full font-semibold text-lg py-6 transition-all",
               side === 'buy'
                 ? "bg-success hover:bg-success/90 text-success-foreground"
                 : "bg-destructive hover:bg-destructive/90 text-destructive-foreground"
@@ -179,36 +177,38 @@ export function TradePanel({ asset, balance = { base: 0.5, quote: 10000 } }: Tra
             {side === 'buy' ? 'Buy' : 'Sell'} {asset.symbol}
           </Button>
 
-          {/* Balance Display */}
-          <div className="mt-4 pt-4 border-t border-border/50">
-            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-2">
-              <Wallet className="w-4 h-4" />
-              <span>Wallet Balance</span>
+          {/* Fee Info */}
+          <div className="mt-4 p-3 rounded-lg bg-secondary/20 border border-border/30">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+              <Info className="w-3 h-3" />
+              <span>Fee Information</span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">{asset.symbol}</span>
-              <span className="font-mono text-foreground">{balance.base.toFixed(6)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">USD</span>
-              <span className="font-mono text-foreground">${balance.quote.toLocaleString()}</span>
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Maker Fee</span>
+                <span className="text-primary">0.02%</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Taker Fee</span>
+                <span className="text-primary">0.05%</span>
+              </div>
             </div>
           </div>
         </TabsContent>
 
         <TabsContent value="margin" className="mt-0">
-          <div className="text-center py-8 text-muted-foreground">
-            <Info className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p>Margin trading coming soon</p>
-            <p className="text-xs mt-1">Up to 10x leverage</p>
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <ArrowDownUp className="w-12 h-12 text-muted-foreground mb-4" />
+            <h3 className="font-semibold mb-2">Margin Trading</h3>
+            <p className="text-sm text-muted-foreground">Coming soon. Trade with up to 10x leverage.</p>
           </div>
         </TabsContent>
 
         <TabsContent value="futures" className="mt-0">
-          <div className="text-center py-8 text-muted-foreground">
-            <Info className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p>Perpetual futures coming soon</p>
-            <p className="text-xs mt-1">Up to 100x leverage</p>
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <Wallet className="w-12 h-12 text-muted-foreground mb-4" />
+            <h3 className="font-semibold mb-2">Futures Trading</h3>
+            <p className="text-sm text-muted-foreground">Coming soon. Perpetual contracts with up to 100x leverage.</p>
           </div>
         </TabsContent>
       </Tabs>
