@@ -249,4 +249,30 @@
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background: hsl(168 85% 45% / 0.5);
   }
+
+  /* Slow zoom animation for hero backgrounds */
+  .animate-slow-zoom {
+    animation: slowZoom 20s ease-in-out infinite alternate;
+  }
+
+  @keyframes slowZoom {
+    0% { transform: scale(1); }
+    100% { transform: scale(1.1); }
+  }
+
+  /* Float animation for particles */
+  .animate-float {
+    animation: float 4s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { 
+      transform: translateY(0) translateX(0); 
+      opacity: 0.4;
+    }
+    50% { 
+      transform: translateY(-30px) translateX(10px); 
+      opacity: 0.8;
+    }
+  }
 }
