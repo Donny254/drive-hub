@@ -6,58 +6,58 @@
 
 @layer base {
   :root {
-    --background: 180 10% 8%;
-    --foreground: 160 100% 95%;
+    --background: 0 0% 98%;
+    --foreground: 180 10% 10%;
 
-    --card: 180 15% 10%;
-    --card-foreground: 160 100% 95%;
+    --card: 0 0% 100%;
+    --card-foreground: 180 10% 10%;
 
-    --popover: 180 15% 8%;
-    --popover-foreground: 160 100% 95%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 180 10% 10%;
 
-    --primary: 168 85% 45%;
-    --primary-foreground: 180 10% 5%;
+    --primary: 168 85% 38%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 180 20% 15%;
-    --secondary-foreground: 160 100% 95%;
+    --secondary: 180 10% 94%;
+    --secondary-foreground: 180 10% 10%;
 
-    --muted: 180 15% 18%;
-    --muted-foreground: 160 30% 60%;
+    --muted: 180 10% 90%;
+    --muted-foreground: 180 10% 40%;
 
-    --accent: 168 100% 50%;
-    --accent-foreground: 180 10% 5%;
+    --accent: 168 100% 42%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
 
-    --success: 145 80% 45%;
+    --success: 145 80% 40%;
     --success-foreground: 0 0% 100%;
 
     --warning: 45 100% 50%;
     --warning-foreground: 0 0% 0%;
 
-    --border: 180 20% 18%;
-    --input: 180 20% 15%;
-    --ring: 168 85% 45%;
+    --border: 180 10% 88%;
+    --input: 180 10% 92%;
+    --ring: 168 85% 38%;
 
     --radius: 0.75rem;
 
-    /* Trading platform tokens */
-    --gradient-hero: linear-gradient(135deg, hsl(180 15% 5%) 0%, hsl(180 20% 8%) 50%, hsl(168 30% 10%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(180 15% 12%) 0%, hsl(180 15% 8%) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(168 85% 45%) 0%, hsl(175 90% 55%) 100%);
-    --gradient-profit: linear-gradient(135deg, hsl(145 80% 45%) 0%, hsl(155 85% 50%) 100%);
+    /* Platform tokens */
+    --gradient-hero: linear-gradient(135deg, hsl(180 5% 98%) 0%, hsl(180 10% 95%) 50%, hsl(168 20% 95%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(180 5% 98%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(168 85% 38%) 0%, hsl(175 90% 45%) 100%);
+    --gradient-profit: linear-gradient(135deg, hsl(145 80% 40%) 0%, hsl(155 85% 45%) 100%);
     --gradient-loss: linear-gradient(135deg, hsl(0 84% 60%) 0%, hsl(15 90% 55%) 100%);
-    --shadow-glow: 0 0 40px hsl(168 85% 45% / 0.25);
-    --shadow-card: 0 10px 40px hsl(0 0% 0% / 0.4);
-    --shadow-neon: 0 0 20px hsl(168 85% 45% / 0.5), 0 0 40px hsl(168 85% 45% / 0.3);
+    --shadow-glow: 0 0 40px hsl(168 85% 38% / 0.15);
+    --shadow-card: 0 10px 40px hsl(0 0% 0% / 0.08);
+    --shadow-neon: 0 0 20px hsl(168 85% 38% / 0.3), 0 0 40px hsl(168 85% 38% / 0.15);
     
     /* Typography */
     --font-display: 'Orbitron', sans-serif;
     --font-body: 'Inter', sans-serif;
 
     /* Chart colors */
-    --chart-green: 145 80% 45%;
+    --chart-green: 145 80% 40%;
     --chart-red: 0 84% 60%;
     --chart-blue: 210 90% 55%;
     --chart-yellow: 45 100% 50%;
@@ -93,7 +93,7 @@
     --input: 180 20% 12%;
     --ring: 168 85% 45%;
 
-    /* Trading platform tokens - dark */
+    /* Platform tokens - dark */
     --gradient-hero: linear-gradient(135deg, hsl(180 15% 3%) 0%, hsl(180 20% 6%) 50%, hsl(168 30% 8%) 100%);
     --gradient-card: linear-gradient(180deg, hsl(180 15% 10%) 0%, hsl(180 15% 6%) 100%);
     --gradient-accent: linear-gradient(135deg, hsl(168 85% 45%) 0%, hsl(175 90% 55%) 100%);
@@ -158,11 +158,11 @@
   }
 
   .text-profit {
-    @apply text-[hsl(145_80%_45%)];
+    @apply text-success;
   }
 
   .text-loss {
-    @apply text-[hsl(0_84%_60%)];
+    @apply text-destructive;
   }
   
   .border-gradient {
@@ -178,14 +178,6 @@
   .neon-border {
     @apply border border-primary/50;
     box-shadow: inset 0 0 20px hsl(168 85% 45% / 0.1), 0 0 20px hsl(168 85% 45% / 0.2);
-  }
-
-  .price-ticker {
-    @apply font-mono tabular-nums;
-  }
-
-  .trading-panel {
-    @apply glass-card rounded-xl p-4;
   }
 }
 
