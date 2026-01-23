@@ -22,7 +22,7 @@ interface CartItem extends Product {
 const products: Product[] = [
   {
     id: 1,
-    name: "Velocity Racing Hoodie",
+    name: "WheelsnationKe Racing Hoodie",
     price: 89,
     category: "Apparel",
     image: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600",
@@ -67,7 +67,7 @@ const products: Product[] = [
   },
   {
     id: 7,
-    name: "Velocity Duffle Bag",
+    name: "WheelsnationKe Duffle Bag",
     price: 129,
     category: "Accessories",
     image: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600",
@@ -197,7 +197,7 @@ const Store = () => {
       {/* Floating Cart Button */}
       <button
         onClick={() => setIsCartOpen(true)}
-        className="fixed bottom-8 right-8 w-16 h-16 rounded-full bg-gradient-to-r from-primary to-orange-400 flex items-center justify-center shadow-[0_0_30px_hsl(25_95%_53%_/_0.4)] hover:scale-110 transition-transform z-50"
+        className="fixed bottom-24 right-6 w-14 h-14 rounded-full bg-gradient-to-r from-primary to-accent flex items-center justify-center shadow-glow hover:scale-110 transition-transform z-40"
       >
         <ShoppingCart className="w-6 h-6 text-primary-foreground" />
         {cartCount > 0 && (
