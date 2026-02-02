@@ -1,123 +1,142 @@
-import { useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Car, Fuel, Gauge, Calendar, DollarSign } from "lucide-react";
 import MarketSlider from "@/components/market/MarketSlider";
+import { useAuth } from "@/context/AuthContext";
+import { apiFetch, resolveImageUrl } from "@/lib/api";
 
-const cars = [
-  {
-    id: 1,
-    name: "Porsche 911 GT3",
-    price: 185000,
-    year: 2023,
-    mileage: "5,200 mi",
-    fuel: "Petrol",
-    power: "502 HP",
-    image: "https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?w=600",
-    type: "buy",
-    featured: true,
-  },
-  {
-    id: 2,
-    name: "BMW M4 Competition",
-    price: 92000,
-    year: 2024,
-    mileage: "1,200 mi",
-    fuel: "Petrol",
-    power: "503 HP",
-    image: "https://images.unsplash.com/photo-1617531653332-bd46c24f2068?w=600",
-    type: "buy",
-    featured: false,
-  },
-  {
-    id: 3,
-    name: "Mercedes AMG GT",
-    price: 450,
-    year: 2023,
-    mileage: "Daily Rate",
-    fuel: "Petrol",
-    power: "577 HP",
-    image: "https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?w=600",
-    type: "rent",
-    featured: true,
-  },
-  {
-    id: 4,
-    name: "Audi RS7 Sportback",
-    price: 125000,
-    year: 2023,
-    mileage: "8,500 mi",
-    fuel: "Petrol",
-    power: "591 HP",
-    image: "https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=600",
-    type: "sell",
-    featured: false,
-  },
-  {
-    id: 5,
-    name: "Lamborghini Huracán",
-    price: 750,
-    year: 2024,
-    mileage: "Daily Rate",
-    fuel: "Petrol",
-    power: "631 HP",
-    image: "https://images.unsplash.com/photo-1544636331-e26879cd4d9b?w=600",
-    type: "rent",
-    featured: true,
-  },
-  {
-    id: 6,
-    name: "McLaren 720S",
-    price: 295000,
-    year: 2022,
-    mileage: "12,000 mi",
-    fuel: "Petrol",
-    power: "710 HP",
-    image: "https://images.unsplash.com/photo-1621135802920-133df287f89c?w=600",
-    type: "buy",
-    featured: false,
-  },
-  {
-    id: 7,
-    name: "Range Rover Sport SVR",
-    price: 135000,
-    year: 2024,
-    mileage: "3,000 mi",
-    fuel: "Petrol",
-    power: "575 HP",
-    image: "https://images.unsplash.com/photo-1606664515524-ed2f786a0bd6?w=600",
-    type: "buy",
-    featured: true,
-  },
-  {
-    id: 8,
-    name: "Mercedes G63 AMG",
-    price: 600,
-    year: 2024,
-    mileage: "Daily Rate",
-    fuel: "Petrol",
-    power: "577 HP",
-    image: "https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?w=600",
-    type: "rent",
-    featured: true,
-  },
-];
+const FALLBACK_IMAGE =
+  "https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?w=600";
+
+type Listing = {
+  id: string;
+  title: string;
+  priceCents: number;
+  year: number | null;
+  mileage: number | null;
+  fuel: string | null;
+  powerHp: number | null;
+  imageUrl: string | null;
+  listingType: "buy" | "rent" | "sell";
+  featured: boolean;
+};
 
 const tabs = [
   { id: "all", label: "All Cars" },
   { id: "buy", label: "Buy" },
   { id: "rent", label: "Rent" },
   { id: "sell", label: "Sell Yours" },
-];
+] as const;
+
+const formatMileage = (listing: Listing) => {
+  if (listing.listingType === "rent") return "Daily Rate";
+  if (!listing.mileage) return "N/A";
+  return `${listing.mileage.toLocaleString()} mi`;
+};
 
 const Market = () => {
+  const navigate = useNavigate();
+  const { token, user } = useAuth();
   const [activeTab, setActiveTab] = useState("all");
+  const [listings, setListings] = useState<Listing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [year, setYear] = useState("");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [sort, setSort] = useState("newest");
 
-  const filteredCars = activeTab === "all" 
-    ? cars 
-    : cars.filter(car => car.type === activeTab);
+  const [bookingListing, setBookingListing] = useState<Listing | null>(null);
+  const [bookingStart, setBookingStart] = useState("");
+  const [bookingEnd, setBookingEnd] = useState("");
+  const [bookingError, setBookingError] = useState<string | null>(null);
+  const [bookingLoading, setBookingLoading] = useState(false);
+
+  const fetchListings = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const params = new URLSearchParams();
+      params.set("status", "active");
+      if (search.trim()) params.set("q", search.trim());
+      if (activeTab !== "all") params.set("type", activeTab);
+      if (year.trim()) params.set("year", year.trim());
+      if (minPrice.trim()) params.set("minPrice", String(Math.round(Number(minPrice) * 100)));
+      if (maxPrice.trim()) params.set("maxPrice", String(Math.round(Number(maxPrice) * 100)));
+      if (sort === "price_asc") params.set("sort", "price_asc");
+      if (sort === "price_desc") params.set("sort", "price_desc");
+      if (sort === "year_desc") params.set("sort", "year_desc");
+
+      const resp = await apiFetch(`/api/listings?${params.toString()}`);
+      if (!resp.ok) {
+        throw new Error("Failed to load listings");
+      }
+      const data = (await resp.json()) as Listing[];
+      setListings(data);
+    } catch (err) {
+      console.error(err);
+      setError("Unable to load listings right now.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchListings();
+  }, [activeTab, search, year, minPrice, maxPrice, sort]);
+
+  const filteredListings = useMemo(() => listings, [listings]);
+
+  const openBooking = (listing: Listing) => {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    setBookingListing(listing);
+    setBookingStart("");
+    setBookingEnd("");
+    setBookingError(null);
+  };
+
+  const submitBooking = async () => {
+    if (!bookingListing) return;
+    if (!bookingStart) {
+      setBookingError("Start date is required.");
+      return;
+    }
+    setBookingLoading(true);
+    setBookingError(null);
+    try {
+      const resp = await apiFetch("/api/bookings", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: JSON.stringify({
+          listingId: bookingListing.id,
+          startDate: bookingStart,
+          endDate: bookingEnd || null,
+        }),
+      });
+
+      if (!resp.ok) {
+        const errorData = await resp.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to create booking");
+      }
+
+      setBookingListing(null);
+    } catch (err) {
+      setBookingError(err instanceof Error ? err.message : "Failed to create booking.");
+    } finally {
+      setBookingLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -138,7 +157,7 @@ const Market = () => {
                   Premium vehicles for Kenya's most discerning clients
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {tabs.map((tab) => (
                   <Button
                     key={tab.id}
@@ -151,78 +170,164 @@ const Market = () => {
                 ))}
               </div>
             </div>
+            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <div className="lg:col-span-2">
+                <Label>Search</Label>
+                <Input
+                  placeholder="Search by name, brand, type..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Year</Label>
+                <Input
+                  type="number"
+                  placeholder="2024"
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Min Price</Label>
+                <Input
+                  type="number"
+                  placeholder="10000"
+                  value={minPrice}
+                  onChange={(e) => setMinPrice(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Max Price</Label>
+                <Input
+                  type="number"
+                  placeholder="200000"
+                  value={maxPrice}
+                  onChange={(e) => setMaxPrice(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Sort</Label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value)}
+                >
+                  <option value="newest">Newest</option>
+                  <option value="price_asc">Price: Low to High</option>
+                  <option value="price_desc">Price: High to Low</option>
+                  <option value="year_desc">Year: Newest</option>
+                </select>
+              </div>
+            </div>
           </div>
         </section>
 
         {/* Car Grid */}
         <section className="py-16">
           <div className="container mx-auto px-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {filteredCars.map((car, index) => (
-                <div
-                  key={car.id}
-                  className="group bg-card rounded-lg overflow-hidden border border-border hover:border-primary/50 transition-all duration-500 animate-fade-in"
-                  style={{ animationDelay: `${index * 0.1}s` }}
-                >
-                  {/* Image */}
-                  <div className="relative h-56 overflow-hidden">
-                    <img
-                      src={car.image}
-                      alt={car.name}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                    />
-                    {car.featured && (
-                      <Badge className="absolute top-4 left-4 bg-primary text-primary-foreground">
-                        Featured
+            {loading && (
+              <div className="text-center text-muted-foreground">Loading listings...</div>
+            )}
+            {!loading && error && (
+              <div className="text-center space-y-4">
+                <p className="text-destructive">{error}</p>
+                <Button variant="secondary" onClick={fetchListings}>
+                  Try Again
+                </Button>
+              </div>
+            )}
+            {!loading && !error && filteredListings.length === 0 && (
+              <div className="text-center text-muted-foreground">
+                No listings available yet.
+              </div>
+            )}
+
+            {!loading && !error && filteredListings.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {filteredListings.map((listing, index) => (
+                  <div
+                    key={listing.id}
+                    className="group bg-card rounded-lg overflow-hidden border border-border hover:border-primary/50 transition-all duration-500 animate-fade-in"
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                  >
+                    {/* Image */}
+                    <div className="relative h-56 overflow-hidden">
+                      <img
+                        src={resolveImageUrl(listing.imageUrl) || FALLBACK_IMAGE}
+                        alt={listing.title}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                      />
+                      {listing.featured && (
+                        <Badge className="absolute top-4 left-4 bg-primary text-primary-foreground">
+                          Featured
+                        </Badge>
+                      )}
+                      <Badge
+                        className="absolute top-4 right-4 capitalize"
+                        variant={listing.listingType === "rent" ? "secondary" : "outline"}
+                      >
+                        {listing.listingType === "sell" ? "For Sale" : listing.listingType}
                       </Badge>
-                    )}
-                    <Badge 
-                      className="absolute top-4 right-4 capitalize"
-                      variant={car.type === "rent" ? "secondary" : "outline"}
-                    >
-                      {car.type === "sell" ? "For Sale" : car.type}
-                    </Badge>
-                  </div>
-
-                  {/* Content */}
-                  <div className="p-6">
-                    <h3 className="font-display text-2xl tracking-wider">{car.name}</h3>
-                    
-                    <div className="grid grid-cols-2 gap-4 mt-4">
-                      <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                        <Calendar size={16} />
-                        <span>{car.year}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                        <Car size={16} />
-                        <span>{car.mileage}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                        <Fuel size={16} />
-                        <span>{car.fuel}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                        <Gauge size={16} />
-                        <span>{car.power}</span>
-                      </div>
                     </div>
 
-                    <div className="flex items-center justify-between mt-6">
-                      <div className="flex items-center gap-1">
-                        <DollarSign className="text-primary" size={20} />
-                        <span className="font-display text-2xl">
-                          {car.price.toLocaleString()}
-                          {car.type === "rent" && <span className="text-sm text-muted-foreground">/day</span>}
-                        </span>
+                    {/* Content */}
+                    <div className="p-6">
+                      <h3 className="font-display text-2xl tracking-wider">{listing.title}</h3>
+
+                      <div className="grid grid-cols-2 gap-4 mt-4">
+                        <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                          <Calendar size={16} />
+                          <span>{listing.year ?? "N/A"}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                          <Car size={16} />
+                          <span>{formatMileage(listing)}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                          <Fuel size={16} />
+                          <span>{listing.fuel ?? "N/A"}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                          <Gauge size={16} />
+                          <span>{listing.powerHp ? `${listing.powerHp} HP` : "N/A"}</span>
+                        </div>
                       </div>
-                      <Button variant="hero" size="sm">
-                        {car.type === "rent" ? "Rent Now" : "View Details"}
-                      </Button>
+
+                      <div className="flex items-center justify-between mt-6">
+                        <div className="flex items-center gap-1">
+                          <DollarSign className="text-primary" size={20} />
+                          <span className="font-display text-2xl">
+                            {(listing.priceCents / 100).toLocaleString()}
+                            {listing.listingType === "rent" && (
+                              <span className="text-sm text-muted-foreground">/day</span>
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => navigate(`/market/${listing.id}`)}
+                          >
+                            View Details
+                          </Button>
+                          {listing.listingType === "rent" && (
+                            <Button
+                              variant="hero"
+                              size="sm"
+                              onClick={() => openBooking(listing)}
+                            >
+                              Rent Now
+                            </Button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
 
@@ -242,6 +347,38 @@ const Market = () => {
         </section>
       </main>
       <Footer />
+
+      <Dialog open={Boolean(bookingListing)} onOpenChange={() => setBookingListing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Book {bookingListing?.title}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label>Start Date</Label>
+              <Input
+                type="date"
+                value={bookingStart}
+                onChange={(e) => setBookingStart(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>End Date (optional)</Label>
+              <Input
+                type="date"
+                value={bookingEnd}
+                onChange={(e) => setBookingEnd(e.target.value)}
+              />
+            </div>
+            {bookingError && <p className="text-sm text-destructive">{bookingError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="hero" onClick={submitBooking} disabled={bookingLoading}>
+              {bookingLoading ? "Booking..." : "Confirm Booking"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

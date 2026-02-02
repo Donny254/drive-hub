@@ -1,17 +1,24 @@
-import { useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ShoppingCart, Plus, Minus, X } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
+import { apiFetch, resolveImageUrl } from "@/lib/api";
 
 interface Product {
-  id: number;
+  id: string;
   name: string;
-  price: number;
-  category: string;
-  image: string;
+  priceCents: number;
+  category: string | null;
+  imageUrl: string | null;
   sizes?: string[];
+  active: boolean;
 }
 
 interface CartItem extends Product {
@@ -19,115 +26,181 @@ interface CartItem extends Product {
   selectedSize?: string;
 }
 
-const products: Product[] = [
-  {
-    id: 1,
-    name: "WheelsnationKe Racing Hoodie",
-    price: 89,
-    category: "Apparel",
-    image: "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600",
-    sizes: ["S", "M", "L", "XL"],
-  },
-  {
-    id: 2,
-    name: "Classic Logo Tee",
-    price: 45,
-    category: "Apparel",
-    image: "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600",
-    sizes: ["S", "M", "L", "XL"],
-  },
-  {
-    id: 3,
-    name: "Performance Cap",
-    price: 35,
-    category: "Accessories",
-    image: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?w=600",
-  },
-  {
-    id: 4,
-    name: "Carbon Fiber Keychain",
-    price: 25,
-    category: "Accessories",
-    image: "https://images.unsplash.com/photo-1622434641406-a158123450f9?w=600",
-  },
-  {
-    id: 5,
-    name: "Motorsport Watch",
-    price: 299,
-    category: "Accessories",
-    image: "https://images.unsplash.com/photo-1524592094714-0f0654e20314?w=600",
-  },
-  {
-    id: 6,
-    name: "Racing Gloves",
-    price: 79,
-    category: "Gear",
-    image: "https://images.unsplash.com/photo-1584467735815-f778f274e296?w=600",
-    sizes: ["S", "M", "L"],
-  },
-  {
-    id: 7,
-    name: "WheelsnationKe Duffle Bag",
-    price: 129,
-    category: "Accessories",
-    image: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=600",
-  },
-  {
-    id: 8,
-    name: "Limited Edition Poster",
-    price: 49,
-    category: "Collectibles",
-    image: "https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?w=600",
-  },
-];
-
-const categories = ["All", "Apparel", "Accessories", "Gear", "Collectibles"];
-
 const Store = () => {
+  const navigate = useNavigate();
+  const { token, user } = useAuth();
+  const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState("All");
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutSuccess, setCheckoutSuccess] = useState<string | null>(null);
+  const [paymentOrderId, setPaymentOrderId] = useState<string | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<"idle" | "pending" | "paid" | "failed">("idle");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
 
-  const filteredProducts = activeCategory === "All" 
-    ? products 
-    : products.filter(p => p.category === activeCategory);
+  useEffect(() => {
+    const load = async () => {
+      const resp = await apiFetch("/api/products?active=true");
+      if (resp.ok) {
+        setProducts(await resp.json());
+      }
+    };
+    load();
+  }, []);
+
+  const categories = useMemo(() => {
+    const cats = new Set<string>();
+    products.forEach((p) => {
+      if (p.category) cats.add(p.category);
+    });
+    return ["All", ...Array.from(cats)];
+  }, [products]);
+
+  const filteredProducts = activeCategory === "All"
+    ? products
+    : products.filter((p) => p.category === activeCategory);
 
   const addToCart = (product: Product) => {
-    setCart(prev => {
-      const existing = prev.find(item => item.id === product.id);
+    setCart((prev) => {
+      const existing = prev.find((item) => item.id === product.id);
       if (existing) {
-        return prev.map(item => 
-          item.id === product.id 
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
+        return prev.map((item) =>
+          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
       return [...prev, { ...product, quantity: 1 }];
     });
   };
 
-  const removeFromCart = (productId: number) => {
-    setCart(prev => prev.filter(item => item.id !== productId));
+  const removeFromCart = (productId: string) => {
+    setCart((prev) => prev.filter((item) => item.id !== productId));
   };
 
-  const updateQuantity = (productId: number, delta: number) => {
-    setCart(prev => prev.map(item => {
-      if (item.id === productId) {
-        const newQuantity = item.quantity + delta;
-        return newQuantity > 0 ? { ...item, quantity: newQuantity } : item;
-      }
-      return item;
-    }).filter(item => item.quantity > 0));
+  const updateQuantity = (productId: string, delta: number) => {
+    setCart((prev) =>
+      prev
+        .map((item) => {
+          if (item.id === productId) {
+            const newQuantity = item.quantity + delta;
+            return newQuantity > 0 ? { ...item, quantity: newQuantity } : item;
+          }
+          return item;
+        })
+        .filter((item) => item.quantity > 0)
+    );
   };
 
-  const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const cartTotal = cart.reduce((sum, item) => sum + (item.priceCents / 100) * item.quantity, 0);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const cartTotalCents = Math.round(cartTotal * 100);
+
+  const openCheckout = () => {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    setCheckoutError(null);
+    setCheckoutSuccess(null);
+    setPaymentOrderId(null);
+    setPaymentStatus("idle");
+    setCheckoutOpen(true);
+  };
+
+  useEffect(() => {
+    if (!checkoutOpen || !paymentOrderId || paymentStatus !== "pending") return;
+    let active = true;
+
+    const poll = async () => {
+      const resp = await apiFetch(`/api/payments/mpesa/status/${paymentOrderId}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!resp.ok) return;
+      const data = await resp.json().catch(() => null);
+      if (!active || !data) return;
+
+      const orderStatus = data?.order?.status;
+      const transactionStatus = data?.transaction?.status;
+
+      if (orderStatus === "paid" || transactionStatus === "paid") {
+        setPaymentStatus("paid");
+        setCheckoutSuccess("Payment received. Your order is confirmed.");
+      } else if (orderStatus === "cancelled" || transactionStatus === "failed") {
+        setPaymentStatus("failed");
+        setCheckoutError("Payment failed or was cancelled. Please try again.");
+      }
+    };
+
+    const intervalId = window.setInterval(poll, 4000);
+    poll();
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [checkoutOpen, paymentOrderId, paymentStatus, token]);
+
+  const submitOrder = async () => {
+    if (cart.length === 0) return;
+    if (!customerName.trim() || !customerPhone.trim()) {
+      setCheckoutError("Name and phone are required.");
+      return;
+    }
+    setCheckoutLoading(true);
+    setCheckoutError(null);
+    try {
+      const orderItems = cart.map((item) => ({
+        productId: item.id,
+        name: item.name,
+        priceCents: item.priceCents,
+        quantity: item.quantity,
+        selectedSize: item.selectedSize,
+        imageUrl: item.imageUrl,
+      }));
+
+      const resp = await apiFetch("/api/payments/mpesa/stkpush", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: JSON.stringify({
+          phoneNumber: customerPhone,
+          items: orderItems,
+        }),
+      });
+
+      if (!resp.ok) {
+        const errorData = await resp.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to place order");
+      }
+
+      const data = await resp.json().catch(() => ({}));
+      const customerMessage = data?.response?.CustomerMessage;
+      setCheckoutSuccess(
+        customerMessage || "M-Pesa prompt sent. Complete the payment on your phone."
+      );
+      if (data?.orderId) {
+        setPaymentOrderId(data.orderId);
+        setPaymentStatus("pending");
+      }
+      setCart([]);
+      setIsCartOpen(false);
+      setCustomerName("");
+      setCustomerPhone("");
+      setCustomerAddress("");
+    } catch (err) {
+      setCheckoutError(err instanceof Error ? err.message : "Failed to place order.");
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="pt-20">
-        {/* Hero */}
         <section className="py-16 bg-secondary">
           <div className="container mx-auto px-4 text-center">
             <h1 className="font-display text-5xl md:text-6xl tracking-wider animate-fade-in">
@@ -137,7 +210,6 @@ const Store = () => {
               Premium apparel and accessories for true car enthusiasts.
             </p>
 
-            {/* Categories */}
             <div className="flex flex-wrap justify-center gap-2 mt-10 animate-fade-in" style={{ animationDelay: "0.2s" }}>
               {categories.map((cat) => (
                 <Button
@@ -153,7 +225,6 @@ const Store = () => {
           </div>
         </section>
 
-        {/* Products Grid */}
         <section className="py-16">
           <div className="container mx-auto px-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -165,23 +236,23 @@ const Store = () => {
                 >
                   <div className="relative h-64 overflow-hidden">
                     <img
-                      src={product.image}
+                      src={resolveImageUrl(product.imageUrl) || "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600"}
                       alt={product.name}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                     />
-                    <Badge className="absolute top-3 left-3 bg-secondary text-secondary-foreground">
-                      {product.category}
-                    </Badge>
+                    {product.category && (
+                      <Badge className="absolute top-3 left-3 bg-secondary text-secondary-foreground">
+                        {product.category}
+                      </Badge>
+                    )}
                   </div>
                   <div className="p-5">
                     <h3 className="font-display text-xl tracking-wider">{product.name}</h3>
                     <div className="flex items-center justify-between mt-4">
-                      <span className="font-display text-2xl text-primary">${product.price}</span>
-                      <Button 
-                        variant="hero" 
-                        size="sm"
-                        onClick={() => addToCart(product)}
-                      >
+                      <span className="font-display text-2xl text-primary">
+                        {(product.priceCents / 100).toLocaleString()}
+                      </span>
+                      <Button variant="hero" size="sm" onClick={() => addToCart(product)}>
                         Add to Cart
                       </Button>
                     </div>
@@ -194,7 +265,6 @@ const Store = () => {
       </main>
       <Footer />
 
-      {/* Floating Cart Button */}
       <button
         onClick={() => setIsCartOpen(true)}
         className="fixed bottom-24 right-6 w-14 h-14 rounded-full bg-gradient-to-r from-primary to-accent flex items-center justify-center shadow-glow hover:scale-110 transition-transform z-40"
@@ -207,10 +277,9 @@ const Store = () => {
         )}
       </button>
 
-      {/* Cart Sidebar */}
       {isCartOpen && (
         <>
-          <div 
+          <div
             className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50"
             onClick={() => setIsCartOpen(false)}
           />
@@ -218,7 +287,7 @@ const Store = () => {
             <div className="p-6">
               <div className="flex items-center justify-between mb-8">
                 <h2 className="font-display text-2xl tracking-wider">YOUR CART</h2>
-                <button 
+                <button
                   onClick={() => setIsCartOpen(false)}
                   className="text-muted-foreground hover:text-foreground"
                 >
@@ -234,28 +303,28 @@ const Store = () => {
                     {cart.map((item) => (
                       <div key={item.id} className="flex gap-4 pb-6 border-b border-border">
                         <img
-                          src={item.image}
+                          src={resolveImageUrl(item.imageUrl) || "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600"}
                           alt={item.name}
                           className="w-20 h-20 object-cover rounded-lg"
                         />
                         <div className="flex-1">
                           <h4 className="font-medium">{item.name}</h4>
-                          <p className="text-primary font-display text-lg">${item.price}</p>
+                          <p className="text-primary font-display text-lg">{(item.priceCents / 100).toLocaleString()}</p>
                           <div className="flex items-center gap-3 mt-2">
-                            <button 
+                            <button
                               onClick={() => updateQuantity(item.id, -1)}
                               className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors"
                             >
                               <Minus size={14} />
                             </button>
                             <span>{item.quantity}</span>
-                            <button 
+                            <button
                               onClick={() => updateQuantity(item.id, 1)}
                               className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors"
                             >
                               <Plus size={14} />
                             </button>
-                            <button 
+                            <button
                               onClick={() => removeFromCart(item.id)}
                               className="ml-auto text-muted-foreground hover:text-destructive"
                             >
@@ -270,9 +339,9 @@ const Store = () => {
                   <div className="mt-8 pt-6 border-t border-border">
                     <div className="flex items-center justify-between mb-6">
                       <span className="text-lg">Total</span>
-                      <span className="font-display text-3xl text-primary">${cartTotal}</span>
+                      <span className="font-display text-3xl text-primary">{cartTotal}</span>
                     </div>
-                    <Button variant="hero" size="xl" className="w-full">
+                    <Button variant="hero" size="xl" className="w-full" onClick={openCheckout}>
                       Checkout
                     </Button>
                   </div>
@@ -282,6 +351,50 @@ const Store = () => {
           </div>
         </>
       )}
+
+      <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Checkout</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label>Name</Label>
+              <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Phone</Label>
+              <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Delivery Address (optional)</Label>
+              <Input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} />
+            </div>
+            {checkoutError && <p className="text-sm text-destructive">{checkoutError}</p>}
+            {checkoutSuccess && <p className="text-sm text-emerald-500">{checkoutSuccess}</p>}
+            {paymentStatus === "pending" && (
+              <p className="text-sm text-muted-foreground">
+                Waiting for M-Pesa confirmation...
+              </p>
+            )}
+            <div className="flex items-center justify-between border-t border-border pt-4">
+              <span>Total</span>
+              <span className="font-display text-xl text-primary">{cartTotal}</span>
+            </div>
+          </div>
+          <DialogFooter>
+            {paymentStatus === "paid" || checkoutSuccess ? (
+              <Button variant="hero" onClick={() => setCheckoutOpen(false)}>
+                Done
+              </Button>
+            ) : (
+              <Button variant="hero" onClick={submitOrder} disabled={checkoutLoading}>
+                {checkoutLoading ? "Requesting..." : "Pay with M-Pesa"}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
