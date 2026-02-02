@@ -45,6 +45,9 @@ const BlogPost = () => {
     if (id) load();
   }, [id]);
 
+  const wordCount = post?.content ? post.content.split(/\s+/).filter(Boolean).length : 0;
+  const readTime = wordCount ? Math.max(1, Math.round(wordCount / 180)) : null;
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -54,9 +57,15 @@ const BlogPost = () => {
           {!loading && error && <p className="text-destructive">{error}</p>}
 
           {!loading && post && (
-            <div className="max-w-3xl mx-auto space-y-6">
+            <div className="max-w-4xl mx-auto space-y-8">
               <div className="flex items-center justify-between">
-                <Badge variant="secondary">{formatDate(post.publishedAt)}</Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary">{formatDate(post.publishedAt)}</Badge>
+                  <Badge variant={post.status === "published" ? "default" : "secondary"}>
+                    {post.status}
+                  </Badge>
+                  {readTime && <Badge variant="outline">{readTime} min read</Badge>}
+                </div>
                 <Link to="/events">
                   <Button variant="secondary" size="sm">
                     Back to Events
@@ -64,13 +73,11 @@ const BlogPost = () => {
                 </Link>
               </div>
               <h1 className="font-display text-4xl tracking-wider">{post.title}</h1>
-              {post.imageUrl && (
-                <img
-                  src={resolveImageUrl(post.imageUrl)}
-                  alt={post.title}
-                  className="w-full rounded-2xl border border-border object-cover"
-                />
-              )}
+              <img
+                src={resolveImageUrl(post.imageUrl) || "https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=1400"}
+                alt={post.title}
+                className="w-full rounded-2xl border border-border object-cover max-h-[420px]"
+              />
               {post.excerpt && <p className="text-muted-foreground text-lg">{post.excerpt}</p>}
               <div className="prose prose-invert max-w-none">
                 {post.content ? (

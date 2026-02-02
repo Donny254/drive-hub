@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl, uploadImage } from "@/lib/api";
@@ -29,6 +30,11 @@ const emptyService: Service = {
   priceCents: null,
   imageUrl: null,
   active: true,
+};
+
+const formatMoney = (cents?: number | null) => {
+  if (!cents) return "Quote";
+  return `KES ${(cents / 100).toLocaleString()}`;
 };
 
 const AdminServices = () => {
@@ -346,8 +352,12 @@ const AdminServices = () => {
                 {paginated.map((service) => (
                   <TableRow key={service.id}>
                     <TableCell>{service.title}</TableCell>
-                    <TableCell>{service.priceCents ? (service.priceCents / 100).toLocaleString() : "Quote"}</TableCell>
-                    <TableCell>{service.active ? "Yes" : "No"}</TableCell>
+                    <TableCell>{formatMoney(service.priceCents)}</TableCell>
+                    <TableCell>
+                      <Badge variant={service.active ? "default" : "secondary"}>
+                        {service.active ? "Active" : "Inactive"}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Dialog>

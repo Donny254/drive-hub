@@ -14,6 +14,8 @@ type Booking = {
   startDate: string | null;
   endDate: string | null;
   status: "pending" | "confirmed" | "cancelled";
+  paymentStatus?: "unpaid" | "pending" | "paid" | "failed";
+  amountCents?: number | null;
   createdAt: string;
 };
 
@@ -83,6 +85,7 @@ const MyBookings = () => {
                       <TableHead>Listing</TableHead>
                       <TableHead>Start</TableHead>
                       <TableHead>End</TableHead>
+                      <TableHead>Payment</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -105,8 +108,14 @@ const MyBookings = () => {
                         <TableCell>
                           {booking.listingTitle ?? booking.listingId.slice(0, 8)}
                         </TableCell>
-                        <TableCell>{booking.startDate ?? "—"}</TableCell>
-                        <TableCell>{booking.endDate ?? "—"}</TableCell>
+                        <TableCell>{booking.startDate ?? "--"}</TableCell>
+                        <TableCell>{booking.endDate ?? "--"}</TableCell>
+                        <TableCell className="capitalize">
+                          {booking.paymentStatus ?? "unpaid"}
+                          {booking.amountCents
+                            ? ` - KES ${(booking.amountCents / 100).toLocaleString()}`
+                            : ""}
+                        </TableCell>
                         <TableCell className="capitalize">{booking.status}</TableCell>
                         <TableCell className="text-right">
                           <Button

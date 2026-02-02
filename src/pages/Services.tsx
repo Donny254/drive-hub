@@ -23,6 +23,11 @@ type Service = {
   active: boolean;
 };
 
+const formatServicePrice = (priceCents: number | null) => {
+  if (!priceCents) return "Custom Quote";
+  return `KES ${(priceCents / 100).toLocaleString()}`;
+};
+
 const Services = () => {
   const navigate = useNavigate();
   const { user, token } = useAuth();
@@ -188,7 +193,15 @@ const Services = () => {
           <div className="container mx-auto px-4">
             {loading && <p className="text-muted-foreground">Loading services...</p>}
             {!loading && error && <p className="text-destructive">{error}</p>}
-            {!loading && !error && (
+            {!loading && !error && services.length === 0 && (
+              <div className="text-center text-muted-foreground py-12">
+                <p>No services available right now.</p>
+                <Button variant="hero" size="sm" className="mt-4" onClick={() => setQuoteOpen(true)}>
+                  Request a Quote
+                </Button>
+              </div>
+            )}
+            {!loading && !error && services.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {services.map((service, index) => (
                   <div
@@ -225,9 +238,14 @@ const Services = () => {
                     )}
 
                     <div className="flex items-center justify-between pt-6 border-t border-border">
-                      <span className="font-display text-xl text-primary">
-                        {service.priceCents ? `${(service.priceCents / 100).toLocaleString()}` : "Quote"}
-                      </span>
+                      <div>
+                        <p className="text-xs uppercase tracking-widest text-muted-foreground">
+                          {service.priceCents ? "Starting at" : "Pricing"}
+                        </p>
+                        <span className="font-display text-xl text-primary">
+                          {formatServicePrice(service.priceCents)}
+                        </span>
+                      </div>
                       <Button variant="hero" size="sm" onClick={() => openBooking(service)}>
                         Book Now
                       </Button>

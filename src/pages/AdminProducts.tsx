@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl, uploadImage } from "@/lib/api";
@@ -21,6 +22,11 @@ type Product = {
   sizes: string[];
   stock: number;
   active: boolean;
+};
+
+const formatMoney = (cents?: number | null) => {
+  if (!cents) return "KES 0";
+  return `KES ${(cents / 100).toLocaleString()}`;
 };
 
 const emptyProduct: Product = {
@@ -384,9 +390,13 @@ const AdminProducts = () => {
                 {paginated.map((product) => (
                   <TableRow key={product.id}>
                     <TableCell>{product.name}</TableCell>
-                    <TableCell>{(product.priceCents / 100).toLocaleString()}</TableCell>
+                    <TableCell>{formatMoney(product.priceCents)}</TableCell>
                     <TableCell>{product.stock}</TableCell>
-                    <TableCell>{product.active ? "Yes" : "No"}</TableCell>
+                    <TableCell>
+                      <Badge variant={product.active ? "default" : "secondary"}>
+                        {product.active ? "Active" : "Inactive"}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Dialog>

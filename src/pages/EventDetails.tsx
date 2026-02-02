@@ -41,6 +41,18 @@ const formatDate = (value?: string | null) => {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
 };
 
+const formatDateRange = (start?: string | null, end?: string | null) => {
+  if (!start && !end) return "TBA";
+  if (start && end) return `${formatDate(start)} - ${formatDate(end)}`;
+  return formatDate(start || end);
+};
+
+const statusBadgeVariant = (status: EventItem["status"]) => {
+  if (status === "cancelled") return "destructive" as const;
+  if (status === "past") return "secondary" as const;
+  return "default" as const;
+};
+
 const EventDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -161,47 +173,66 @@ const EventDetails = () => {
           {!loading && error && <p className="text-destructive">{error}</p>}
 
           {!loading && event && (
-            <div className="max-w-4xl mx-auto space-y-6">
+            <div className="max-w-5xl mx-auto space-y-8">
               <div className="flex items-center justify-between">
-                <Badge variant="secondary" className="capitalize">
-                  {event.status}
-                </Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={statusBadgeVariant(event.status)} className="capitalize">
+                    {event.status}
+                  </Badge>
+                  <Badge variant="secondary">
+                    {formatDateRange(event.startDate, event.endDate)}
+                  </Badge>
+                </div>
                 <Button variant="secondary" size="sm" onClick={() => navigate(-1)}>
                   Back
                 </Button>
               </div>
-              <h1 className="font-display text-4xl tracking-wider">{event.title}</h1>
-              <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                <div className="flex items-center gap-2">
-                  <Calendar size={16} />
-                  {formatDate(event.startDate)}
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="space-y-4">
+                  <h1 className="font-display text-4xl tracking-wider">{event.title}</h1>
+                  <p className="text-muted-foreground text-lg">
+                    {event.description ?? "Details coming soon."}
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="rounded-xl border border-border bg-card p-4">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Calendar size={16} />
+                        Schedule
+                      </div>
+                      <p className="mt-2 font-medium">
+                        {formatDateRange(event.startDate, event.endDate)}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-card p-4">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <MapPin size={16} />
+                        Location
+                      </div>
+                      <p className="mt-2 font-medium">{event.location ?? "TBA"}</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-card p-4">
+                      <p className="text-sm text-muted-foreground">Registrations</p>
+                      <p className="mt-2 font-medium">{event.registrationsCount ?? 0}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    {event.status === "upcoming" && (
+                      <Button variant="hero" size="lg" onClick={openRegister}>
+                        Register Now
+                      </Button>
+                    )}
+                    {user?.role === "admin" && (
+                      <Badge variant="secondary">Admin view</Badge>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <MapPin size={16} />
-                  {event.location ?? "TBA"}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-primary font-medium">Registered:</span>
-                  {event.registrationsCount ?? 0}
-                </div>
-              </div>
-              <img
-                src={resolveImageUrl(event.imageUrl) || carEvent}
-                alt={event.title}
-                className="w-full rounded-2xl border border-border object-cover"
-              />
-              <p className="text-muted-foreground text-lg">
-                {event.description ?? "Details coming soon."}
-              </p>
-              <div className="flex flex-wrap gap-3">
-                {event.status === "upcoming" && (
-                  <Button variant="hero" size="lg" onClick={openRegister}>
-                    Register Now
-                  </Button>
-                )}
-                {user?.role === "admin" && (
-                  <Badge variant="secondary">Admin view</Badge>
-                )}
+
+                <img
+                  src={resolveImageUrl(event.imageUrl) || carEvent}
+                  alt={event.title}
+                  className="w-full rounded-2xl border border-border object-cover min-h-[320px]"
+                />
               </div>
 
               {user?.role === "admin" && (
@@ -238,7 +269,20 @@ const EventDetails = () => {
                               <TableCell>{reg.contactName ?? "--"}</TableCell>
                               <TableCell>{reg.contactPhone ?? "--"}</TableCell>
                               <TableCell>{reg.tickets}</TableCell>
-                              <TableCell className="capitalize">{reg.status}</TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={
+                                    reg.status === "confirmed"
+                                      ? "default"
+                                      : reg.status === "cancelled"
+                                        ? "destructive"
+                                        : "secondary"
+                                  }
+                                  className="capitalize"
+                                >
+                                  {reg.status}
+                                </Badge>
+                              </TableCell>
                               <TableCell>
                                 {new Date(reg.createdAt).toLocaleDateString()}
                               </TableCell>

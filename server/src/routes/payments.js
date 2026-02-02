@@ -95,6 +95,16 @@ const buildStkPayload = ({ phoneNumber, amount }) => {
   };
 };
 
+const computeDays = (startDate, endDate) => {
+  if (!startDate) return 1;
+  const start = new Date(startDate);
+  const end = endDate ? new Date(endDate) : new Date(startDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 1;
+  const diffMs = end.setHours(0, 0, 0, 0) - start.setHours(0, 0, 0, 0);
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1;
+  return Math.max(1, days);
+};
+
 const computeCartTotal = (items) =>
   items.reduce((sum, item) => sum + item.priceCents * item.quantity, 0);
 
@@ -262,6 +272,120 @@ router.post("/mpesa/stkpush", requireAuth, async (req, res, next) => {
   }
 });
 
+router.post("/mpesa/stkpush-booking", requireAuth, async (req, res, next) => {
+  try {
+    const { listingId, startDate, endDate, phoneNumber } = req.body;
+    if (!listingId) {
+      return res.status(400).json({ error: "listingId is required" });
+    }
+
+    const normalizedPhone = normalizePhone(phoneNumber);
+    if (!/^254\d{9}$/.test(normalizedPhone)) {
+      return res.status(400).json({ error: "Phone number must be a valid Kenyan mobile number" });
+    }
+
+    const listingResult = await query(
+      "SELECT id, title, price_cents, listing_type, status FROM listings WHERE id = $1",
+      [listingId]
+    );
+    if (listingResult.rowCount === 0) {
+      return res.status(404).json({ error: "Listing not found" });
+    }
+    const listing = listingResult.rows[0];
+    if (listing.status !== "active") {
+      return res.status(400).json({ error: "Listing is not available" });
+    }
+
+    const days = listing.listing_type === "rent" ? computeDays(startDate, endDate) : 1;
+    const totalCents = listing.price_cents * days;
+    if (!Number.isInteger(totalCents) || totalCents <= 0) {
+      return res.status(400).json({ error: "Invalid listing price" });
+    }
+
+    const bookingResult = await query(
+      `INSERT INTO bookings (user_id, listing_id, start_date, end_date, status, payment_method, payment_status, amount_cents)
+       VALUES ($1, $2, $3, $4, 'pending', 'mpesa', 'pending', $5)
+       RETURNING *`,
+      [req.user.id, listing.id, startDate ?? null, endDate ?? null, totalCents]
+    );
+    const booking = bookingResult.rows[0];
+
+    const txResult = await query(
+      `INSERT INTO mpesa_transactions (booking_id, phone_number, amount_cents, status)
+       VALUES ($1, $2, $3, 'pending')
+       RETURNING *`,
+      [booking.id, normalizedPhone, totalCents]
+    );
+    const transaction = txResult.rows[0];
+
+    const amount = Math.max(1, Math.round(totalCents / 100));
+    const accessToken = await getAccessToken();
+    const payload = buildStkPayload({ phoneNumber: normalizedPhone, amount });
+
+    const response = await fetch(`${mpesaBaseUrl}/mpesa/stkpush/v1/processrequest`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const responseData = await response.json().catch(() => ({}));
+    const responseCode = responseData.ResponseCode ?? responseData.responseCode;
+    const newStatus = response.ok && responseCode === "0" ? "pending" : "failed";
+
+    await query(
+      `UPDATE mpesa_transactions
+       SET checkout_request_id = $1,
+           merchant_request_id = $2,
+           response = $3,
+           status = $4
+       WHERE id = $5`,
+      [
+        responseData.CheckoutRequestID || null,
+        responseData.MerchantRequestID || null,
+        responseData,
+        newStatus,
+        transaction.id,
+      ]
+    );
+
+    if (newStatus === "failed") {
+      await query(
+        "UPDATE bookings SET payment_status = $1 WHERE id = $2",
+        ["failed", booking.id]
+      );
+      return res.status(400).json({
+        error: responseData.CustomerMessage || "Failed to initiate M-Pesa payment",
+        bookingId: booking.id,
+        transactionId: transaction.id,
+        response: responseData,
+      });
+    }
+
+    return res.status(201).json({
+      bookingId: booking.id,
+      transactionId: transaction.id,
+      status: newStatus,
+      response: responseData,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/bank-details", async (req, res) => {
+  res.json({
+    bankName: process.env.BANK_NAME || null,
+    accountName: process.env.BANK_ACCOUNT_NAME || null,
+    accountNumber: process.env.BANK_ACCOUNT_NUMBER || null,
+    branch: process.env.BANK_BRANCH || null,
+    swift: process.env.BANK_SWIFT || null,
+    instructions: process.env.BANK_INSTRUCTIONS || null,
+  });
+});
+
 router.get("/mpesa/status/:orderId", requireAuth, async (req, res, next) => {
   try {
     const orderResult = await query("SELECT * FROM orders WHERE id = $1", [req.params.orderId]);
@@ -306,6 +430,48 @@ router.get("/mpesa/status/:orderId", requireAuth, async (req, res, next) => {
   }
 });
 
+router.get("/mpesa/booking-status/:bookingId", requireAuth, async (req, res, next) => {
+  try {
+    const bookingResult = await query("SELECT * FROM bookings WHERE id = $1", [req.params.bookingId]);
+    if (bookingResult.rowCount === 0) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+    const booking = bookingResult.rows[0];
+    if (req.user.role !== "admin" && booking.user_id !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const txResult = await query(
+      `SELECT * FROM mpesa_transactions
+       WHERE booking_id = $1
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [req.params.bookingId]
+    );
+    const transaction = txResult.rowCount > 0 ? txResult.rows[0] : null;
+    return res.json({
+      booking: {
+        id: booking.id,
+        amountCents: booking.amount_cents,
+        status: booking.status,
+        paymentStatus: booking.payment_status,
+        createdAt: booking.created_at,
+      },
+      transaction: transaction
+        ? {
+            id: transaction.id,
+            status: transaction.status,
+            checkoutRequestId: transaction.checkout_request_id,
+            merchantRequestId: transaction.merchant_request_id,
+            response: transaction.response,
+            createdAt: transaction.created_at,
+          }
+        : null,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post("/mpesa/callback", async (req, res, next) => {
   try {
     const callback = req.body?.Body?.stkCallback;
@@ -322,15 +488,23 @@ router.post("/mpesa/callback", async (req, res, next) => {
        SET status = $1,
            response = $2
        WHERE checkout_request_id = $3
-       RETURNING order_id`,
+       RETURNING order_id, booking_id`,
       [status, callback, checkoutRequestId]
     );
 
     if (txResult.rowCount > 0) {
-      const orderId = txResult.rows[0].order_id;
+      const { order_id: orderId, booking_id: bookingId } = txResult.rows[0];
       if (orderId) {
         const orderStatus = status === "paid" ? "paid" : "cancelled";
         await query("UPDATE orders SET status = $1 WHERE id = $2", [orderStatus, orderId]);
+      }
+      if (bookingId) {
+        const paymentStatus = status === "paid" ? "paid" : "failed";
+        const paidAt = status === "paid" ? new Date().toISOString() : null;
+        await query(
+          "UPDATE bookings SET payment_status = $1, paid_at = $2 WHERE id = $3",
+          [paymentStatus, paidAt, bookingId]
+        );
       }
     }
 

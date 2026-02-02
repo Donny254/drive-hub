@@ -157,7 +157,7 @@ const ListingDetails = () => {
                   <div>
                     <h1 className="font-display text-4xl tracking-wider">{listing.title}</h1>
                     <p className="text-primary font-display text-3xl mt-2">
-                      {(listing.priceCents / 100).toLocaleString()}
+                      KES {(listing.priceCents / 100).toLocaleString()}
                       {listing.listingType === "rent" && (
                         <span className="text-sm text-muted-foreground">/day</span>
                       )}
@@ -265,7 +265,7 @@ const ListingDetails = () => {
                         <div className="flex-1">
                           <p className="font-display text-base">{item.title}</p>
                           <p className="text-sm text-muted-foreground capitalize">
-                            {item.listingType} • {(item.priceCents / 100).toLocaleString()}
+                            {item.listingType} - KES {(item.priceCents / 100).toLocaleString()}
                           </p>
                         </div>
                       </div>

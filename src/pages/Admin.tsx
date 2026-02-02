@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -66,6 +67,8 @@ type Booking = {
   startDate: string | null;
   endDate: string | null;
   status: "pending" | "confirmed" | "cancelled" | "rejected";
+  paymentStatus?: "unpaid" | "pending" | "paid" | "failed";
+  amountCents?: number | null;
   createdAt: string;
 };
 
@@ -159,6 +162,38 @@ type User = {
   name: string | null;
   role: "user" | "admin";
   createdAt: string;
+};
+
+const formatMoney = (cents?: number | null) => {
+  if (cents === null || cents === undefined) return "--";
+  return `KES ${(cents / 100).toLocaleString()}`;
+};
+
+const formatDate = (value?: string | null) => {
+  if (!value) return "--";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+};
+
+const statusVariant = (status?: string | null) => {
+  switch (status) {
+    case "paid":
+    case "confirmed":
+    case "active":
+    case "upcoming":
+      return "default";
+    case "pending":
+    case "past":
+    case "inactive":
+    case "sold":
+      return "secondary";
+    case "cancelled":
+    case "rejected":
+    case "failed":
+      return "destructive";
+    default:
+      return "outline";
+  }
 };
 
 const Admin = () => {
@@ -710,11 +745,17 @@ const Admin = () => {
                               )}
                             </TableCell>
                             <TableCell>{listing.title}</TableCell>
-                            <TableCell className="capitalize">{listing.listingType}</TableCell>
-                            <TableCell className="capitalize">{listing.status}</TableCell>
                             <TableCell>
-                              {(listing.priceCents / 100).toLocaleString()}
+                              <Badge variant="secondary" className="capitalize">
+                                {listing.listingType}
+                              </Badge>
                             </TableCell>
+                            <TableCell>
+                              <Badge variant={statusVariant(listing.status)} className="capitalize">
+                                {listing.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{formatMoney(listing.priceCents)}</TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
                                 <Dialog>
@@ -1043,8 +1084,12 @@ const Admin = () => {
                             <TableCell>{order.id.slice(0, 8)}</TableCell>
                             <TableCell>{order.userId.slice(0, 8)}</TableCell>
                             <TableCell>{order.itemsCount ?? 0}</TableCell>
-                            <TableCell className="capitalize">{order.status}</TableCell>
-                            <TableCell>{(order.totalCents / 100).toLocaleString()}</TableCell>
+                            <TableCell>
+                              <Badge variant={statusVariant(order.status)} className="capitalize">
+                                {order.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{formatMoney(order.totalCents)}</TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
                                 <Button
@@ -1191,9 +1236,7 @@ const Admin = () => {
                                         </div>
                                       </TableCell>
                                       <TableCell>{item.quantity}</TableCell>
-                                      <TableCell>
-                                        {(item.priceCents / 100).toLocaleString()}
-                                      </TableCell>
+                                      <TableCell>{formatMoney(item.priceCents)}</TableCell>
                                     </TableRow>
                                   ))}
                                 </TableBody>
@@ -1222,6 +1265,7 @@ const Admin = () => {
                           <TableHead>User</TableHead>
                           <TableHead>Start</TableHead>
                           <TableHead>End</TableHead>
+                          <TableHead>Payment</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
@@ -1243,9 +1287,24 @@ const Admin = () => {
                             <TableCell>{booking.id.slice(0, 8)}</TableCell>
                             <TableCell>{booking.listingTitle ?? booking.listingId.slice(0, 8)}</TableCell>
                             <TableCell>{booking.userId.slice(0, 8)}</TableCell>
-                            <TableCell>{booking.startDate ?? "—"}</TableCell>
-                            <TableCell>{booking.endDate ?? "—"}</TableCell>
-                            <TableCell className="capitalize">{booking.status}</TableCell>
+                            <TableCell>{booking.startDate ?? "--"}</TableCell>
+                            <TableCell>{booking.endDate ?? "--"}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={statusVariant(booking.paymentStatus ?? "pending")}
+                                className="capitalize"
+                              >
+                                {booking.paymentStatus ?? "unpaid"}
+                              </Badge>
+                              {booking.amountCents
+                                ? ` • ${formatMoney(booking.amountCents)}`
+                                : ""}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={statusVariant(booking.status)} className="capitalize">
+                                {booking.status}
+                              </Badge>
+                            </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
                                 <Dialog>
@@ -1329,7 +1388,11 @@ const Admin = () => {
                             <TableCell>{booking.userId?.slice(0, 8) ?? "--"}</TableCell>
                             <TableCell>{booking.serviceTitle ?? booking.serviceId.slice(0, 8)}</TableCell>
                             <TableCell>{booking.scheduledDate ?? "--"}</TableCell>
-                            <TableCell className="capitalize">{booking.status}</TableCell>
+                            <TableCell>
+                              <Badge variant={statusVariant(booking.status)} className="capitalize">
+                                {booking.status}
+                              </Badge>
+                            </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
                                 <Dialog>
@@ -1430,7 +1493,14 @@ const Admin = () => {
                               {registration.eventTitle ?? registration.eventId.slice(0, 8)}
                             </TableCell>
                             <TableCell>{registration.tickets}</TableCell>
-                            <TableCell className="capitalize">{registration.status}</TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={statusVariant(registration.status)}
+                                className="capitalize"
+                              >
+                                {registration.status}
+                              </Badge>
+                            </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
                                 <Dialog>
@@ -1528,7 +1598,11 @@ const Admin = () => {
                       <TableBody>
                         {inquiries.map((inquiry) => (
                           <TableRow key={inquiry.id}>
-                            <TableCell className="capitalize">{inquiry.inquiryType}</TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="capitalize">
+                                {inquiry.inquiryType}
+                              </Badge>
+                            </TableCell>
                             <TableCell>{inquiry.name ?? "--"}</TableCell>
                             <TableCell>
                               <div className="text-sm">
@@ -1540,10 +1614,15 @@ const Admin = () => {
                               {inquiry.listingTitle ?? (inquiry.listingId ? inquiry.listingId.slice(0, 8) : "--")}
                             </TableCell>
                             <TableCell className="max-w-xs truncate">{inquiry.message ?? "--"}</TableCell>
+                            <TableCell>{formatDate(inquiry.createdAt)}</TableCell>
                             <TableCell>
-                              {new Date(inquiry.createdAt).toLocaleDateString()}
+                              <Badge
+                                variant={statusVariant(inquiry.status)}
+                                className="capitalize"
+                              >
+                                {inquiry.status}
+                              </Badge>
                             </TableCell>
-                            <TableCell className="capitalize">{inquiry.status}</TableCell>
                             <TableCell className="text-right">
                               <Dialog>
                                 <DialogTrigger asChild>
@@ -1608,9 +1687,13 @@ const Admin = () => {
                       <TableBody>
                         {users.map((user) => (
                           <TableRow key={user.id}>
-                            <TableCell>{user.name ?? "—"}</TableCell>
+                            <TableCell>{user.name ?? "--"}</TableCell>
                             <TableCell>{user.email}</TableCell>
-                            <TableCell className="capitalize">{user.role}</TableCell>
+                            <TableCell>
+                              <Badge variant={user.role === "admin" ? "default" : "secondary"}>
+                                {user.role}
+                              </Badge>
+                            </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-2">
                                 <Dialog>

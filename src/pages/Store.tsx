@@ -227,39 +227,45 @@ const Store = () => {
 
         <section className="py-16">
           <div className="container mx-auto px-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {filteredProducts.map((product, index) => (
-                <div
-                  key={product.id}
-                  className="group bg-card rounded-lg border border-border overflow-hidden hover:border-primary/50 transition-all duration-500 animate-fade-in"
-                  style={{ animationDelay: `${index * 0.05}s` }}
-                >
-                  <div className="relative h-64 overflow-hidden">
-                    <img
-                      src={resolveImageUrl(product.imageUrl) || "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600"}
-                      alt={product.name}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                    />
-                    {product.category && (
-                      <Badge className="absolute top-3 left-3 bg-secondary text-secondary-foreground">
-                        {product.category}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="p-5">
-                    <h3 className="font-display text-xl tracking-wider">{product.name}</h3>
-                    <div className="flex items-center justify-between mt-4">
-                      <span className="font-display text-2xl text-primary">
-                        {(product.priceCents / 100).toLocaleString()}
-                      </span>
-                      <Button variant="hero" size="sm" onClick={() => addToCart(product)}>
-                        Add to Cart
-                      </Button>
+            {filteredProducts.length === 0 ? (
+              <div className="text-center text-muted-foreground py-12">
+                No store items available yet.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {filteredProducts.map((product, index) => (
+                  <div
+                    key={product.id}
+                    className="group bg-card rounded-lg border border-border overflow-hidden hover:border-primary/50 transition-all duration-500 animate-fade-in"
+                    style={{ animationDelay: `${index * 0.05}s` }}
+                  >
+                    <div className="relative h-64 overflow-hidden">
+                      <img
+                        src={resolveImageUrl(product.imageUrl) || "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600"}
+                        alt={product.name}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                      />
+                      {product.category && (
+                        <Badge className="absolute top-3 left-3 bg-secondary text-secondary-foreground">
+                          {product.category}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="p-5">
+                      <h3 className="font-display text-xl tracking-wider">{product.name}</h3>
+                      <div className="flex items-center justify-between mt-4">
+                        <span className="font-display text-2xl text-primary">
+                          KES {(product.priceCents / 100).toLocaleString()}
+                        </span>
+                        <Button variant="hero" size="sm" onClick={() => addToCart(product)}>
+                          Add to Cart
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
       </main>
@@ -309,7 +315,9 @@ const Store = () => {
                         />
                         <div className="flex-1">
                           <h4 className="font-medium">{item.name}</h4>
-                          <p className="text-primary font-display text-lg">{(item.priceCents / 100).toLocaleString()}</p>
+                          <p className="text-primary font-display text-lg">
+                            KES {(item.priceCents / 100).toLocaleString()}
+                          </p>
                           <div className="flex items-center gap-3 mt-2">
                             <button
                               onClick={() => updateQuantity(item.id, -1)}
@@ -339,7 +347,9 @@ const Store = () => {
                   <div className="mt-8 pt-6 border-t border-border">
                     <div className="flex items-center justify-between mb-6">
                       <span className="text-lg">Total</span>
-                      <span className="font-display text-3xl text-primary">{cartTotal}</span>
+                      <span className="font-display text-3xl text-primary">
+                        KES {cartTotal.toLocaleString()}
+                      </span>
                     </div>
                     <Button variant="hero" size="xl" className="w-full" onClick={openCheckout}>
                       Checkout
@@ -379,7 +389,9 @@ const Store = () => {
             )}
             <div className="flex items-center justify-between border-t border-border pt-4">
               <span>Total</span>
-              <span className="font-display text-xl text-primary">{cartTotal}</span>
+              <span className="font-display text-xl text-primary">
+                KES {cartTotal.toLocaleString()}
+              </span>
             </div>
           </div>
           <DialogFooter>

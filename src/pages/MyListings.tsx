@@ -497,7 +497,7 @@ const MyListings = () => {
                         <TableCell>{listing.title}</TableCell>
                         <TableCell className="capitalize">{listing.listingType}</TableCell>
                         <TableCell className="capitalize">{listing.status}</TableCell>
-                        <TableCell>{(listing.priceCents / 100).toLocaleString()}</TableCell>
+                        <TableCell>KES {(listing.priceCents / 100).toLocaleString()}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Dialog>

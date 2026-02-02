@@ -93,6 +93,10 @@ CREATE TABLE IF NOT EXISTS bookings (
   listing_id uuid REFERENCES listings(id) ON DELETE SET NULL,
   start_date date,
   end_date date,
+  amount_cents integer,
+  payment_method text,
+  payment_status text NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'pending', 'paid', 'failed')),
+  paid_at timestamptz,
   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'cancelled', 'rejected')),
   created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -164,6 +168,7 @@ ALTER TABLE inquiries
 CREATE TABLE IF NOT EXISTS mpesa_transactions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id uuid REFERENCES orders(id) ON DELETE SET NULL,
+  booking_id uuid REFERENCES bookings(id) ON DELETE SET NULL,
   phone_number text NOT NULL,
   amount_cents integer NOT NULL,
   checkout_request_id text,
@@ -173,6 +178,21 @@ CREATE TABLE IF NOT EXISTS mpesa_transactions (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE bookings
+  ADD COLUMN IF NOT EXISTS amount_cents integer;
+
+ALTER TABLE bookings
+  ADD COLUMN IF NOT EXISTS payment_method text;
+
+ALTER TABLE bookings
+  ADD COLUMN IF NOT EXISTS payment_status text NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'pending', 'paid', 'failed'));
+
+ALTER TABLE bookings
+  ADD COLUMN IF NOT EXISTS paid_at timestamptz;
+
+ALTER TABLE mpesa_transactions
+  ADD COLUMN IF NOT EXISTS booking_id uuid REFERENCES bookings(id) ON DELETE SET NULL;
 
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS trigger AS $$

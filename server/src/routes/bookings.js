@@ -14,6 +14,10 @@ const toApi = (row) => ({
   listingImageUrl: row.listing_image_url || null,
   startDate: row.start_date,
   endDate: row.end_date,
+  amountCents: row.amount_cents,
+  paymentMethod: row.payment_method,
+  paymentStatus: row.payment_status,
+  paidAt: row.paid_at,
   status: row.status,
   createdAt: row.created_at,
 });
@@ -57,6 +61,31 @@ router.get("/", requireAuth, async (req, res, next) => {
   }
 });
 
+router.get("/availability", async (req, res, next) => {
+  try {
+    const { listingId } = req.query;
+    if (!listingId) {
+      return res.status(400).json({ error: "listingId is required" });
+    }
+    const result = await query(
+      `SELECT start_date, end_date
+       FROM bookings
+       WHERE listing_id = $1
+         AND status = 'confirmed'
+       ORDER BY start_date ASC`,
+      [listingId]
+    );
+    res.json(
+      result.rows.map((row) => ({
+        startDate: row.start_date,
+        endDate: row.end_date,
+      }))
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post("/", requireAuth, async (req, res, next) => {
   try {
     const { listingId, startDate, endDate } = req.body;
@@ -65,8 +94,8 @@ router.post("/", requireAuth, async (req, res, next) => {
     }
 
     const result = await query(
-      `INSERT INTO bookings (user_id, listing_id, start_date, end_date, status)
-       VALUES ($1, $2, $3, $4, 'pending')
+      `INSERT INTO bookings (user_id, listing_id, start_date, end_date, status, payment_status)
+       VALUES ($1, $2, $3, $4, 'pending', 'unpaid')
        RETURNING *`,
       [req.user.id, listingId, startDate ?? null, endDate ?? null]
     );
@@ -104,6 +133,15 @@ router.put(
         if (req.user.role !== "admin" && status === "rejected") {
           return res.status(403).json({ error: "Only admins can reject bookings" });
         }
+        if (status === "confirmed") {
+          const paymentResult = await query(
+            "SELECT payment_status FROM bookings WHERE id = $1",
+            [req.params.id]
+          );
+          if (paymentResult.rowCount > 0 && paymentResult.rows[0].payment_status !== "paid") {
+            return res.status(400).json({ error: "Booking must be paid before confirmation" });
+          }
+        }
         maybeSet("status", status);
       }
 
@@ -122,7 +160,18 @@ router.put(
         return res.status(404).json({ error: "Booking not found" });
       }
 
-      res.json(toApi(result.rows[0]));
+      const updated = result.rows[0];
+      if (status === "confirmed") {
+        const listingResult = await query("SELECT listing_type FROM listings WHERE id = $1", [
+          updated.listing_id,
+        ]);
+        if (listingResult.rowCount > 0) {
+          const listingType = listingResult.rows[0].listing_type;
+          const nextStatus = listingType === "rent" ? "inactive" : "sold";
+          await query("UPDATE listings SET status = $1 WHERE id = $2", [nextStatus, updated.listing_id]);
+        }
+      }
+      res.json(toApi(updated));
     } catch (error) {
       next(error);
     }

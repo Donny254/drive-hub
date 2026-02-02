@@ -39,6 +39,18 @@ const formatDate = (value?: string | null) => {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
 };
 
+const formatDateRange = (start?: string | null, end?: string | null) => {
+  if (!start && !end) return "TBA";
+  if (start && end) return `${formatDate(start)} - ${formatDate(end)}`;
+  return formatDate(start || end);
+};
+
+const statusBadgeVariant = (status: EventItem["status"]) => {
+  if (status === "cancelled") return "destructive" as const;
+  if (status === "past") return "secondary" as const;
+  return "default" as const;
+};
+
 const Events = () => {
   const navigate = useNavigate();
   const { user, token } = useAuth();
@@ -195,13 +207,18 @@ const Events = () => {
                       className="w-full h-full object-cover"
                     />
                     <div className="p-8 space-y-4">
-                      <Badge className="bg-primary text-primary-foreground">Featured</Badge>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge className="bg-primary text-primary-foreground">Featured</Badge>
+                        <Badge variant={statusBadgeVariant(featuredEvent.status)} className="capitalize">
+                          {featuredEvent.status}
+                        </Badge>
+                      </div>
                       <h2 className="font-display text-4xl tracking-wider">{featuredEvent.title}</h2>
                       <p className="text-muted-foreground">{featuredEvent.description}</p>
                       <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                         <div className="flex items-center gap-2">
                           <Calendar size={16} />
-                          {formatDate(featuredEvent.startDate)}
+                          {formatDateRange(featuredEvent.startDate, featuredEvent.endDate)}
                         </div>
                         <div className="flex items-center gap-2">
                           <MapPin size={16} />
@@ -222,31 +239,44 @@ const Events = () => {
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                  {otherEvents.map((event) => (
-                    <div key={event.id} className="bg-card border border-border rounded-xl overflow-hidden">
-                      <img
-                        src={resolveImageUrl(event.imageUrl) || carEvent}
-                        alt={event.title}
-                        className="w-full h-56 object-cover"
-                      />
-                      <div className="p-6 space-y-3">
-                        <Badge variant="secondary">{formatDate(event.startDate)}</Badge>
-                        <h3 className="font-display text-2xl tracking-wider">{event.title}</h3>
-                        <p className="text-muted-foreground text-sm line-clamp-3">
-                          {event.description}
-                        </p>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <MapPin size={14} />
-                          {event.location ?? "TBA"}
+                {otherEvents.length === 0 ? (
+                  <div className="text-center text-muted-foreground py-12">
+                    No upcoming events right now.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {otherEvents.map((event) => (
+                      <div key={event.id} className="bg-card border border-border rounded-xl overflow-hidden">
+                        <img
+                          src={resolveImageUrl(event.imageUrl) || carEvent}
+                          alt={event.title}
+                          className="w-full h-56 object-cover"
+                        />
+                        <div className="p-6 space-y-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="secondary">
+                              {formatDateRange(event.startDate, event.endDate)}
+                            </Badge>
+                            <Badge variant={statusBadgeVariant(event.status)} className="capitalize">
+                              {event.status}
+                            </Badge>
+                          </div>
+                          <h3 className="font-display text-2xl tracking-wider">{event.title}</h3>
+                          <p className="text-muted-foreground text-sm line-clamp-3">
+                            {event.description}
+                          </p>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <MapPin size={14} />
+                            {event.location ?? "TBA"}
+                          </div>
+                          <Button variant="outline" className="w-full" asChild>
+                            <Link to={`/events/${event.id}`}>Learn More</Link>
+                          </Button>
                         </div>
-                        <Button variant="outline" className="w-full" asChild>
-                          <Link to={`/events/${event.id}`}>Learn More</Link>
-                        </Button>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -275,25 +305,31 @@ const Events = () => {
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                  {otherPosts.map((post) => (
-                    <div key={post.id} className="bg-card border border-border rounded-xl overflow-hidden">
-                      <img
-                        src={resolveImageUrl(post.imageUrl) || carEvent}
-                        alt={post.title}
-                        className="w-full h-56 object-cover"
-                      />
-                      <div className="p-6 space-y-3">
-                        <Badge variant="secondary">{formatDate(post.publishedAt)}</Badge>
-                        <h3 className="font-display text-2xl tracking-wider">{post.title}</h3>
-                        <p className="text-muted-foreground text-sm line-clamp-3">{post.excerpt}</p>
-                        <Button variant="outline" className="w-full" asChild>
-                          <Link to={`/blog/${post.id}`}>Read More</Link>
-                        </Button>
+                {otherPosts.length === 0 ? (
+                  <div className="text-center text-muted-foreground py-12">
+                    No blog posts available yet.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {otherPosts.map((post) => (
+                      <div key={post.id} className="bg-card border border-border rounded-xl overflow-hidden">
+                        <img
+                          src={resolveImageUrl(post.imageUrl) || carEvent}
+                          alt={post.title}
+                          className="w-full h-56 object-cover"
+                        />
+                        <div className="p-6 space-y-3">
+                          <Badge variant="secondary">{formatDate(post.publishedAt)}</Badge>
+                          <h3 className="font-display text-2xl tracking-wider">{post.title}</h3>
+                          <p className="text-muted-foreground text-sm line-clamp-3">{post.excerpt}</p>
+                          <Button variant="outline" className="w-full" asChild>
+                            <Link to={`/blog/${post.id}`}>Read More</Link>
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

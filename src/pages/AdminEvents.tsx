@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl, uploadImage } from "@/lib/api";
@@ -20,6 +21,18 @@ type EventItem = {
   endDate: string | null;
   imageUrl: string | null;
   status: "upcoming" | "past" | "cancelled";
+};
+
+const formatDate = (value?: string | null) => {
+  if (!value) return "TBA";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+};
+
+const statusVariant = (status: EventItem["status"]) => {
+  if (status === "cancelled") return "destructive" as const;
+  if (status === "past") return "secondary" as const;
+  return "default" as const;
 };
 
 const emptyEvent: EventItem = {
@@ -352,8 +365,12 @@ const AdminEvents = () => {
                 {paginated.map((event) => (
                   <TableRow key={event.id}>
                     <TableCell>{event.title}</TableCell>
-                    <TableCell>{event.startDate ?? "TBA"}</TableCell>
-                    <TableCell className="capitalize">{event.status}</TableCell>
+                    <TableCell>{formatDate(event.startDate)}</TableCell>
+                    <TableCell>
+                      <Badge variant={statusVariant(event.status)} className="capitalize">
+                        {event.status}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Dialog>
