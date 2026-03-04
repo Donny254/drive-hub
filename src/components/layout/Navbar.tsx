@@ -12,6 +12,7 @@ import {
 import { Menu, X } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
 import { useAuth } from "@/context/AuthContext";
+import { prefetchRoute } from "@/lib/routePrefetch";
 
 const navLinks = [
   { name: "Home", path: "/" },
@@ -25,6 +26,7 @@ const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
   const { user, logout } = useAuth();
+  const prefetchLink = (path: string) => () => prefetchRoute(path);
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
@@ -41,6 +43,9 @@ const Navbar = () => {
               <Link
                 key={link.path}
                 to={link.path}
+                onMouseEnter={prefetchLink(link.path)}
+                onFocus={prefetchLink(link.path)}
+                onTouchStart={prefetchLink(link.path)}
                 className={`font-medium text-sm uppercase tracking-widest transition-colors duration-300 ${
                   location.pathname === link.path
                     ? "text-primary"
@@ -61,16 +66,40 @@ const Navbar = () => {
                   <DropdownMenuLabel>My Account</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <Link to="/my-listings">My Listings</Link>
+                    <Link
+                      to="/my-listings"
+                      onMouseEnter={prefetchLink("/my-listings")}
+                      onFocus={prefetchLink("/my-listings")}
+                    >
+                      My Listings
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link to="/my-bookings">My Bookings</Link>
+                    <Link
+                      to="/my-bookings"
+                      onMouseEnter={prefetchLink("/my-bookings")}
+                      onFocus={prefetchLink("/my-bookings")}
+                    >
+                      My Bookings
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link to="/my-event-registrations">Event Registrations</Link>
+                    <Link
+                      to="/my-event-registrations"
+                      onMouseEnter={prefetchLink("/my-event-registrations")}
+                      onFocus={prefetchLink("/my-event-registrations")}
+                    >
+                      Event Registrations
+                    </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link to="/my-service-bookings">Service Bookings</Link>
+                    <Link
+                      to="/my-service-bookings"
+                      onMouseEnter={prefetchLink("/my-service-bookings")}
+                      onFocus={prefetchLink("/my-service-bookings")}
+                    >
+                      Service Bookings
+                    </Link>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -81,7 +110,11 @@ const Navbar = () => {
           <div className="hidden md:flex items-center gap-4">
             <ThemeToggle />
             {user?.role === "admin" && (
-              <Link to="/admin">
+              <Link
+                to="/admin"
+                onMouseEnter={prefetchLink("/admin")}
+                onFocus={prefetchLink("/admin")}
+              >
                 <Button variant="secondary" size="sm">
                   Admin
                 </Button>
@@ -94,11 +127,20 @@ const Navbar = () => {
             ) : (
               <>
                 <Link to="/login">
-                  <Button variant="secondary" size="sm">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onMouseEnter={prefetchLink("/login")}
+                    onFocus={prefetchLink("/login")}
+                  >
                     Sign In
                   </Button>
                 </Link>
-                <Link to="/register">
+                <Link
+                  to="/register"
+                  onMouseEnter={prefetchLink("/register")}
+                  onFocus={prefetchLink("/register")}
+                >
                   <Button variant="hero" size="default">
                     Create Account
                   </Button>
@@ -128,6 +170,9 @@ const Navbar = () => {
                   key={link.path}
                   to={link.path}
                   onClick={() => setIsOpen(false)}
+                  onMouseEnter={prefetchLink(link.path)}
+                  onFocus={prefetchLink(link.path)}
+                  onTouchStart={prefetchLink(link.path)}
                   className={`font-medium text-sm uppercase tracking-widest py-2 ${
                     location.pathname === link.path
                       ? "text-primary"
@@ -141,6 +186,8 @@ const Navbar = () => {
                 <Link
                   to="/my-listings"
                   onClick={() => setIsOpen(false)}
+                  onMouseEnter={prefetchLink("/my-listings")}
+                  onFocus={prefetchLink("/my-listings")}
                   className={`font-medium text-sm uppercase tracking-widest py-2 ${
                     location.pathname === "/my-listings"
                       ? "text-primary"
@@ -157,6 +204,8 @@ const Navbar = () => {
                     <Link
                       to="/my-listings"
                       onClick={() => setIsOpen(false)}
+                      onMouseEnter={prefetchLink("/my-listings")}
+                      onFocus={prefetchLink("/my-listings")}
                       className={`font-medium text-sm uppercase tracking-widest ${
                         location.pathname === "/my-listings"
                           ? "text-primary"
@@ -168,6 +217,8 @@ const Navbar = () => {
                     <Link
                       to="/my-bookings"
                       onClick={() => setIsOpen(false)}
+                      onMouseEnter={prefetchLink("/my-bookings")}
+                      onFocus={prefetchLink("/my-bookings")}
                       className={`font-medium text-sm uppercase tracking-widest ${
                         location.pathname === "/my-bookings"
                           ? "text-primary"
@@ -179,6 +230,8 @@ const Navbar = () => {
                     <Link
                       to="/my-event-registrations"
                       onClick={() => setIsOpen(false)}
+                      onMouseEnter={prefetchLink("/my-event-registrations")}
+                      onFocus={prefetchLink("/my-event-registrations")}
                       className={`font-medium text-sm uppercase tracking-widest ${
                         location.pathname === "/my-event-registrations"
                           ? "text-primary"
@@ -190,6 +243,8 @@ const Navbar = () => {
                     <Link
                       to="/my-service-bookings"
                       onClick={() => setIsOpen(false)}
+                      onMouseEnter={prefetchLink("/my-service-bookings")}
+                      onFocus={prefetchLink("/my-service-bookings")}
                       className={`font-medium text-sm uppercase tracking-widest ${
                         location.pathname === "/my-service-bookings"
                           ? "text-primary"
@@ -202,7 +257,12 @@ const Navbar = () => {
                 </div>
               )}
               {user?.role === "admin" && (
-                <Link to="/admin" onClick={() => setIsOpen(false)}>
+                <Link
+                  to="/admin"
+                  onClick={() => setIsOpen(false)}
+                  onMouseEnter={prefetchLink("/admin")}
+                  onFocus={prefetchLink("/admin")}
+                >
                   <Button variant="secondary" size="default" className="w-full">
                     Admin
                   </Button>
@@ -222,12 +282,22 @@ const Navbar = () => {
                 </Button>
               ) : (
                 <>
-                  <Link to="/login" onClick={() => setIsOpen(false)}>
+                  <Link
+                    to="/login"
+                    onClick={() => setIsOpen(false)}
+                    onMouseEnter={prefetchLink("/login")}
+                    onFocus={prefetchLink("/login")}
+                  >
                     <Button variant="secondary" size="default" className="w-full">
                       Sign In
                     </Button>
                   </Link>
-                  <Link to="/register" onClick={() => setIsOpen(false)}>
+                  <Link
+                    to="/register"
+                    onClick={() => setIsOpen(false)}
+                    onMouseEnter={prefetchLink("/register")}
+                    onFocus={prefetchLink("/register")}
+                  >
                     <Button variant="hero" size="default" className="w-full">
                       Create Account
                     </Button>

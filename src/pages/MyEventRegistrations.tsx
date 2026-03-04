@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
 
@@ -18,15 +19,24 @@ type EventRegistration = {
   createdAt: string;
 };
 
+type EventTicket = {
+  id: string;
+  ticketNumber: string;
+  status: "issued" | "checked_in" | "cancelled";
+  checkedInAt: string | null;
+};
+
 const MyEventRegistrations = () => {
   const { token } = useAuth();
   const [registrations, setRegistrations] = useState<EventRegistration[]>([]);
+  const [ticketsByRegistration, setTicketsByRegistration] = useState<Record<string, EventTicket[]>>({});
+  const [ticketsLoadingId, setTicketsLoadingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
-  const fetchRegistrations = async () => {
+  const fetchRegistrations = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -39,11 +49,11 @@ const MyEventRegistrations = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [authHeaders]);
 
   useEffect(() => {
     fetchRegistrations();
-  }, []);
+  }, [fetchRegistrations]);
 
   const cancelRegistration = async (id: string) => {
     const resp = await apiFetch(`/api/event-registrations/${id}`, {
@@ -53,6 +63,21 @@ const MyEventRegistrations = () => {
     });
     if (!resp.ok) throw new Error("Failed to cancel registration");
     fetchRegistrations();
+  };
+
+  const loadTickets = async (registrationId: string) => {
+    if (ticketsByRegistration[registrationId]) return;
+    setTicketsLoadingId(registrationId);
+    try {
+      const resp = await apiFetch(`/api/event-registrations/registration/${registrationId}/tickets`, {
+        headers: authHeaders,
+      });
+      if (!resp.ok) throw new Error("Failed to load tickets");
+      const tickets = (await resp.json()) as EventTicket[];
+      setTicketsByRegistration((prev) => ({ ...prev, [registrationId]: tickets }));
+    } finally {
+      setTicketsLoadingId(null);
+    }
   };
 
   return (
@@ -77,6 +102,7 @@ const MyEventRegistrations = () => {
                       <TableHead>Registration</TableHead>
                       <TableHead>Event</TableHead>
                       <TableHead>Tickets</TableHead>
+                      <TableHead>Ticket Codes</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -89,6 +115,45 @@ const MyEventRegistrations = () => {
                           {registration.eventTitle ?? registration.eventId.slice(0, 8)}
                         </TableCell>
                         <TableCell>{registration.tickets}</TableCell>
+                        <TableCell>
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => loadTickets(registration.id)}
+                              >
+                                View
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Tickets for {registration.eventTitle ?? "Event"}</DialogTitle>
+                              </DialogHeader>
+                              {ticketsLoadingId === registration.id && (
+                                <p className="text-sm text-muted-foreground">Loading tickets...</p>
+                              )}
+                              {ticketsLoadingId !== registration.id &&
+                                (ticketsByRegistration[registration.id]?.length ? (
+                                  <div className="space-y-2">
+                                    {ticketsByRegistration[registration.id].map((ticket) => (
+                                      <div
+                                        key={ticket.id}
+                                        className="flex items-center justify-between rounded-md border border-border p-2"
+                                      >
+                                        <span className="font-mono text-sm">{ticket.ticketNumber}</span>
+                                        <span className="text-xs capitalize text-muted-foreground">
+                                          {ticket.status}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-muted-foreground">No tickets found.</p>
+                                ))}
+                            </DialogContent>
+                          </Dialog>
+                        </TableCell>
                         <TableCell className="capitalize">{registration.status}</TableCell>
                         <TableCell className="text-right">
                           <Button

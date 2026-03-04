@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
@@ -57,14 +57,14 @@ const AdminProducts = () => {
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     const resp = await apiFetch("/api/products", { headers: authHeaders });
     if (resp.ok) setProducts(await resp.json());
-  };
+  }, [authHeaders]);
 
   useEffect(() => {
     fetchProducts();
-  }, []);
+  }, [fetchProducts]);
 
   const filtered = products.filter((product) => {
     const matchesQuery = `${product.name} ${product.category ?? ""}`.toLowerCase().includes(query.toLowerCase());

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
@@ -58,17 +58,21 @@ const AdminEvents = () => {
   const [filterStatus, setFilterStatus] = useState("all");
   const [startAfter, setStartAfter] = useState("");
   const [startBefore, setStartBefore] = useState("");
+  const [ticketCode, setTicketCode] = useState("");
+  const [checkInLoading, setCheckInLoading] = useState(false);
+  const [checkInResult, setCheckInResult] = useState<string | null>(null);
+  const [checkInError, setCheckInError] = useState<string | null>(null);
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
-  const fetchEvents = async () => {
+  const fetchEvents = useCallback(async () => {
     const resp = await apiFetch("/api/events", { headers: authHeaders });
     if (resp.ok) setEvents(await resp.json());
-  };
+  }, [authHeaders]);
 
   useEffect(() => {
     fetchEvents();
-  }, []);
+  }, [fetchEvents]);
 
   const filtered = events.filter((event) => {
     const matchesQuery = `${event.title} ${event.location ?? ""}`.toLowerCase().includes(query.toLowerCase());
@@ -178,6 +182,31 @@ const AdminEvents = () => {
   const deleteEvent = async (id: string) => {
     const resp = await apiFetch(`/api/events/${id}`, { method: "DELETE", headers: authHeaders });
     if (resp.ok) fetchEvents();
+  };
+
+  const checkInTicket = async () => {
+    const normalized = ticketCode.trim().toUpperCase();
+    if (!normalized) return;
+    setCheckInLoading(true);
+    setCheckInError(null);
+    setCheckInResult(null);
+    try {
+      const resp = await apiFetch(`/api/event-registrations/tickets/${normalized}/check-in`, {
+        method: "POST",
+        headers: authHeaders,
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to check in ticket");
+      }
+      const ticket = await resp.json();
+      setCheckInResult(`Checked in ${ticket.ticketNumber}`);
+      setTicketCode("");
+    } catch (err) {
+      setCheckInError(err instanceof Error ? err.message : "Failed to check in ticket");
+    } finally {
+      setCheckInLoading(false);
+    }
   };
 
   return (
@@ -349,6 +378,25 @@ const AdminEvents = () => {
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               Page {page} of {totalPages}
             </div>
+          </div>
+
+          <div className="mt-6 rounded-xl border border-border bg-card p-4">
+            <h2 className="font-medium">Ticket Check-In</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Enter a ticket code to validate and check in attendees.
+            </p>
+            <div className="mt-3 flex flex-col md:flex-row gap-2">
+              <Input
+                placeholder="EVT-XXXXXXXXXX"
+                value={ticketCode}
+                onChange={(e) => setTicketCode(e.target.value)}
+              />
+              <Button variant="hero" onClick={checkInTicket} disabled={checkInLoading || !ticketCode.trim()}>
+                {checkInLoading ? "Checking..." : "Check In"}
+              </Button>
+            </div>
+            {checkInResult && <p className="mt-2 text-sm text-emerald-500">{checkInResult}</p>}
+            {checkInError && <p className="mt-2 text-sm text-destructive">{checkInError}</p>}
           </div>
 
           <div className="mt-8 rounded-xl border border-border bg-card">

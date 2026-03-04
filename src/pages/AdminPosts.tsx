@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
@@ -53,14 +53,14 @@ const AdminPosts = () => {
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
-  const fetchPosts = async () => {
+  const fetchPosts = useCallback(async () => {
     const resp = await apiFetch("/api/posts", { headers: authHeaders });
     if (resp.ok) setPosts(await resp.json());
-  };
+  }, [authHeaders]);
 
   useEffect(() => {
     fetchPosts();
-  }, []);
+  }, [fetchPosts]);
 
   const filtered = posts.filter((post) => {
     const matchesQuery = post.title.toLowerCase().includes(query.toLowerCase());

@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
@@ -82,7 +82,7 @@ const Market = () => {
   const [purchaseSuccess, setPurchaseSuccess] = useState<string | null>(null);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
 
-  const fetchListings = async () => {
+  const fetchListings = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -109,11 +109,11 @@ const Market = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab, search, year, minPrice, maxPrice, sort]);
 
   useEffect(() => {
     fetchListings();
-  }, [activeTab, search, year, minPrice, maxPrice, sort]);
+  }, [fetchListings]);
 
   const filteredListings = useMemo(() => listings, [listings]);
 
