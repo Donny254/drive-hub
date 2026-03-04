@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { ChartData } from '@/types/trading';
 import { cn } from '@/lib/utils';
 
@@ -9,40 +9,36 @@ interface TradingChartProps {
 
 export function TradingChart({ data, loading }: TradingChartProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const dataLength = data.length;
 
   const chartMetrics = useMemo(() => {
-    if (data.length === 0) return null;
+    if (dataLength === 0) return null;
 
     const prices = data.map(d => d.close);
     const min = Math.min(...prices);
     const max = Math.max(...prices);
     const range = max - min || 1;
-    const priceChange = ((data[data.length - 1].close - data[0].close) / data[0].close) * 100;
+    const priceChange = ((data[dataLength - 1].close - data[0].close) / data[0].close) * 100;
 
     return { min, max, range, priceChange };
-  }, [data]);
-
-  const getY = (price: number) => {
-    if (!chartMetrics) return 0;
-    return 100 - ((price - chartMetrics.min) / chartMetrics.range) * 100;
-  };
+  }, [data, dataLength]);
 
   const pathData = useMemo(() => {
-    if (data.length === 0) return '';
+    if (dataLength === 0 || !chartMetrics) return '';
 
     const points = data.map((d, i) => {
-      const x = (i / (data.length - 1)) * 100;
-      const y = getY(d.close);
+      const x = (i / (dataLength - 1)) * 100;
+      const y = 100 - ((d.close - chartMetrics.min) / chartMetrics.range) * 100;
       return `${x},${y}`;
     });
 
     return `M ${points.join(' L ')}`;
-  }, [data, chartMetrics]);
+  }, [chartMetrics, data, dataLength]);
 
   const areaPath = useMemo(() => {
-    if (data.length === 0) return '';
+    if (dataLength === 0) return '';
     return `${pathData} L 100,100 L 0,100 Z`;
-  }, [pathData]);
+  }, [dataLength, pathData]);
 
   if (loading) {
     return (
@@ -52,7 +48,7 @@ export function TradingChart({ data, loading }: TradingChartProps) {
     );
   }
 
-  if (data.length === 0) {
+  if (dataLength === 0) {
     return (
       <div className="w-full h-full flex items-center justify-center text-muted-foreground">
         No chart data available
@@ -145,8 +141,8 @@ export function TradingChart({ data, loading }: TradingChartProps) {
 
         {/* Interactive hover zones */}
         {data.map((d, i) => {
-          const x = (i / (data.length - 1)) * 100;
-          const y = getY(d.close);
+          const x = (i / (dataLength - 1)) * 100;
+          const y = chartMetrics ? 100 - ((d.close - chartMetrics.min) / chartMetrics.range) * 100 : 0;
           
           return (
             <g key={i}>

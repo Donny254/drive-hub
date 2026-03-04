@@ -145,6 +145,22 @@ CREATE TABLE IF NOT EXISTS event_registrations (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS event_tickets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  registration_id uuid NOT NULL REFERENCES event_registrations(id) ON DELETE CASCADE,
+  event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ticket_number text NOT NULL UNIQUE,
+  status text NOT NULL DEFAULT 'issued' CHECK (status IN ('issued', 'checked_in', 'cancelled')),
+  checked_in_at timestamptz,
+  checked_in_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_tickets_event_id ON event_tickets(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_tickets_user_id ON event_tickets(user_id);
+CREATE INDEX IF NOT EXISTS idx_event_tickets_registration_id ON event_tickets(registration_id);
+
 CREATE TABLE IF NOT EXISTS inquiries (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid REFERENCES users(id) ON DELETE SET NULL,

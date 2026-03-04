@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
@@ -52,14 +52,14 @@ const AdminServices = () => {
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
-  const fetchServices = async () => {
+  const fetchServices = useCallback(async () => {
     const resp = await apiFetch("/api/services", { headers: authHeaders });
     if (resp.ok) setServices(await resp.json());
-  };
+  }, [authHeaders]);
 
   useEffect(() => {
     fetchServices();
-  }, []);
+  }, [fetchServices]);
 
   const filtered = services.filter((service) => {
     const matchesQuery = service.title.toLowerCase().includes(query.toLowerCase());

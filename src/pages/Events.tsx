@@ -33,6 +33,12 @@ type BlogPost = {
   publishedAt: string | null;
 };
 
+type EventTicket = {
+  id: string;
+  ticketNumber: string;
+  status: "issued" | "checked_in" | "cancelled";
+};
+
 const formatDate = (value?: string | null) => {
   if (!value) return "TBA";
   const date = new Date(value);
@@ -66,6 +72,7 @@ const Events = () => {
   const [notes, setNotes] = useState("");
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [registerSuccess, setRegisterSuccess] = useState<string | null>(null);
+  const [generatedTickets, setGeneratedTickets] = useState<EventTicket[]>([]);
   const [registerLoading, setRegisterLoading] = useState(false);
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
@@ -95,6 +102,7 @@ const Events = () => {
     setContactPhone("");
     setTickets(1);
     setNotes("");
+    setGeneratedTickets([]);
   }, [registerOpen, user]);
 
   const openRegister = (event: EventItem) => {
@@ -132,7 +140,10 @@ const Events = () => {
         throw new Error(errData.error || "Failed to register for event");
       }
 
-      setRegisterSuccess("Registration submitted. We will contact you soon.");
+      const data = await resp.json().catch(() => ({}));
+      const ticketsData = Array.isArray(data.generatedTickets) ? data.generatedTickets : [];
+      setGeneratedTickets(ticketsData);
+      setRegisterSuccess("Registration submitted. Your tickets are ready.");
     } catch (err) {
       setRegisterError(err instanceof Error ? err.message : "Failed to register.");
     } finally {
@@ -368,6 +379,18 @@ const Events = () => {
             </div>
             {registerError && <p className="text-sm text-destructive">{registerError}</p>}
             {registerSuccess && <p className="text-sm text-emerald-500">{registerSuccess}</p>}
+            {generatedTickets.length > 0 && (
+              <div className="rounded-md border border-border bg-card p-3">
+                <p className="text-sm font-medium">Ticket Codes</p>
+                <div className="mt-2 space-y-1">
+                  {generatedTickets.map((ticket) => (
+                    <div key={ticket.id} className="text-sm font-mono">
+                      {ticket.ticketNumber}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             {registerSuccess ? (

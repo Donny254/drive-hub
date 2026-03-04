@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import healthRouter from "./routes/health.js";
@@ -21,14 +21,41 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 8080;
+const isProduction = process.env.NODE_ENV === "production";
 
-const corsOrigin = process.env.CORS_ORIGIN
+const requiredEnvVars = ["DATABASE_URL", "JWT_SECRET"];
+const missingEnvVars = requiredEnvVars.filter((envKey) => !process.env[envKey]);
+if (missingEnvVars.length > 0) {
+  throw new Error(`Missing required environment variables: ${missingEnvVars.join(", ")}`);
+}
+
+const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",").map((value) => value.trim())
-  : "*";
+  : [];
 
-app.use(cors({ origin: corsOrigin }));
+if (isProduction && allowedOrigins.length === 0) {
+  throw new Error("CORS_ORIGIN is required in production");
+}
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow non-browser clients and same-origin server-to-server requests.
+      if (!origin) return callback(null, true);
+      if (!isProduction && allowedOrigins.length === 0) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(null, false);
+    },
+  })
+);
 app.use(express.json({ limit: "1mb" }));
 app.use("/uploads", express.static("uploads"));
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
 
 app.get("/", (req, res) => {
   res.json({ name: "drive-hub-api", status: "ok" });
@@ -49,12 +76,25 @@ app.use("/api/payments", paymentsRouter);
 app.use("/api/service-bookings", serviceBookingsRouter);
 app.use("/api/event-registrations", eventRegistrationsRouter);
 app.use("/api/inquiries", inquiriesRouter);
+app.use((req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
 
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(500).json({ error: "Server error" });
+  res.status(err.status || 500).json({ error: err.message || "Server error" });
 });
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`API listening on http://localhost:${port}`);
 });
+
+const shutdown = (signal) => {
+  console.log(`Received ${signal}, shutting down...`);
+  server.close(() => {
+    process.exit(0);
+  });
+};
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
