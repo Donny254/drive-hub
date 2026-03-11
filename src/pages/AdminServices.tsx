@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogTrigger } from "@/components/ui/dialog";
+import AdminFormDialog from "@/components/admin/AdminFormDialog";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl, uploadImage } from "@/lib/api";
 import { downloadCsv, parseCsv, toCsv } from "@/lib/csv";
@@ -110,7 +111,7 @@ const AdminServices = () => {
           description: "ECU remap and performance upgrades",
           features: "ECU Remap|Exhaust|Intake",
           priceCents: 29900,
-          imageUrl: "https://example.com/service.jpg",
+          imageUrl: "/placeholder.svg",
           active: "true",
         },
       ],
@@ -174,12 +175,12 @@ const AdminServices = () => {
       <Navbar />
       <main className="pt-28 pb-16">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h1 className="font-display text-3xl tracking-wider">Admin Services</h1>
               <p className="text-muted-foreground mt-1">Create and manage services.</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button variant="secondary" onClick={downloadTemplate}>Template</Button>
               <Button variant="secondary" onClick={exportCsv}>Export CSV</Button>
               <label className="cursor-pointer">
@@ -194,16 +195,18 @@ const AdminServices = () => {
                 />
                 <span className="inline-flex h-10 items-center rounded-md bg-secondary px-4 text-sm">Import CSV</span>
               </label>
-              <Dialog>
+              <Dialog
+                open={Boolean(creating)}
+                onOpenChange={(open) => {
+                  if (!open) setCreating(null);
+                }}
+              >
                 <DialogTrigger asChild>
                   <Button variant="hero" onClick={() => setCreating({ ...emptyService })}>
                     New Service
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-h-[85vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>Create Service</DialogTitle>
-                  </DialogHeader>
+                <AdminFormDialog title="Create Service" actionLabel="Create" onAction={createService}>
                   {creating && (
                     <div className="grid gap-4">
                       <div className="grid gap-2">
@@ -286,17 +289,12 @@ const AdminServices = () => {
                       </div>
                     </div>
                   )}
-                  <DialogFooter>
-                    <Button variant="hero" onClick={createService}>
-                      Create
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
+                </AdminFormDialog>
               </Dialog>
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <Input
               placeholder="Search services..."
               value={query}
@@ -333,7 +331,7 @@ const AdminServices = () => {
                 setPage(1);
               }}
             />
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground md:col-span-2 xl:col-span-4">
               Page {page} of {totalPages}
             </div>
           </div>
@@ -360,16 +358,18 @@ const AdminServices = () => {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Dialog>
+                        <Dialog
+                          open={editing?.id === service.id}
+                          onOpenChange={(open) => {
+                            if (!open) setEditing(null);
+                          }}
+                        >
                           <DialogTrigger asChild>
                             <Button variant="secondary" size="sm" onClick={() => setEditing({ ...service })}>
                               Edit
                             </Button>
                           </DialogTrigger>
-                          <DialogContent className="max-h-[85vh] overflow-y-auto">
-                            <DialogHeader>
-                              <DialogTitle>Edit Service</DialogTitle>
-                            </DialogHeader>
+                          <AdminFormDialog title="Edit Service" actionLabel="Save" onAction={saveService}>
                             {editing && (
                               <div className="grid gap-4">
                                 <div className="grid gap-2">
@@ -450,12 +450,7 @@ const AdminServices = () => {
                                 </div>
                               </div>
                             )}
-                            <DialogFooter>
-                              <Button variant="hero" onClick={saveService}>
-                                Save
-                              </Button>
-                            </DialogFooter>
-                          </DialogContent>
+                          </AdminFormDialog>
                         </Dialog>
                         <Button variant="destructive" size="sm" onClick={() => deleteService(service.id)}>
                           Delete

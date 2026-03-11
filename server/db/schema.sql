@@ -4,9 +4,32 @@ CREATE TABLE IF NOT EXISTS users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   email text UNIQUE NOT NULL,
   name text,
+  phone text,
   role text NOT NULL DEFAULT 'user',
+  seller_verification_status text NOT NULL DEFAULT 'unverified' CHECK (seller_verification_status IN ('unverified', 'pending', 'verified')),
+  seller_verified_at timestamptz,
   password_hash text,
   created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS site_settings (
+  id boolean PRIMARY KEY DEFAULT true CHECK (id = true),
+  company_name text,
+  support_email text,
+  support_phone text,
+  address text,
+  social_facebook text,
+  social_instagram text,
+  social_twitter text,
+  social_youtube text,
+  bank_name text,
+  bank_account_name text,
+  bank_account_number text,
+  bank_branch text,
+  bank_swift text,
+  bank_instructions text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS listings (
@@ -21,9 +44,14 @@ CREATE TABLE IF NOT EXISTS listings (
   image_url text,
   listing_type text NOT NULL CHECK (listing_type IN ('buy', 'rent', 'sell')),
   featured boolean NOT NULL DEFAULT false,
-  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'sold', 'inactive')),
+  status text NOT NULL DEFAULT 'pending_approval' CHECK (status IN ('pending_approval', 'active', 'sold', 'inactive', 'rejected')),
   description text,
   location text,
+  moderation_notes text,
+  risk_flags jsonb NOT NULL DEFAULT '[]'::jsonb,
+  risk_score integer NOT NULL DEFAULT 0,
+  approved_at timestamptz,
+  approved_by uuid REFERENCES users(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -34,6 +62,35 @@ CREATE TABLE IF NOT EXISTS listing_images (
   url text NOT NULL,
   position integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS listing_audit_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  listing_id uuid NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+  actor_user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  action text NOT NULL,
+  details jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS listing_views (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  listing_id uuid NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  viewer_key text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_listing_views_listing_id ON listing_views(listing_id);
+CREATE INDEX IF NOT EXISTS idx_listing_views_user_id ON listing_views(user_id);
+CREATE INDEX IF NOT EXISTS idx_listing_audit_logs_listing_id ON listing_audit_logs(listing_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS digest_runs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  digest_kind text NOT NULL,
+  run_date date NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (digest_kind, run_date)
 );
 
 CREATE TABLE IF NOT EXISTS services (
@@ -56,6 +113,7 @@ CREATE TABLE IF NOT EXISTS events (
   start_date date,
   end_date date,
   image_url text,
+  price_cents integer NOT NULL DEFAULT 0,
   status text NOT NULL DEFAULT 'upcoming' CHECK (status IN ('upcoming', 'past', 'cancelled')),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
@@ -140,6 +198,10 @@ CREATE TABLE IF NOT EXISTS event_registrations (
   contact_name text,
   contact_phone text,
   tickets integer NOT NULL DEFAULT 1,
+  amount_cents integer NOT NULL DEFAULT 0,
+  payment_method text,
+  payment_status text NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'pending', 'paid', 'failed')),
+  paid_at timestamptz,
   notes text,
   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'cancelled')),
   created_at timestamptz NOT NULL DEFAULT now()
@@ -185,6 +247,7 @@ CREATE TABLE IF NOT EXISTS mpesa_transactions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id uuid REFERENCES orders(id) ON DELETE SET NULL,
   booking_id uuid REFERENCES bookings(id) ON DELETE SET NULL,
+  event_registration_id uuid REFERENCES event_registrations(id) ON DELETE SET NULL,
   phone_number text NOT NULL,
   amount_cents integer NOT NULL,
   checkout_request_id text,
@@ -207,8 +270,26 @@ ALTER TABLE bookings
 ALTER TABLE bookings
   ADD COLUMN IF NOT EXISTS paid_at timestamptz;
 
+ALTER TABLE events
+  ADD COLUMN IF NOT EXISTS price_cents integer NOT NULL DEFAULT 0;
+
+ALTER TABLE event_registrations
+  ADD COLUMN IF NOT EXISTS amount_cents integer NOT NULL DEFAULT 0;
+
+ALTER TABLE event_registrations
+  ADD COLUMN IF NOT EXISTS payment_method text;
+
+ALTER TABLE event_registrations
+  ADD COLUMN IF NOT EXISTS payment_status text NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'pending', 'paid', 'failed'));
+
+ALTER TABLE event_registrations
+  ADD COLUMN IF NOT EXISTS paid_at timestamptz;
+
 ALTER TABLE mpesa_transactions
   ADD COLUMN IF NOT EXISTS booking_id uuid REFERENCES bookings(id) ON DELETE SET NULL;
+
+ALTER TABLE mpesa_transactions
+  ADD COLUMN IF NOT EXISTS event_registration_id uuid REFERENCES event_registrations(id) ON DELETE SET NULL;
 
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS trigger AS $$
@@ -250,3 +331,66 @@ FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
 
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS password_hash text;
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS seller_verification_status text NOT NULL DEFAULT 'unverified' CHECK (seller_verification_status IN ('unverified', 'pending', 'verified'));
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS seller_verified_at timestamptz;
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS phone text;
+
+ALTER TABLE listings
+  ADD COLUMN IF NOT EXISTS moderation_notes text;
+
+ALTER TABLE listings
+  ADD COLUMN IF NOT EXISTS risk_flags jsonb NOT NULL DEFAULT '[]'::jsonb;
+
+ALTER TABLE listings
+  ADD COLUMN IF NOT EXISTS risk_score integer NOT NULL DEFAULT 0;
+
+ALTER TABLE listings
+  ADD COLUMN IF NOT EXISTS approved_at timestamptz;
+
+ALTER TABLE listings
+  ADD COLUMN IF NOT EXISTS approved_by uuid REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE listings
+  DROP CONSTRAINT IF EXISTS listings_status_check;
+
+ALTER TABLE listings
+  ADD CONSTRAINT listings_status_check CHECK (status IN ('pending_approval', 'active', 'sold', 'inactive', 'rejected'));
+
+INSERT INTO site_settings (
+  id,
+  company_name,
+  support_email,
+  support_phone,
+  address,
+  bank_name,
+  bank_account_name,
+  bank_account_number,
+  bank_branch,
+  bank_swift,
+  bank_instructions
+)
+VALUES (
+  true,
+  'WheelsnationKe',
+  'info@wheelsnationke.co.ke',
+  '+254700123456',
+  'Westlands, Nairobi, Kenya',
+  'Your Bank',
+  'WheelsnationKe Limited',
+  '1234567890',
+  'Main Branch',
+  'ABCDEXYZ',
+  'Use the listing title as reference and share the transfer receipt.'
+)
+ON CONFLICT (id) DO NOTHING;
+
+DROP TRIGGER IF EXISTS site_settings_set_updated_at ON site_settings;
+CREATE TRIGGER site_settings_set_updated_at
+BEFORE UPDATE ON site_settings
+FOR EACH ROW EXECUTE PROCEDURE set_updated_at();

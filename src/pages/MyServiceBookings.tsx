@@ -75,7 +75,31 @@ const MyServiceBookings = () => {
             {!loading && error && <p className="text-destructive">{error}</p>}
 
             {!loading && !error && (
-              <div className="rounded-xl border border-border bg-card">
+              <>
+                <div className="grid gap-4 md:hidden">
+                  {bookings.map((booking) => (
+                    <div key={booking.id} className="rounded-xl border border-border bg-card p-4">
+                      <div>
+                        <p className="font-medium break-words">{booking.serviceTitle ?? booking.serviceId.slice(0, 8)}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">Booking #{booking.id.slice(0, 8)}</p>
+                      </div>
+                      <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
+                        <div className="flex justify-between gap-3"><span>Scheduled</span><span className="text-right break-words">{booking.scheduledDate ?? "--"}</span></div>
+                        <div className="flex justify-between gap-3"><span>Status</span><span className="text-right capitalize">{booking.status}</span></div>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="mt-4 w-full"
+                        disabled={booking.status === "cancelled"}
+                        onClick={() => cancelBooking(booking.id)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <div className="hidden rounded-xl border border-border bg-card md:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -107,7 +131,8 @@ const MyServiceBookings = () => {
                     ))}
                   </TableBody>
                 </Table>
-              </div>
+                </div>
+              </>
             )}
           </div>
         </div>

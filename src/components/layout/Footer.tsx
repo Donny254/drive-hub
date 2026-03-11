@@ -1,35 +1,87 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Facebook, Instagram, Twitter, Youtube, Phone, Mail, MapPin } from "lucide-react";
+import BrandLogo from "@/components/branding/BrandLogo";
+import { apiFetch } from "@/lib/api";
+
+type Settings = {
+  companyName: string | null;
+  supportEmail: string | null;
+  supportPhone: string | null;
+  address: string | null;
+  socialFacebook: string | null;
+  socialInstagram: string | null;
+  socialTwitter: string | null;
+  socialYoutube: string | null;
+};
 
 const Footer = () => {
+  const [settings, setSettings] = useState<Settings | null>(null);
+
+  useEffect(() => {
+    apiFetch("/api/settings/public")
+      .then((resp) => (resp.ok ? resp.json() : null))
+      .then((data) => setSettings(data))
+      .catch(() => setSettings(null));
+  }, []);
+
+  const socialPlatforms = [
+    { name: "Facebook", icon: Facebook, href: settings?.socialFacebook || null },
+    { name: "Instagram", icon: Instagram, href: settings?.socialInstagram || null },
+    { name: "X", icon: Twitter, href: settings?.socialTwitter || null },
+    { name: "YouTube", icon: Youtube, href: settings?.socialYoutube || null },
+  ];
+
   return (
-    <footer id="contact" className="bg-secondary border-t border-border">
+    <footer
+      id="contact"
+      className="border-t border-border bg-[radial-gradient(circle_at_top_left,rgba(15,211,179,0.1),transparent_24%),linear-gradient(180deg,hsl(var(--secondary)),hsl(var(--background)))]"
+    >
       <div className="container mx-auto px-4 py-16">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
+        <div className="grid grid-cols-1 gap-12 md:grid-cols-2 xl:grid-cols-4">
           {/* Brand */}
           <div className="md:col-span-1">
-            <span className="font-display text-3xl text-primary tracking-wider">WheelsnationKe</span>
+            <BrandLogo
+              className="items-start"
+              imageClassName="h-14 max-w-[220px] border border-border bg-white/95 p-2 sm:h-16 sm:max-w-[260px]"
+            />
             <p className="mt-4 text-muted-foreground text-sm">
               Kenya's premier destination for performance cars and luxury SUVs. Buy, sell, rent, and experience automotive excellence across East Africa.
             </p>
-            <div className="flex gap-4 mt-6">
-              <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
-                <Facebook size={20} />
-              </a>
-              <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
-                <Instagram size={20} />
-              </a>
-              <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
-                <Twitter size={20} />
-              </a>
-              <a href="https://youtube.com" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary transition-colors">
-                <Youtube size={20} />
-              </a>
+            <p className="mt-4 text-xs uppercase tracking-[0.24em] text-muted-foreground">
+              {socialPlatforms.some((platform) => platform.href)
+                ? "Follow our official channels"
+                : "Official social channels coming online"}
+            </p>
+            <div className="mt-4 flex flex-wrap gap-4">
+              {socialPlatforms.map((platform) => (
+                platform.href ? (
+                  <a
+                    key={platform.name}
+                    href={platform.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center rounded-full border border-border p-2 text-muted-foreground transition-colors hover:text-primary"
+                    aria-label={platform.name}
+                  >
+                    <platform.icon size={18} />
+                  </a>
+                ) : (
+                  <span
+                    key={platform.name}
+                    className="inline-flex items-center justify-center rounded-full border border-border p-2 text-muted-foreground/60"
+                    title={`${platform.name} link not configured yet`}
+                    aria-label={`${platform.name} link not configured yet`}
+                  >
+                    <platform.icon size={18} />
+                  </span>
+                )
+              ))}
             </div>
           </div>
 
           {/* Quick Links */}
-          <div>
+          <div className="min-w-0">
             <h4 className="font-display text-lg tracking-wider mb-4">QUICK LINKS</h4>
             <ul className="space-y-3">
               <li><Link to="/market" className="text-muted-foreground hover:text-primary text-sm transition-colors">Car Market</Link></li>
@@ -40,7 +92,7 @@ const Footer = () => {
           </div>
 
           {/* Services */}
-          <div>
+          <div className="min-w-0">
             <h4 className="font-display text-lg tracking-wider mb-4">SERVICES</h4>
             <ul className="space-y-3">
               <li><span className="text-muted-foreground text-sm">Performance Tuning</span></li>
@@ -51,31 +103,31 @@ const Footer = () => {
           </div>
 
           {/* Contact */}
-          <div>
+          <div className="min-w-0">
             <h4 className="font-display text-lg tracking-wider mb-4">CONTACT US</h4>
             <ul className="space-y-4 text-muted-foreground text-sm">
               <li className="flex items-center gap-3">
                 <MapPin size={16} className="text-primary flex-shrink-0" />
-                <span>Westlands, Nairobi, Kenya</span>
+                <span className="break-words">{settings?.address || "Westlands, Nairobi, Kenya"}</span>
               </li>
               <li className="flex items-center gap-3">
                 <Mail size={16} className="text-primary flex-shrink-0" />
-                <a href="mailto:info@wheelsnationke.co.ke" className="hover:text-primary transition-colors">
-                  info@wheelsnationke.co.ke
+                <a href={`mailto:${settings?.supportEmail || "info@wheelsnationke.co.ke"}`} className="break-all hover:text-primary transition-colors">
+                  {settings?.supportEmail || "info@wheelsnationke.co.ke"}
                 </a>
               </li>
               <li className="flex items-center gap-3">
                 <Phone size={16} className="text-primary flex-shrink-0" />
-                <a href="tel:+254700123456" className="hover:text-primary transition-colors">
-                  +254 700 123 456
+                <a href={`tel:${settings?.supportPhone || "+254700123456"}`} className="break-words hover:text-primary transition-colors">
+                  {settings?.supportPhone || "+254 700 123 456"}
                 </a>
               </li>
             </ul>
           </div>
         </div>
 
-        <div className="border-t border-border mt-12 pt-8 text-center text-muted-foreground text-sm">
-          <p>© 2024 WheelsnationKe. All rights reserved. | Serving Kenya & East Africa</p>
+        <div className="mt-12 border-t border-border pt-8 text-center text-sm text-muted-foreground">
+          <p className="break-words">© {new Date().getFullYear()} {settings?.companyName || "WheelsnationKe"}. All rights reserved. | Serving Kenya & East Africa</p>
         </div>
       </div>
     </footer>

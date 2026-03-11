@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
@@ -7,10 +7,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import AdminFormDialog from "@/components/admin/AdminFormDialog";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl, uploadImage } from "@/lib/api";
 import { downloadCsv, parseCsv, toCsv } from "@/lib/csv";
+import { parseTicketQrPayload } from "@/lib/ticketQr";
 
 type EventItem = {
   id: string;
@@ -20,6 +22,7 @@ type EventItem = {
   startDate: string | null;
   endDate: string | null;
   imageUrl: string | null;
+  priceCents: number;
   status: "upcoming" | "past" | "cancelled";
 };
 
@@ -43,8 +46,16 @@ const emptyEvent: EventItem = {
   startDate: null,
   endDate: null,
   imageUrl: null,
+  priceCents: 0,
   status: "upcoming",
 };
+
+const formatCurrency = (amountCents?: number) =>
+  new Intl.NumberFormat("en-KE", {
+    style: "currency",
+    currency: "KES",
+    maximumFractionDigits: 0,
+  }).format((amountCents || 0) / 100);
 
 const AdminEvents = () => {
   const { token } = useAuth();
@@ -62,6 +73,11 @@ const AdminEvents = () => {
   const [checkInLoading, setCheckInLoading] = useState(false);
   const [checkInResult, setCheckInResult] = useState<string | null>(null);
   const [checkInError, setCheckInError] = useState<string | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const rafRef = useRef<number | null>(null);
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
@@ -109,9 +125,10 @@ const AdminEvents = () => {
       startDate: event.startDate ?? "",
       endDate: event.endDate ?? "",
       imageUrl: event.imageUrl ?? "",
+      priceCents: event.priceCents,
       status: event.status,
     }));
-    const csv = toCsv(rows, ["title", "description", "location", "startDate", "endDate", "imageUrl", "status"]);
+    const csv = toCsv(rows, ["title", "description", "location", "startDate", "endDate", "imageUrl", "priceCents", "status"]);
     downloadCsv("events.csv", csv);
   };
 
@@ -124,11 +141,12 @@ const AdminEvents = () => {
           location: "Nairobi",
           startDate: "2026-03-10",
           endDate: "2026-03-10",
-          imageUrl: "https://example.com/event.jpg",
+          imageUrl: "/placeholder.svg",
+          priceCents: "250000",
           status: "upcoming",
         },
       ],
-      ["title", "description", "location", "startDate", "endDate", "imageUrl", "status"]
+      ["title", "description", "location", "startDate", "endDate", "imageUrl", "priceCents", "status"]
     );
     downloadCsv("events_template.csv", csv);
   };
@@ -146,6 +164,7 @@ const AdminEvents = () => {
           startDate: row.startDate || null,
           endDate: row.endDate || null,
           imageUrl: row.imageUrl || null,
+          priceCents: Number.parseInt(row.priceCents || "0", 10) || 0,
           status: row.status || "upcoming",
         }),
       });
@@ -184,8 +203,8 @@ const AdminEvents = () => {
     if (resp.ok) fetchEvents();
   };
 
-  const checkInTicket = async () => {
-    const normalized = ticketCode.trim().toUpperCase();
+  const checkInTicketNumber = useCallback(async (ticketValue: string) => {
+    const normalized = ticketValue.trim().toUpperCase();
     if (!normalized) return;
     setCheckInLoading(true);
     setCheckInError(null);
@@ -207,19 +226,106 @@ const AdminEvents = () => {
     } finally {
       setCheckInLoading(false);
     }
+  }, [authHeaders]);
+
+  const checkInTicket = async () => {
+    await checkInTicketNumber(ticketCode);
   };
+
+  const stopScanner = useCallback(() => {
+    if (rafRef.current !== null) {
+      window.cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  }, []);
+
+  const startScanner = useCallback(async () => {
+    setScanError(null);
+    const Detector = window.BarcodeDetector;
+    if (!Detector || !navigator.mediaDevices?.getUserMedia) {
+      setScanError("QR scanning is not supported on this browser. Use manual code entry.");
+      return;
+    }
+
+    try {
+      const supportedFormats = Detector.getSupportedFormats
+        ? await Detector.getSupportedFormats()
+        : ["qr_code"];
+      if (!supportedFormats.includes("qr_code")) {
+        setScanError("QR format is not supported on this device.");
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      const detector = new Detector({ formats: ["qr_code"] });
+      const scanLoop = async () => {
+        if (!videoRef.current) return;
+        try {
+          const barcodes = await detector.detect(videoRef.current);
+          const rawValue = barcodes[0]?.rawValue;
+          if (rawValue) {
+            const parsedTicket = parseTicketQrPayload(rawValue);
+            if (!parsedTicket) {
+              setScanError("QR code is not a valid Drive Hub ticket.");
+            } else {
+              setTicketCode(parsedTicket);
+              await checkInTicketNumber(parsedTicket);
+              setScanOpen(false);
+              return;
+            }
+          }
+        } catch (error) {
+          setScanError("Unable to read QR code from camera stream.");
+        }
+        rafRef.current = window.requestAnimationFrame(() => {
+          void scanLoop();
+        });
+      };
+
+      rafRef.current = window.requestAnimationFrame(() => {
+        void scanLoop();
+      });
+    } catch (error) {
+      setScanError("Camera access denied or unavailable.");
+      stopScanner();
+    }
+  }, [checkInTicketNumber, stopScanner]);
+
+  useEffect(() => {
+    if (scanOpen) {
+      void startScanner();
+    } else {
+      stopScanner();
+    }
+    return () => stopScanner();
+  }, [scanOpen, startScanner, stopScanner]);
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="pt-28 pb-16">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h1 className="font-display text-3xl tracking-wider">Admin Events</h1>
               <p className="text-muted-foreground mt-1">Create and manage events.</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button variant="secondary" onClick={downloadTemplate}>Template</Button>
               <Button variant="secondary" onClick={exportCsv}>Export CSV</Button>
               <label className="cursor-pointer">
@@ -234,16 +340,18 @@ const AdminEvents = () => {
                 />
                 <span className="inline-flex h-10 items-center rounded-md bg-secondary px-4 text-sm">Import CSV</span>
               </label>
-              <Dialog>
+              <Dialog
+                open={Boolean(creating)}
+                onOpenChange={(open) => {
+                  if (!open) setCreating(null);
+                }}
+              >
                 <DialogTrigger asChild>
                   <Button variant="hero" onClick={() => setCreating({ ...emptyEvent })}>
                     New Event
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-h-[85vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>Create Event</DialogTitle>
-                  </DialogHeader>
+                <AdminFormDialog title="Create Event" actionLabel="Create" onAction={createEvent}>
                   {creating && (
                     <div className="grid gap-4">
                       <div className="grid gap-2">
@@ -267,7 +375,7 @@ const AdminEvents = () => {
                           onChange={(e) => setCreating({ ...creating, location: e.target.value })}
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div className="grid gap-2">
                           <Label>Start Date</Label>
                           <Input
@@ -290,6 +398,21 @@ const AdminEvents = () => {
                         <Input
                           value={creating.imageUrl ?? ""}
                           onChange={(e) => setCreating({ ...creating, imageUrl: e.target.value })}
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Ticket Price (KES)</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={Math.round((creating.priceCents || 0) / 100)}
+                          onChange={(e) =>
+                            setCreating({
+                              ...creating,
+                              priceCents: Math.max(0, Number.parseInt(e.target.value || "0", 10) || 0) * 100,
+                            })
+                          }
                         />
                       </div>
                       {creating.imageUrl && (
@@ -327,17 +450,12 @@ const AdminEvents = () => {
                       </div>
                     </div>
                   )}
-                  <DialogFooter>
-                    <Button variant="hero" onClick={createEvent}>
-                      Create
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
+                </AdminFormDialog>
               </Dialog>
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <Input
               placeholder="Search events..."
               value={query}
@@ -375,7 +493,7 @@ const AdminEvents = () => {
                 setPage(1);
               }}
             />
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground md:col-span-2 xl:col-span-4">
               Page {page} of {totalPages}
             </div>
           </div>
@@ -385,7 +503,7 @@ const AdminEvents = () => {
             <p className="text-sm text-muted-foreground mt-1">
               Enter a ticket code to validate and check in attendees.
             </p>
-            <div className="mt-3 flex flex-col md:flex-row gap-2">
+            <div className="mt-3 flex flex-col gap-2 md:flex-row">
               <Input
                 placeholder="EVT-XXXXXXXXXX"
                 value={ticketCode}
@@ -394,10 +512,34 @@ const AdminEvents = () => {
               <Button variant="hero" onClick={checkInTicket} disabled={checkInLoading || !ticketCode.trim()}>
                 {checkInLoading ? "Checking..." : "Check In"}
               </Button>
+              <Button variant="secondary" onClick={() => setScanOpen(true)}>
+                Scan QR
+              </Button>
             </div>
             {checkInResult && <p className="mt-2 text-sm text-emerald-500">{checkInResult}</p>}
             {checkInError && <p className="mt-2 text-sm text-destructive">{checkInError}</p>}
           </div>
+
+          <Dialog open={scanOpen} onOpenChange={setScanOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Scan Ticket QR</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <video
+                  ref={videoRef}
+                  className="w-full rounded-md border border-border bg-black"
+                  autoPlay
+                  muted
+                  playsInline
+                />
+                <p className="text-sm text-muted-foreground">
+                  Point the camera at the attendee QR code.
+                </p>
+                {scanError && <p className="text-sm text-destructive">{scanError}</p>}
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <div className="mt-8 rounded-xl border border-border bg-card">
             <Table>
@@ -405,6 +547,7 @@ const AdminEvents = () => {
                 <TableRow>
                   <TableHead>Title</TableHead>
                   <TableHead>Start</TableHead>
+                  <TableHead>Ticket Price</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -414,6 +557,7 @@ const AdminEvents = () => {
                   <TableRow key={event.id}>
                     <TableCell>{event.title}</TableCell>
                     <TableCell>{formatDate(event.startDate)}</TableCell>
+                    <TableCell>{event.priceCents > 0 ? formatCurrency(event.priceCents) : "Free"}</TableCell>
                     <TableCell>
                       <Badge variant={statusVariant(event.status)} className="capitalize">
                         {event.status}
@@ -421,16 +565,18 @@ const AdminEvents = () => {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Dialog>
+                        <Dialog
+                          open={editing?.id === event.id}
+                          onOpenChange={(open) => {
+                            if (!open) setEditing(null);
+                          }}
+                        >
                           <DialogTrigger asChild>
                             <Button variant="secondary" size="sm" onClick={() => setEditing({ ...event })}>
                               Edit
                             </Button>
                           </DialogTrigger>
-                          <DialogContent className="max-h-[85vh] overflow-y-auto">
-                            <DialogHeader>
-                              <DialogTitle>Edit Event</DialogTitle>
-                            </DialogHeader>
+                          <AdminFormDialog title="Edit Event" actionLabel="Save" onAction={saveEvent}>
                             {editing && (
                               <div className="grid gap-4">
                                 <div className="grid gap-2">
@@ -445,7 +591,7 @@ const AdminEvents = () => {
                                   <Label>Location</Label>
                                   <Input value={editing.location ?? ""} onChange={(e) => setEditing({ ...editing, location: e.target.value })} />
                                 </div>
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                   <div className="grid gap-2">
                                     <Label>Start Date</Label>
                                     <Input type="date" value={editing.startDate ?? ""} onChange={(e) => setEditing({ ...editing, startDate: e.target.value })} />
@@ -458,6 +604,21 @@ const AdminEvents = () => {
                                 <div className="grid gap-2">
                                   <Label>Image URL</Label>
                                   <Input value={editing.imageUrl ?? ""} onChange={(e) => setEditing({ ...editing, imageUrl: e.target.value })} />
+                                </div>
+                                <div className="grid gap-2">
+                                  <Label>Ticket Price (KES)</Label>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    step={1}
+                                    value={Math.round((editing.priceCents || 0) / 100)}
+                                    onChange={(e) =>
+                                      setEditing({
+                                        ...editing,
+                                        priceCents: Math.max(0, Number.parseInt(e.target.value || "0", 10) || 0) * 100,
+                                      })
+                                    }
+                                  />
                                 </div>
                                 {editing.imageUrl && (
                                   <img
@@ -488,10 +649,7 @@ const AdminEvents = () => {
                                 </div>
                               </div>
                             )}
-                            <DialogFooter>
-                              <Button variant="hero" onClick={saveEvent}>Save</Button>
-                            </DialogFooter>
-                          </DialogContent>
+                          </AdminFormDialog>
                         </Dialog>
                         <Button variant="destructive" size="sm" onClick={() => deleteEvent(event.id)}>
                           Delete

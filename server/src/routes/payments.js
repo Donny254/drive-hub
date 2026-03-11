@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { query } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
+import { issueTicketsForRegistration } from "../utils/eventTickets.js";
+import { sendEventTicketEmail } from "../email.js";
+import { sendEventTicketMessage } from "../notifications.js";
 
 const router = Router();
 
@@ -77,8 +80,8 @@ const buildStkPayload = ({ phoneNumber, amount }) => {
   );
 
   const partyB = process.env.MPESA_PARTYB || MPESA_SHORTCODE;
-  const accountReference = process.env.MPESA_ACCOUNT_REFERENCE || "DriveHub Order";
-  const transactionDesc = process.env.MPESA_TRANSACTION_DESC || "DriveHub checkout";
+  const accountReference = process.env.MPESA_ACCOUNT_REFERENCE || "WheelsnationKe Order";
+  const transactionDesc = process.env.MPESA_TRANSACTION_DESC || "WheelsnationKe checkout";
 
   return {
     BusinessShortCode: MPESA_SHORTCODE,
@@ -375,15 +378,145 @@ router.post("/mpesa/stkpush-booking", requireAuth, async (req, res, next) => {
   }
 });
 
+router.post("/mpesa/stkpush-event-registration", requireAuth, async (req, res, next) => {
+  try {
+    const { registrationId, phoneNumber } = req.body;
+    if (!registrationId) {
+      return res.status(400).json({ error: "registrationId is required" });
+    }
+
+    const normalizedPhone = normalizePhone(phoneNumber);
+    if (!/^254\d{9}$/.test(normalizedPhone)) {
+      return res.status(400).json({ error: "Phone number must be a valid Kenyan mobile number" });
+    }
+
+    const registrationResult = await query(
+      `SELECT er.*, e.title AS event_title
+       FROM event_registrations er
+       LEFT JOIN events e ON e.id = er.event_id
+       WHERE er.id = $1`,
+      [registrationId]
+    );
+    if (registrationResult.rowCount === 0) {
+      return res.status(404).json({ error: "Event registration not found" });
+    }
+
+    const registration = registrationResult.rows[0];
+    if (req.user.role !== "admin" && registration.user_id !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    if (registration.status === "cancelled") {
+      return res.status(400).json({ error: "Registration is cancelled" });
+    }
+    if (registration.payment_status === "paid") {
+      return res.status(400).json({ error: "Registration is already paid" });
+    }
+    const totalCents = Number(registration.amount_cents || 0);
+    if (!Number.isInteger(totalCents) || totalCents <= 0) {
+      return res.status(400).json({ error: "This registration does not require payment" });
+    }
+
+    const amount = Math.max(1, Math.round(totalCents / 100));
+    await query(
+      `UPDATE event_registrations
+       SET contact_phone = COALESCE($1, contact_phone),
+           payment_method = 'mpesa',
+           payment_status = 'pending'
+       WHERE id = $2`,
+      [normalizedPhone, registration.id]
+    );
+
+    const txResult = await query(
+      `INSERT INTO mpesa_transactions (event_registration_id, phone_number, amount_cents, status)
+       VALUES ($1, $2, $3, 'pending')
+       RETURNING *`,
+      [registration.id, normalizedPhone, totalCents]
+    );
+    const transaction = txResult.rows[0];
+
+    const accessToken = await getAccessToken();
+    const payload = buildStkPayload({
+      phoneNumber: normalizedPhone,
+      amount,
+    });
+    payload.AccountReference = registration.event_title || process.env.MPESA_ACCOUNT_REFERENCE || "WheelsnationKe Order";
+    payload.TransactionDesc = `Event ticket ${registration.event_title || registration.id}`;
+
+    const response = await fetch(`${mpesaBaseUrl}/mpesa/stkpush/v1/processrequest`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const responseData = await response.json().catch(() => ({}));
+    const responseCode = responseData.ResponseCode ?? responseData.responseCode;
+    const newStatus = response.ok && responseCode === "0" ? "pending" : "failed";
+
+    await query(
+      `UPDATE mpesa_transactions
+       SET checkout_request_id = $1,
+           merchant_request_id = $2,
+           response = $3,
+           status = $4
+       WHERE id = $5`,
+      [
+        responseData.CheckoutRequestID || null,
+        responseData.MerchantRequestID || null,
+        responseData,
+        newStatus,
+        transaction.id,
+      ]
+    );
+
+    if (newStatus === "failed") {
+      await query(
+        "UPDATE event_registrations SET payment_status = $1 WHERE id = $2",
+        ["failed", registration.id]
+      );
+      return res.status(400).json({
+        error: responseData.CustomerMessage || "Failed to initiate M-Pesa payment",
+        registrationId: registration.id,
+        transactionId: transaction.id,
+        response: responseData,
+      });
+    }
+
+    return res.status(201).json({
+      registrationId: registration.id,
+      transactionId: transaction.id,
+      status: newStatus,
+      response: responseData,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/bank-details", async (req, res) => {
-  res.json({
-    bankName: process.env.BANK_NAME || null,
-    accountName: process.env.BANK_ACCOUNT_NAME || null,
-    accountNumber: process.env.BANK_ACCOUNT_NUMBER || null,
-    branch: process.env.BANK_BRANCH || null,
-    swift: process.env.BANK_SWIFT || null,
-    instructions: process.env.BANK_INSTRUCTIONS || null,
-  });
+  try {
+    const settingsResult = await query("SELECT * FROM site_settings WHERE id = true");
+    const settings = settingsResult.rowCount > 0 ? settingsResult.rows[0] : null;
+    res.json({
+      bankName: settings?.bank_name || process.env.BANK_NAME || null,
+      accountName: settings?.bank_account_name || process.env.BANK_ACCOUNT_NAME || null,
+      accountNumber: settings?.bank_account_number || process.env.BANK_ACCOUNT_NUMBER || null,
+      branch: settings?.bank_branch || process.env.BANK_BRANCH || null,
+      swift: settings?.bank_swift || process.env.BANK_SWIFT || null,
+      instructions: settings?.bank_instructions || process.env.BANK_INSTRUCTIONS || null,
+    });
+  } catch {
+    res.json({
+      bankName: process.env.BANK_NAME || null,
+      accountName: process.env.BANK_ACCOUNT_NAME || null,
+      accountNumber: process.env.BANK_ACCOUNT_NUMBER || null,
+      branch: process.env.BANK_BRANCH || null,
+      swift: process.env.BANK_SWIFT || null,
+      instructions: process.env.BANK_INSTRUCTIONS || null,
+    });
+  }
 });
 
 router.get("/mpesa/status/:orderId", requireAuth, async (req, res, next) => {
@@ -472,6 +605,54 @@ router.get("/mpesa/booking-status/:bookingId", requireAuth, async (req, res, nex
   }
 });
 
+router.get("/mpesa/event-registration-status/:registrationId", requireAuth, async (req, res, next) => {
+  try {
+    const registrationResult = await query(
+      "SELECT * FROM event_registrations WHERE id = $1",
+      [req.params.registrationId]
+    );
+    if (registrationResult.rowCount === 0) {
+      return res.status(404).json({ error: "Event registration not found" });
+    }
+    const registration = registrationResult.rows[0];
+    if (req.user.role !== "admin" && registration.user_id !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const txResult = await query(
+      `SELECT * FROM mpesa_transactions
+       WHERE event_registration_id = $1
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [req.params.registrationId]
+    );
+    const transaction = txResult.rowCount > 0 ? txResult.rows[0] : null;
+
+    return res.json({
+      registration: {
+        id: registration.id,
+        amountCents: Number(registration.amount_cents || 0),
+        status: registration.status,
+        paymentStatus: registration.payment_status,
+        paidAt: registration.paid_at,
+        createdAt: registration.created_at,
+      },
+      transaction: transaction
+        ? {
+            id: transaction.id,
+            status: transaction.status,
+            checkoutRequestId: transaction.checkout_request_id,
+            merchantRequestId: transaction.merchant_request_id,
+            response: transaction.response,
+            createdAt: transaction.created_at,
+          }
+        : null,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post("/mpesa/callback", async (req, res, next) => {
   try {
     const callback = req.body?.Body?.stkCallback;
@@ -488,12 +669,16 @@ router.post("/mpesa/callback", async (req, res, next) => {
        SET status = $1,
            response = $2
        WHERE checkout_request_id = $3
-       RETURNING order_id, booking_id`,
+       RETURNING order_id, booking_id, event_registration_id`,
       [status, callback, checkoutRequestId]
     );
 
     if (txResult.rowCount > 0) {
-      const { order_id: orderId, booking_id: bookingId } = txResult.rows[0];
+      const {
+        order_id: orderId,
+        booking_id: bookingId,
+        event_registration_id: eventRegistrationId,
+      } = txResult.rows[0];
       if (orderId) {
         const orderStatus = status === "paid" ? "paid" : "cancelled";
         await query("UPDATE orders SET status = $1 WHERE id = $2", [orderStatus, orderId]);
@@ -505,6 +690,64 @@ router.post("/mpesa/callback", async (req, res, next) => {
           "UPDATE bookings SET payment_status = $1, paid_at = $2 WHERE id = $3",
           [paymentStatus, paidAt, bookingId]
         );
+      }
+      if (eventRegistrationId) {
+        const paymentStatus = status === "paid" ? "paid" : "failed";
+        const paidAt = status === "paid" ? new Date().toISOString() : null;
+        const registrationStatus = status === "paid" ? "confirmed" : "pending";
+        const registrationResult = await query(
+          `UPDATE event_registrations
+           SET payment_status = $1,
+               paid_at = $2,
+               status = CASE WHEN status = 'cancelled' THEN status ELSE $3 END
+           WHERE id = $4
+           RETURNING *`,
+          [paymentStatus, paidAt, registrationStatus, eventRegistrationId]
+        );
+        if (
+          status === "paid" &&
+          registrationResult.rowCount > 0 &&
+          registrationResult.rows[0].status !== "cancelled"
+        ) {
+          const createdTickets = await issueTicketsForRegistration(registrationResult.rows[0]);
+          try {
+            const notifyResult = await query(
+              `SELECT u.email, u.name, e.title, e.location, e.start_date, e.end_date
+               FROM event_registrations er
+               LEFT JOIN users u ON u.id = er.user_id
+               LEFT JOIN events e ON e.id = er.event_id
+               WHERE er.id = $1`,
+              [eventRegistrationId]
+            );
+            if (notifyResult.rowCount > 0) {
+              const notify = notifyResult.rows[0];
+              await sendEventTicketEmail({
+                to: notify.email,
+                attendeeName: notify.name,
+                registration: {
+                  tickets: registrationResult.rows[0].tickets,
+                  paymentMethod: registrationResult.rows[0].payment_method,
+                  paymentStatus: registrationResult.rows[0].payment_status,
+                },
+                event: {
+                  title: notify.title,
+                  location: notify.location,
+                  startDate: notify.start_date,
+                  endDate: notify.end_date,
+                },
+                tickets: createdTickets,
+              });
+              await sendEventTicketMessage({
+                phone: registrationResult.rows[0].contact_phone,
+                attendeeName: notify.name,
+                eventTitle: notify.title,
+                ticketCodes: createdTickets.map((ticket) => ticket.ticket_number || ticket.ticketNumber),
+              });
+            }
+          } catch (mailError) {
+            console.warn("Paid event ticket email failed:", mailError);
+          }
+        }
       }
     }
 

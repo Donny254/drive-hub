@@ -16,6 +16,8 @@ import paymentsRouter from "./routes/payments.js";
 import serviceBookingsRouter from "./routes/serviceBookings.js";
 import eventRegistrationsRouter from "./routes/eventRegistrations.js";
 import inquiriesRouter from "./routes/inquiries.js";
+import settingsRouter from "./routes/settings.js";
+import { startDigestScheduler } from "./digests.js";
 
 dotenv.config();
 
@@ -76,6 +78,7 @@ app.use("/api/payments", paymentsRouter);
 app.use("/api/service-bookings", serviceBookingsRouter);
 app.use("/api/event-registrations", eventRegistrationsRouter);
 app.use("/api/inquiries", inquiriesRouter);
+app.use("/api/settings", settingsRouter);
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
 });
@@ -89,8 +92,11 @@ const server = app.listen(port, () => {
   console.log(`API listening on http://localhost:${port}`);
 });
 
+const stopDigestScheduler = startDigestScheduler();
+
 const shutdown = (signal) => {
   console.log(`Received ${signal}, shutting down...`);
+  stopDigestScheduler();
   server.close(() => {
     process.exit(0);
   });

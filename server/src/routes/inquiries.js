@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { query } from "../db.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
-import { sendInquiryEmail } from "../email.js";
+import { sendInquiryEmail, sendInquiryReceiptEmail, sendListingInquiryEmail } from "../email.js";
+import { sendInquiryReceiptMessage } from "../notifications.js";
 
 const router = Router();
 
@@ -50,11 +51,35 @@ router.post("/", async (req, res, next) => {
       [listingId || null, inquiryType, name, email || null, phone || null, message]
     );
     const listingTitleResult = listingId
-      ? await query("SELECT title FROM listings WHERE id = $1", [listingId])
+      ? await query(
+          `SELECT l.title, u.email AS seller_email, u.name AS seller_name
+           FROM listings l
+           LEFT JOIN users u ON u.id = l.user_id
+           WHERE l.id = $1`,
+          [listingId]
+        )
       : { rows: [] };
     const listingTitle = listingTitleResult.rows[0]?.title ?? null;
+    const sellerEmail = listingTitleResult.rows[0]?.seller_email ?? null;
+    const sellerName = listingTitleResult.rows[0]?.seller_name ?? null;
     try {
       await sendInquiryEmail(result.rows[0], listingTitle);
+      await sendListingInquiryEmail({
+        to: sellerEmail,
+        inquiry: result.rows[0],
+        listingTitle,
+        sellerName,
+      });
+      await sendInquiryReceiptEmail({
+        to: email || null,
+        name,
+        listingTitle,
+      });
+      await sendInquiryReceiptMessage({
+        phone: phone || null,
+        name,
+        listingTitle,
+      });
     } catch (err) {
       console.warn("Inquiry email failed:", err);
     }

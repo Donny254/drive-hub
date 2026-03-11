@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogTrigger } from "@/components/ui/dialog";
+import AdminFormDialog from "@/components/admin/AdminFormDialog";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl, uploadImage } from "@/lib/api";
 import { downloadCsv, parseCsv, toCsv } from "@/lib/csv";
@@ -118,7 +119,7 @@ const AdminProducts = () => {
           description: "Premium cotton hoodie",
           priceCents: 8900,
           category: "Apparel",
-          imageUrl: "https://example.com/hoodie.jpg",
+          imageUrl: "/placeholder.svg",
           sizes: "S|M|L|XL",
           stock: 20,
           active: "true",
@@ -186,12 +187,12 @@ const AdminProducts = () => {
       <Navbar />
       <main className="pt-28 pb-16">
         <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h1 className="font-display text-3xl tracking-wider">Admin Products</h1>
               <p className="text-muted-foreground mt-1">Create and manage store products.</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button variant="secondary" onClick={downloadTemplate}>Template</Button>
               <Button variant="secondary" onClick={exportCsv}>Export CSV</Button>
               <label className="cursor-pointer">
@@ -206,16 +207,18 @@ const AdminProducts = () => {
                 />
                 <span className="inline-flex h-10 items-center rounded-md bg-secondary px-4 text-sm">Import CSV</span>
               </label>
-              <Dialog>
+              <Dialog
+                open={Boolean(creating)}
+                onOpenChange={(open) => {
+                  if (!open) setCreating(null);
+                }}
+              >
                 <DialogTrigger asChild>
                   <Button variant="hero" onClick={() => setCreating({ ...emptyProduct })}>
                     New Product
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-h-[85vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>Create Product</DialogTitle>
-                  </DialogHeader>
+                <AdminFormDialog title="Create Product" actionLabel="Create" onAction={createProduct}>
                   {creating && (
                     <div className="grid gap-4">
                       <div className="grid gap-2">
@@ -315,17 +318,12 @@ const AdminProducts = () => {
                       </div>
                     </div>
                   )}
-                  <DialogFooter>
-                    <Button variant="hero" onClick={createProduct}>
-                      Create
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
+                </AdminFormDialog>
               </Dialog>
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
             <Input
               placeholder="Search products..."
               value={query}
@@ -370,7 +368,7 @@ const AdminProducts = () => {
                 setPage(1);
               }}
             />
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground md:col-span-2 xl:col-span-5">
               Page {page} of {totalPages}
             </div>
           </div>
@@ -399,16 +397,18 @@ const AdminProducts = () => {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Dialog>
+                        <Dialog
+                          open={editing?.id === product.id}
+                          onOpenChange={(open) => {
+                            if (!open) setEditing(null);
+                          }}
+                        >
                           <DialogTrigger asChild>
                             <Button variant="secondary" size="sm" onClick={() => setEditing({ ...product })}>
                               Edit
                             </Button>
                           </DialogTrigger>
-                          <DialogContent className="max-h-[85vh] overflow-y-auto">
-                            <DialogHeader>
-                              <DialogTitle>Edit Product</DialogTitle>
-                            </DialogHeader>
+                          <AdminFormDialog title="Edit Product" actionLabel="Save" onAction={saveProduct}>
                             {editing && (
                               <div className="grid gap-4">
                                 <div className="grid gap-2">
@@ -467,10 +467,7 @@ const AdminProducts = () => {
                                 </div>
                               </div>
                             )}
-                            <DialogFooter>
-                              <Button variant="hero" onClick={saveProduct}>Save</Button>
-                            </DialogFooter>
-                          </DialogContent>
+                          </AdminFormDialog>
                         </Dialog>
                         <Button variant="destructive" size="sm" onClick={() => deleteProduct(product.id)}>
                           Delete

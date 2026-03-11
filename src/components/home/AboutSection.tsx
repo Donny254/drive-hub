@@ -37,10 +37,10 @@ const AboutSection = () => {
               BUILT FOR <span className="text-primary">CAR LOVERS</span>
             </h2>
             <p className="mt-6 text-muted-foreground leading-relaxed">
-              Velocity was born from a deep passion for automotive culture. We're not just a platform — we're a community of enthusiasts who live and breathe cars. From finding your dream ride to keeping it in perfect condition, we're with you every mile.
+              WheelsnationKe was born from a deep passion for automotive culture. We're not just a platform, we're a community of enthusiasts who live and breathe cars. From finding your dream ride to keeping it in perfect condition, we're with you every mile.
             </p>
             <p className="mt-4 text-muted-foreground leading-relaxed">
-              Whether you're a weekend warrior, a track day regular, or simply appreciate fine engineering, Velocity is your home. Join thousands of fellow enthusiasts who trust us for their automotive needs.
+              Whether you're a weekend warrior, a track day regular, or simply appreciate fine engineering, WheelsnationKe is your home. Join thousands of fellow enthusiasts who trust us for their automotive needs.
             </p>
 
             {/* Stats */}

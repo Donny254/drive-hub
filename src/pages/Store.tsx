@@ -232,14 +232,14 @@ const Store = () => {
                 No store items available yet.
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                 {filteredProducts.map((product, index) => (
                   <div
                     key={product.id}
-                    className="group bg-card rounded-lg border border-border overflow-hidden hover:border-primary/50 transition-all duration-500 animate-fade-in"
+                    className="group flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card transition-all duration-500 hover:border-primary/50 animate-fade-in"
                     style={{ animationDelay: `${index * 0.05}s` }}
                   >
-                    <div className="relative h-64 overflow-hidden">
+                    <div className="relative aspect-[4/5] overflow-hidden">
                       <img
                         src={resolveImageUrl(product.imageUrl) || "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600"}
                         alt={product.name}
@@ -251,13 +251,13 @@ const Store = () => {
                         </Badge>
                       )}
                     </div>
-                    <div className="p-5">
-                      <h3 className="font-display text-xl tracking-wider">{product.name}</h3>
-                      <div className="flex items-center justify-between mt-4">
-                        <span className="font-display text-2xl text-primary">
+                    <div className="flex flex-1 flex-col p-5">
+                      <h3 className="font-display text-xl tracking-wider break-words">{product.name}</h3>
+                      <div className="mt-auto flex flex-col gap-4 pt-4">
+                        <span className="font-display text-2xl text-primary break-words">
                           KES {(product.priceCents / 100).toLocaleString()}
                         </span>
-                        <Button variant="hero" size="sm" onClick={() => addToCart(product)}>
+                        <Button variant="hero" size="sm" className="w-full" onClick={() => addToCart(product)}>
                           Add to Cart
                         </Button>
                       </div>

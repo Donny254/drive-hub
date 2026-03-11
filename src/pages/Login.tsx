@@ -1,15 +1,16 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import BrandLogo from "@/components/branding/BrandLogo";
 import { useAuth } from "@/context/AuthContext";
 
 const Login = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, user, hydrated } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -29,12 +30,33 @@ const Login = () => {
     }
   };
 
+  useEffect(() => {
+    if (user) {
+      setError(null);
+    }
+  }, [user]);
+
+  if (!hydrated) {
+    return null;
+  }
+
+  if (user) {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="pt-28 pb-16">
         <div className="container mx-auto px-4 max-w-md">
           <div className="bg-card border border-border rounded-xl p-6 shadow-card">
+            <div className="mb-6 flex justify-center">
+              <BrandLogo
+                className="gap-4"
+                imageClassName="h-16 max-w-[240px] border border-border bg-white/95 p-2 sm:h-20 sm:max-w-[280px]"
+                textClassName="hidden"
+              />
+            </div>
             <h1 className="font-display text-3xl tracking-wider text-center">Welcome Back</h1>
             <p className="text-muted-foreground text-sm text-center mt-2">
               Sign in to manage listings and bookings.

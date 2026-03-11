@@ -1,17 +1,19 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import BrandLogo from "@/components/branding/BrandLogo";
 import { useAuth } from "@/context/AuthContext";
 
 const Register = () => {
   const navigate = useNavigate();
-  const { register } = useAuth();
+  const { register, user, hydrated } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +23,7 @@ const Register = () => {
     setLoading(true);
     setError(null);
     try {
-      await register(name, email, password);
+      await register(name, email, phone, password);
       navigate("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
@@ -30,12 +32,33 @@ const Register = () => {
     }
   };
 
+  useEffect(() => {
+    if (user) {
+      setError(null);
+    }
+  }, [user]);
+
+  if (!hydrated) {
+    return null;
+  }
+
+  if (user) {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="pt-28 pb-16">
         <div className="container mx-auto px-4 max-w-md">
           <div className="bg-card border border-border rounded-xl p-6 shadow-card">
+            <div className="mb-6 flex justify-center">
+              <BrandLogo
+                className="gap-4"
+                imageClassName="h-16 max-w-[240px] border border-border bg-white/95 p-2 sm:h-20 sm:max-w-[280px]"
+                textClassName="hidden"
+              />
+            </div>
             <h1 className="font-display text-3xl tracking-wider text-center">Create Account</h1>
             <p className="text-muted-foreground text-sm text-center mt-2">
               Join WheelsnationKe to list and book cars.
@@ -59,6 +82,17 @@ const Register = () => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="0712345678"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
                   required
                 />
               </div>

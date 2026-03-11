@@ -7,11 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Car, Fuel, Gauge, MapPin } from "lucide-react";
+import { Calendar, Car, Fuel, Gauge, MapPin, ShieldCheck, Store } from "lucide-react";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?w=1200";
+const LISTING_VIEWER_KEY_STORAGE = "drive-hub-listing-viewer-key";
 
 type Listing = {
   id: string;
@@ -28,6 +29,22 @@ type Listing = {
   status: "active" | "sold" | "inactive";
   description: string | null;
   location: string | null;
+  seller?: {
+    id: string;
+    name: string;
+    role: "user" | "admin";
+    createdAt: string | null;
+    activeListingsCount: number;
+    trustLevel: "verified" | "dealer" | "private";
+  } | null;
+};
+
+const formatMemberSince = (value?: string | null) => {
+  if (!value) return "Recently joined";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Recently joined"
+    : `Member since ${date.toLocaleDateString(undefined, { year: "numeric", month: "short" })}`;
 };
 
 const ListingDetails = () => {
@@ -75,6 +92,21 @@ const ListingDetails = () => {
     };
     loadSimilar();
   }, [listing]);
+
+  useEffect(() => {
+    if (!listing?.id || typeof window === "undefined") return;
+
+    let viewerKey = window.localStorage.getItem(LISTING_VIEWER_KEY_STORAGE);
+    if (!viewerKey) {
+      viewerKey = crypto.randomUUID();
+      window.localStorage.setItem(LISTING_VIEWER_KEY_STORAGE, viewerKey);
+    }
+
+    apiFetch(`/api/listings/${listing.id}/view`, {
+      method: "POST",
+      body: JSON.stringify({ viewerKey }),
+    }).catch(() => undefined);
+  }, [listing?.id]);
 
   const galleryImages = useMemo(() => {
     if (!listing) return [];
@@ -124,9 +156,9 @@ const ListingDetails = () => {
 
           {!loading && listing && (
             <>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+              <div className="grid grid-cols-1 gap-10 lg:grid-cols-2">
                 <div className="space-y-4">
-                  <div className="relative rounded-2xl overflow-hidden border border-border">
+                  <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-border">
                     <img
                       src={resolveImageUrl(listing.imageUrl) || FALLBACK_IMAGE}
                       alt={listing.title}
@@ -141,7 +173,7 @@ const ListingDetails = () => {
                       </Badge>
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     {galleryImages.map((img, idx) => (
                       <img
                         key={`${img}-${idx}`}
@@ -155,8 +187,8 @@ const ListingDetails = () => {
 
                 <div className="space-y-6">
                   <div>
-                    <h1 className="font-display text-4xl tracking-wider">{listing.title}</h1>
-                    <p className="text-primary font-display text-3xl mt-2">
+                    <h1 className="font-display text-4xl tracking-wider break-words">{listing.title}</h1>
+                    <p className="mt-2 font-display text-3xl text-primary break-words">
                       KES {(listing.priceCents / 100).toLocaleString()}
                       {listing.listingType === "rent" && (
                         <span className="text-sm text-muted-foreground">/day</span>
@@ -164,26 +196,26 @@ const ListingDetails = () => {
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
+                  <div className="grid grid-cols-1 gap-4 text-sm text-muted-foreground sm:grid-cols-2">
                     <div className="flex items-center gap-2">
                       <Calendar size={16} />
-                      <span>{listing.year ?? "N/A"}</span>
+                      <span className="min-w-0 break-words">{listing.year ?? "N/A"}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Car size={16} />
-                      <span>{listing.mileage ? `${listing.mileage.toLocaleString()} mi` : "N/A"}</span>
+                      <span className="min-w-0 break-words">{listing.mileage ? `${listing.mileage.toLocaleString()} mi` : "N/A"}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Fuel size={16} />
-                      <span>{listing.fuel ?? "N/A"}</span>
+                      <span className="min-w-0 break-words">{listing.fuel ?? "N/A"}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Gauge size={16} />
-                      <span>{listing.powerHp ? `${listing.powerHp} HP` : "N/A"}</span>
+                      <span className="min-w-0 break-words">{listing.powerHp ? `${listing.powerHp} HP` : "N/A"}</span>
                     </div>
-                    <div className="flex items-center gap-2 col-span-2">
+                    <div className="flex items-center gap-2 sm:col-span-2">
                       <MapPin size={16} />
-                      <span>{listing.location ?? "N/A"}</span>
+                      <span className="min-w-0 break-words">{listing.location ?? "N/A"}</span>
                     </div>
                   </div>
 
@@ -194,7 +226,62 @@ const ListingDetails = () => {
                     </p>
                   </div>
 
-                  <div className="flex gap-3">
+                  {listing.seller && (
+                    <div className="bg-card border border-border rounded-xl p-5">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <h3 className="font-display text-lg tracking-wider">Seller Profile</h3>
+                          <p className="mt-2 text-base font-medium text-foreground break-words">{listing.seller.name}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {formatMemberSince(listing.seller.createdAt)}
+                          </p>
+                        </div>
+                        <Badge
+                          variant={
+                            listing.seller.trustLevel === "verified" || listing.seller.trustLevel === "dealer"
+                              ? "default"
+                              : "secondary"
+                          }
+                          className="capitalize"
+                        >
+                          {listing.seller.trustLevel === "verified"
+                            ? "Verified Seller"
+                            : listing.seller.trustLevel === "dealer"
+                              ? "Trusted Dealer"
+                              : "Private Seller"}
+                        </Badge>
+                      </div>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-lg border border-border bg-background/60 p-3">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Store size={16} className="text-primary" />
+                            Active Listings
+                          </div>
+                          <p className="mt-2 text-lg font-semibold">{listing.seller.activeListingsCount}</p>
+                        </div>
+                        <div className="rounded-lg border border-border bg-background/60 p-3">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <ShieldCheck size={16} className="text-primary" />
+                            Trust Signal
+                          </div>
+                          <p className="mt-2 text-lg font-semibold">
+                            {listing.seller.trustLevel === "verified"
+                              ? "Admin verified seller"
+                              : listing.seller.trustLevel === "dealer"
+                                ? "Higher inventory seller"
+                                : "Single-owner listing"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4">
+                        <Link to={`/sellers/${listing.seller.id}`}>
+                          <Button variant="secondary">View Seller Storefront</Button>
+                        </Link>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-3 sm:flex-row">
                     <Link to="/market">
                       <Button variant="secondary">Back to Market</Button>
                     </Link>
@@ -202,7 +289,7 @@ const ListingDetails = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-12">
+              <div className="mt-12 grid grid-cols-1 gap-8 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-6">
                   <div className="bg-card border border-border rounded-xl p-6">
                     <h3 className="font-display text-xl tracking-wider">Contact Seller</h3>
@@ -256,15 +343,15 @@ const ListingDetails = () => {
                   )}
                   {similarListings.map((item) => (
                     <Link to={`/market/${item.id}`} key={item.id}>
-                      <div className="flex gap-3 rounded-xl border border-border bg-card p-3 hover:border-primary/50 transition">
+                      <div className="flex gap-3 rounded-xl border border-border bg-card p-3 transition hover:border-primary/50">
                         <img
                           src={resolveImageUrl(item.imageUrl) || FALLBACK_IMAGE}
                           alt={item.title}
                           className="h-16 w-20 rounded-md object-cover"
                         />
-                        <div className="flex-1">
-                          <p className="font-display text-base">{item.title}</p>
-                          <p className="text-sm text-muted-foreground capitalize">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-display text-base break-words">{item.title}</p>
+                          <p className="text-sm text-muted-foreground capitalize break-words">
                             {item.listingType} - KES {(item.priceCents / 100).toLocaleString()}
                           </p>
                         </div>

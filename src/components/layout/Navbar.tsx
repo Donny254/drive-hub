@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Menu, X } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
+import BrandLogo from "@/components/branding/BrandLogo";
 import { useAuth } from "@/context/AuthContext";
 import { prefetchRoute } from "@/lib/routePrefetch";
 
@@ -31,10 +32,13 @@ const Navbar = () => {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
       <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-20">
+        <div className="flex h-20 items-center justify-between gap-3">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2">
-            <span className="font-display text-3xl text-primary tracking-wider">WheelsnationKe</span>
+          <Link to="/" className="min-w-0 shrink-0">
+            <BrandLogo
+              imageClassName="h-10 max-w-[170px] sm:h-12 sm:max-w-[220px]"
+              textClassName="hidden"
+            />
           </Link>
 
           {/* Desktop Navigation */}
@@ -150,10 +154,10 @@ const Navbar = () => {
           </div>
 
           {/* Mobile Menu Button */}
-          <div className="md:hidden flex items-center gap-2">
+          <div className="flex items-center gap-2 md:hidden">
             <ThemeToggle />
             <button
-              className="text-foreground"
+              className="rounded-md p-1 text-foreground"
               onClick={() => setIsOpen(!isOpen)}
             >
               {isOpen ? <X size={24} /> : <Menu size={24} />}
@@ -182,21 +186,6 @@ const Navbar = () => {
                   {link.name}
                 </Link>
               ))}
-              {user && (
-                <Link
-                  to="/my-listings"
-                  onClick={() => setIsOpen(false)}
-                  onMouseEnter={prefetchLink("/my-listings")}
-                  onFocus={prefetchLink("/my-listings")}
-                  className={`font-medium text-sm uppercase tracking-widest py-2 ${
-                    location.pathname === "/my-listings"
-                      ? "text-primary"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  My Listings
-                </Link>
-              )}
               {user && (
                 <div className="rounded-lg border border-border bg-card/60 p-3">
                   <p className="text-xs uppercase tracking-widest text-muted-foreground">My Account</p>
