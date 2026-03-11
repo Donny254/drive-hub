@@ -12,6 +12,7 @@ const toApi = (row) => ({
   startDate: row.start_date,
   endDate: row.end_date,
   imageUrl: row.image_url,
+  priceCents: Number(row.price_cents || 0),
   status: row.status,
   registrationsCount: row.registrations_count ? Number(row.registrations_count) : 0,
   createdAt: row.created_at,
@@ -61,16 +62,37 @@ router.get("/:id", async (req, res, next) => {
 
 router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
-    const { title, description, location, startDate, endDate, imageUrl, status = "upcoming" } = req.body;
+    const {
+      title,
+      description,
+      location,
+      startDate,
+      endDate,
+      imageUrl,
+      priceCents = 0,
+      status = "upcoming",
+    } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
+    if (!Number.isInteger(priceCents) || priceCents < 0) {
+      return res.status(400).json({ error: "priceCents must be a non-negative integer" });
+    }
     if (!["upcoming", "past", "cancelled"].includes(status)) {
       return res.status(400).json({ error: "Invalid status" });
     }
     const result = await query(
-      `INSERT INTO events (title, description, location, start_date, end_date, image_url, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `INSERT INTO events (title, description, location, start_date, end_date, image_url, price_cents, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        RETURNING *`,
-      [title, description ?? null, location ?? null, startDate ?? null, endDate ?? null, imageUrl ?? null, status]
+      [
+        title,
+        description ?? null,
+        location ?? null,
+        startDate ?? null,
+        endDate ?? null,
+        imageUrl ?? null,
+        priceCents,
+        status,
+      ]
     );
     res.status(201).json(toApi(result.rows[0]));
   } catch (error) {
@@ -95,6 +117,12 @@ router.put("/:id", requireAuth, requireRole("admin"), async (req, res, next) => 
     maybeSet("start_date", req.body.startDate ?? undefined);
     maybeSet("end_date", req.body.endDate ?? undefined);
     maybeSet("image_url", req.body.imageUrl ?? undefined);
+    if (req.body.priceCents !== undefined) {
+      if (!Number.isInteger(req.body.priceCents) || req.body.priceCents < 0) {
+        return res.status(400).json({ error: "priceCents must be a non-negative integer" });
+      }
+      maybeSet("price_cents", req.body.priceCents);
+    }
     if (req.body.status) {
       if (!["upcoming", "past", "cancelled"].includes(req.body.status)) {
         return res.status(400).json({ error: "Invalid status" });

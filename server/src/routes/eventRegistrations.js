@@ -1,7 +1,13 @@
 import { Router } from "express";
-import crypto from "crypto";
 import { query } from "../db.js";
 import { requireAuth, requireAdminOrOwner, requireRole } from "../middleware/auth.js";
+import { sendEventTicketEmail } from "../email.js";
+import { sendEventTicketMessage } from "../notifications.js";
+import {
+  issueTicketsForRegistration,
+  syncTicketsForRegistration,
+  toTicketApi,
+} from "../utils/eventTickets.js";
 
 const router = Router();
 
@@ -10,77 +16,20 @@ const toApi = (row) => ({
   userId: row.user_id,
   eventId: row.event_id,
   eventTitle: row.event_title || null,
+  eventLocation: row.event_location || null,
+  eventStartDate: row.event_start_date || null,
+  eventEndDate: row.event_end_date || null,
   contactName: row.contact_name,
   contactPhone: row.contact_phone,
   tickets: row.tickets,
+  amountCents: Number(row.amount_cents || 0),
+  paymentMethod: row.payment_method || null,
+  paymentStatus: row.payment_status || "unpaid",
+  paidAt: row.paid_at,
   notes: row.notes,
   status: row.status,
   createdAt: row.created_at,
 });
-
-const toTicketApi = (row) => ({
-  id: row.id,
-  registrationId: row.registration_id,
-  eventId: row.event_id,
-  userId: row.user_id,
-  ticketNumber: row.ticket_number,
-  status: row.status,
-  checkedInAt: row.checked_in_at,
-  checkedInBy: row.checked_in_by,
-  createdAt: row.created_at,
-});
-
-const generateTicketNumber = () => `EVT-${crypto.randomBytes(5).toString("hex").toUpperCase()}`;
-
-const createTicketsForRegistration = async ({ registrationId, eventId, userId, count }) => {
-  if (count <= 0) return [];
-  const created = [];
-  for (let i = 0; i < count; i += 1) {
-    let inserted = null;
-    for (let attempt = 0; attempt < 5 && !inserted; attempt += 1) {
-      const ticketNumber = generateTicketNumber();
-      const result = await query(
-        `INSERT INTO event_tickets (registration_id, event_id, user_id, ticket_number, status)
-         VALUES ($1, $2, $3, $4, 'issued')
-         ON CONFLICT (ticket_number) DO NOTHING
-         RETURNING *`,
-        [registrationId, eventId, userId, ticketNumber]
-      );
-      if (result.rowCount > 0) {
-        inserted = result.rows[0];
-      }
-    }
-    if (!inserted) {
-      throw new Error("Failed to generate unique ticket number");
-    }
-    created.push(inserted);
-  }
-  return created;
-};
-
-const syncTicketsForRegistration = async ({ registrationId, eventId, userId, targetCount }) => {
-  const ticketsResult = await query(
-    "SELECT * FROM event_tickets WHERE registration_id = $1 ORDER BY created_at DESC",
-    [registrationId]
-  );
-  const current = ticketsResult.rows;
-  const diff = targetCount - current.length;
-  if (diff > 0) {
-    await createTicketsForRegistration({ registrationId, eventId, userId, count: diff });
-  } else if (diff < 0) {
-    const toRemove = current.slice(0, Math.abs(diff));
-    const hasNonIssued = toRemove.some((ticket) => ticket.status !== "issued");
-    if (hasNonIssued) {
-      const error = new Error("Cannot reduce tickets after check-in/cancellation");
-      error.status = 400;
-      throw error;
-    }
-    await query(
-      "DELETE FROM event_tickets WHERE id = ANY($1::uuid[])",
-      [toRemove.map((ticket) => ticket.id)]
-    );
-  }
-};
 
 const loadOwner = async (req, res, next) => {
   try {
@@ -109,7 +58,7 @@ router.get("/", requireAuth, async (req, res, next) => {
       }
       const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
       const result = await query(
-        `SELECT er.*, e.title AS event_title
+        `SELECT er.*, e.title AS event_title, e.location AS event_location, e.start_date AS event_start_date, e.end_date AS event_end_date
          FROM event_registrations er
          LEFT JOIN events e ON e.id = er.event_id
          ${whereClause}
@@ -126,7 +75,7 @@ router.get("/", requireAuth, async (req, res, next) => {
       where.push(`er.event_id = $${params.length}`);
     }
     const result = await query(
-      `SELECT er.*, e.title AS event_title
+      `SELECT er.*, e.title AS event_title, e.location AS event_location, e.start_date AS event_start_date, e.end_date AS event_end_date
        FROM event_registrations er
        LEFT JOIN events e ON e.id = er.event_id
        WHERE ${where.join(" AND ")}
@@ -149,39 +98,84 @@ router.post("/", requireAuth, async (req, res, next) => {
       return res.status(400).json({ error: "tickets must be a positive integer" });
     }
 
-    const eventResult = await query("SELECT id, status FROM events WHERE id = $1", [eventId]);
+    const requestedTickets = Number.isInteger(tickets) ? tickets : 1;
+
+    const eventResult = await query("SELECT id, status, price_cents FROM events WHERE id = $1", [eventId]);
     if (eventResult.rowCount === 0) {
       return res.status(404).json({ error: "Event not found" });
     }
-    if (eventResult.rows[0].status !== "upcoming") {
+    const event = eventResult.rows[0];
+    if (event.status !== "upcoming") {
       return res.status(400).json({ error: "Event is not open for registration" });
     }
+    const amountCents = Number(event.price_cents || 0) * requestedTickets;
+    const isFreeEvent = amountCents <= 0;
 
     const insertResult = await query(
       `INSERT INTO event_registrations
-       (user_id, event_id, contact_name, contact_phone, tickets, notes)
-       VALUES ($1, $2, $3, $4, $5, $6)
+       (user_id, event_id, contact_name, contact_phone, tickets, amount_cents, payment_method, payment_status, paid_at, notes, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         req.user.id,
         eventId,
         contactName || null,
         contactPhone || null,
-        Number.isInteger(tickets) ? tickets : 1,
+        requestedTickets,
+        amountCents,
+        isFreeEvent ? "free" : "mpesa",
+        isFreeEvent ? "paid" : "unpaid",
+        isFreeEvent ? new Date().toISOString() : null,
         notes || null,
+        isFreeEvent ? "confirmed" : "pending",
       ]
     );
 
     const registration = insertResult.rows[0];
-    const createdTickets = await createTicketsForRegistration({
-      registrationId: registration.id,
-      eventId: registration.event_id,
-      userId: registration.user_id,
-      count: registration.tickets,
-    });
+    const createdTickets = isFreeEvent ? await issueTicketsForRegistration(registration) : [];
+
+    if (isFreeEvent && createdTickets.length > 0) {
+      try {
+        const notifyResult = await query(
+          `SELECT u.email, u.name, e.title, e.location, e.start_date, e.end_date
+           FROM users u
+           LEFT JOIN events e ON e.id = $1
+           WHERE u.id = $2`,
+          [eventId, req.user.id]
+        );
+        if (notifyResult.rowCount > 0) {
+          const notify = notifyResult.rows[0];
+          await sendEventTicketEmail({
+            to: notify.email,
+            attendeeName: contactName || notify.name,
+            registration: {
+              tickets: registration.tickets,
+              paymentMethod: registration.payment_method,
+              paymentStatus: registration.payment_status,
+            },
+            event: {
+              title: notify.title,
+              location: notify.location,
+              startDate: notify.start_date,
+              endDate: notify.end_date,
+            },
+            tickets: createdTickets.map(toTicketApi),
+          });
+          await sendEventTicketMessage({
+            phone: registration.contact_phone,
+            attendeeName: contactName || notify.name,
+            eventTitle: notify.title,
+            ticketCodes: createdTickets.map((ticket) => ticket.ticketNumber),
+          });
+        }
+      } catch (mailError) {
+        console.warn("Event ticket email failed:", mailError);
+      }
+    }
 
     res.status(201).json({
       ...toApi(registration),
+      paymentRequired: !isFreeEvent,
       generatedTickets: createdTickets.map(toTicketApi),
     });
   } catch (error) {
@@ -220,6 +214,9 @@ router.put(
           return res.status(400).json({ error: "tickets must be a positive integer" });
         }
         maybeSet("tickets", tickets);
+        const eventResult = await query("SELECT price_cents FROM events WHERE id = $1", [current.event_id]);
+        const eventPriceCents = eventResult.rowCount > 0 ? Number(eventResult.rows[0].price_cents || 0) : 0;
+        maybeSet("amount_cents", eventPriceCents * tickets);
       }
       maybeSet("notes", notes);
 
@@ -244,7 +241,7 @@ router.put(
       );
       const updated = result.rows[0];
 
-      if (tickets !== undefined) {
+      if (tickets !== undefined && updated.payment_status === "paid" && updated.status !== "cancelled") {
         await syncTicketsForRegistration({
           registrationId: updated.id,
           eventId: updated.event_id,

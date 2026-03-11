@@ -5,7 +5,9 @@ type User = {
   id: string;
   email: string;
   name: string | null;
+  phone: string | null;
   role: "user" | "admin";
+  createdAt?: string;
 };
 
 type AuthState = {
@@ -14,8 +16,9 @@ type AuthState = {
 };
 
 type AuthContextValue = AuthState & {
+  hydrated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, phone: string, password: string) => Promise<void>;
   logout: () => void;
 };
 
@@ -52,11 +55,13 @@ const persistAuth = (state: AuthState) => {
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     const stored = loadStoredAuth();
     setUser(stored.user);
     setToken(stored.token);
+    setHydrated(true);
   }, []);
 
   useEffect(() => {
@@ -79,10 +84,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setToken(data.token);
   }, []);
 
-  const register = useCallback(async (name: string, email: string, password: string) => {
+  const register = useCallback(async (name: string, email: string, phone: string, password: string) => {
     const resp = await apiFetch("/api/auth/register", {
       method: "POST",
-      body: JSON.stringify({ name, email, password }),
+      body: JSON.stringify({ name, email, phone, password }),
     });
 
     if (!resp.ok) {
@@ -104,11 +109,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     () => ({
       user,
       token,
+      hydrated,
       login,
       register,
       logout,
     }),
-    [user, token, login, register, logout]
+    [user, token, hydrated, login, register, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

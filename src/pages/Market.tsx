@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
@@ -9,13 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Car, Fuel, Gauge, Calendar, DollarSign, MapPin } from "lucide-react";
+import { Car, Fuel, Gauge, Calendar, DollarSign, MapPin, Scale, ShieldCheck, BookmarkPlus, X } from "lucide-react";
 import MarketSlider from "@/components/market/MarketSlider";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?w=600";
+const SHORTLIST_STORAGE_KEY = "drive-hub-market-shortlist";
 
 type Listing = {
   id: string;
@@ -30,6 +31,27 @@ type Listing = {
   featured: boolean;
   status?: "active" | "sold" | "inactive";
   location?: string | null;
+  seller?: {
+    id: string;
+    name: string;
+    role: "user" | "admin";
+    createdAt: string | null;
+    activeListingsCount: number;
+    trustLevel: "verified" | "dealer" | "private";
+  } | null;
+};
+
+type SavedSearch = {
+  id: string;
+  name: string;
+  filters: {
+    activeTab: string;
+    search: string;
+    year: string;
+    minPrice: string;
+    maxPrice: string;
+    sort: string;
+  };
 };
 
 const tabs = [
@@ -57,6 +79,9 @@ const Market = () => {
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [sort, setSort] = useState("newest");
+  const [shortlist, setShortlist] = useState<Listing[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
 
   const [bookingListing, setBookingListing] = useState<Listing | null>(null);
   const [bookingStart, setBookingStart] = useState("");
@@ -115,7 +140,42 @@ const Market = () => {
     fetchListings();
   }, [fetchListings]);
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SHORTLIST_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setShortlist(parsed);
+      }
+    } catch {
+      window.localStorage.removeItem(SHORTLIST_STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(SHORTLIST_STORAGE_KEY, JSON.stringify(shortlist));
+  }, [shortlist]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem("drive-hub-saved-searches");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setSavedSearches(parsed);
+      }
+    } catch {
+      window.localStorage.removeItem("drive-hub-saved-searches");
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("drive-hub-saved-searches", JSON.stringify(savedSearches));
+  }, [savedSearches]);
+
   const filteredListings = useMemo(() => listings, [listings]);
+  const shortlistIds = useMemo(() => new Set(shortlist.map((item) => item.id)), [shortlist]);
 
   const openBooking = (listing: Listing) => {
     if (!user) {
@@ -340,6 +400,58 @@ const Market = () => {
     ? (bookingListing.priceCents / 100) * totalDays
     : 0;
   const isHighValue = bookingListing ? bookingListing.priceCents > 50000000 : false;
+  const clearFilters = () => {
+    setSearch("");
+    setYear("");
+    setMinPrice("");
+    setMaxPrice("");
+    setSort("newest");
+    setActiveTab("all");
+  };
+
+  const toggleShortlist = (listing: Listing) => {
+    setShortlist((current) => {
+      if (current.some((item) => item.id === listing.id)) {
+        return current.filter((item) => item.id !== listing.id);
+      }
+      if (current.length >= 3) {
+        return [...current.slice(1), listing];
+      }
+      return [...current, listing];
+    });
+  };
+
+  const saveCurrentSearch = () => {
+    const hasFilters =
+      activeTab !== "all" || search.trim() || year.trim() || minPrice.trim() || maxPrice.trim() || sort !== "newest";
+    if (!hasFilters) return;
+    const name =
+      search.trim() ||
+      [activeTab !== "all" ? activeTab.toUpperCase() : "", year.trim() ? year.trim() : "", sort !== "newest" ? sort : ""]
+        .filter(Boolean)
+        .join(" ") ||
+      `Search ${savedSearches.length + 1}`;
+
+    const next: SavedSearch = {
+      id: crypto.randomUUID(),
+      name,
+      filters: { activeTab, search, year, minPrice, maxPrice, sort },
+    };
+    setSavedSearches((current) => [next, ...current].slice(0, 6));
+  };
+
+  const applySavedSearch = (savedSearch: SavedSearch) => {
+    setActiveTab(savedSearch.filters.activeTab);
+    setSearch(savedSearch.filters.search);
+    setYear(savedSearch.filters.year);
+    setMinPrice(savedSearch.filters.minPrice);
+    setMaxPrice(savedSearch.filters.maxPrice);
+    setSort(savedSearch.filters.sort);
+  };
+
+  const removeSavedSearch = (id: string) => {
+    setSavedSearches((current) => current.filter((item) => item.id !== id));
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -371,6 +483,36 @@ const Market = () => {
                     {tab.label}
                   </Button>
                 ))}
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 lg:grid-cols-[1.4fr_1fr]">
+              <div className="rounded-xl border border-border bg-card/70 p-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <ShieldCheck className="h-4 w-4 text-primary" />
+                  Buy with more confidence
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Shortlist up to three cars, compare specs side by side, and use M-Pesa or bank transfer flow based on ticket size. This follows the trust-first pattern used by leading auto marketplaces.
+                </p>
+              </div>
+              <div className="rounded-xl border border-border bg-card/70 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Compare shortlist</p>
+                    <p className="text-xs text-muted-foreground">
+                      {shortlist.length}/3 vehicles selected
+                    </p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setCompareOpen(true)}
+                    disabled={shortlist.length < 2}
+                  >
+                    <Scale className="mr-2 h-4 w-4" />
+                    Compare
+                  </Button>
+                </div>
               </div>
             </div>
             <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -423,6 +565,34 @@ const Market = () => {
                 </select>
               </div>
             </div>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <Badge variant="secondary">{filteredListings.length} results</Badge>
+              <Button variant="ghost" size="sm" onClick={saveCurrentSearch}>
+                Save search
+              </Button>
+              {(search || year || minPrice || maxPrice || activeTab !== "all" || sort !== "newest") && (
+                <Button variant="ghost" size="sm" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              )}
+            </div>
+            {savedSearches.length > 0 && (
+              <div className="mt-4 rounded-xl border border-border bg-card/60 p-4">
+                <p className="text-sm font-medium text-foreground">Saved searches</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {savedSearches.map((savedSearch) => (
+                    <div key={savedSearch.id} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm">
+                      <button type="button" onClick={() => applySavedSearch(savedSearch)} className="hover:text-primary">
+                        {savedSearch.name}
+                      </button>
+                      <button type="button" onClick={() => removeSavedSearch(savedSearch.id)} aria-label={`Remove ${savedSearch.name}`}>
+                        <X className="h-3 w-3 text-muted-foreground" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
@@ -447,15 +617,15 @@ const Market = () => {
             )}
 
             {!loading && !error && filteredListings.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
                 {filteredListings.map((listing, index) => (
                   <div
                     key={listing.id}
-                    className="group bg-card rounded-lg overflow-hidden border border-border hover:border-primary/50 transition-all duration-500 animate-fade-in"
+                    className="group flex h-full flex-col rounded-lg border border-border bg-card transition-all duration-500 hover:border-primary/50 animate-fade-in"
                     style={{ animationDelay: `${index * 0.1}s` }}
                   >
                     {/* Image */}
-                    <div className="relative h-56 overflow-hidden">
+                    <div className="relative aspect-[4/3] overflow-hidden">
                       <img
                         src={resolveImageUrl(listing.imageUrl) || FALLBACK_IMAGE}
                         alt={listing.title}
@@ -477,51 +647,78 @@ const Market = () => {
                           {listing.status === "sold" ? "Sold" : "Unavailable"}
                         </Badge>
                       )}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="absolute bottom-4 right-4"
+                        onClick={() => toggleShortlist(listing)}
+                      >
+                        <BookmarkPlus className="mr-2 h-4 w-4" />
+                        {shortlistIds.has(listing.id) ? "Shortlisted" : "Shortlist"}
+                      </Button>
                     </div>
 
                     {/* Content */}
-                    <div className="p-6">
-                      <h3 className="font-display text-2xl tracking-wider">{listing.title}</h3>
+                    <div className="flex flex-1 flex-col p-6">
+                      <h3 className="font-display text-2xl tracking-wider break-words">{listing.title}</h3>
 
                       <div className="grid grid-cols-2 gap-4 mt-4">
                         <div className="flex items-center gap-2 text-muted-foreground text-sm">
                           <Calendar size={16} />
-                          <span>{listing.year ?? "N/A"}</span>
+                          <span className="min-w-0 break-words">{listing.year ?? "N/A"}</span>
                         </div>
                         <div className="flex items-center gap-2 text-muted-foreground text-sm">
                           <Car size={16} />
-                          <span>{formatMileage(listing)}</span>
+                          <span className="min-w-0 break-words">{formatMileage(listing)}</span>
                         </div>
                         <div className="flex items-center gap-2 text-muted-foreground text-sm">
                           <Fuel size={16} />
-                          <span>{listing.fuel ?? "N/A"}</span>
+                          <span className="min-w-0 break-words">{listing.fuel ?? "N/A"}</span>
                         </div>
                         <div className="flex items-center gap-2 text-muted-foreground text-sm">
                           <Gauge size={16} />
-                          <span>{listing.powerHp ? `${listing.powerHp} HP` : "N/A"}</span>
+                          <span className="min-w-0 break-words">{listing.powerHp ? `${listing.powerHp} HP` : "N/A"}</span>
                         </div>
                       </div>
                       {listing.location && (
                         <div className="flex items-center gap-2 text-muted-foreground text-sm mt-3">
                           <MapPin size={16} />
-                          <span>{listing.location}</span>
+                          <span className="min-w-0 break-words">{listing.location}</span>
+                        </div>
+                      )}
+                      {listing.seller && (
+                        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
+                          <Badge variant="secondary" className="capitalize">
+                            {listing.seller.trustLevel === "verified"
+                              ? "Verified Seller"
+                              : listing.seller.trustLevel === "dealer"
+                                ? "Trusted Dealer"
+                                : "Private Seller"}
+                          </Badge>
+                          <Link
+                            to={`/sellers/${listing.seller.id}`}
+                            className="min-w-0 break-words text-muted-foreground hover:text-primary"
+                          >
+                            {listing.seller.name} • {listing.seller.activeListingsCount} active listing{listing.seller.activeListingsCount === 1 ? "" : "s"}
+                          </Link>
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between mt-6">
-                        <div className="flex items-center gap-2">
+                      <div className="mt-auto flex flex-col gap-4 pt-6">
+                        <div className="flex items-start gap-2">
                           <DollarSign className="text-primary" size={20} />
-                          <span className="font-display text-2xl">
+                          <span className="font-display text-2xl leading-tight break-words">
                             KES {(listing.priceCents / 100).toLocaleString()}
                             {listing.listingType === "rent" && (
                               <span className="text-sm text-muted-foreground">/day</span>
                             )}
                           </span>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex flex-col gap-2 sm:flex-row">
                           <Button
                             variant="secondary"
                             size="sm"
+                            className="w-full sm:flex-1"
                             onClick={() => navigate(`/market/${listing.id}`)}
                           >
                             View Details
@@ -530,6 +727,7 @@ const Market = () => {
                             <Button
                               variant="hero"
                               size="sm"
+                              className="w-full sm:flex-1"
                               onClick={() => openBooking(listing)}
                             >
                               {listing.listingType === "rent" ? "Rent Now" : "Buy Now"}
@@ -561,6 +759,72 @@ const Market = () => {
         </section>
       </main>
       <Footer />
+
+      {shortlist.length > 0 && (
+        <div className="fixed bottom-4 left-1/2 z-40 w-[calc(100%-2rem)] max-w-5xl -translate-x-1/2 rounded-2xl border border-border bg-background/95 p-4 shadow-xl backdrop-blur">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Shortlisted for comparison</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {shortlist.map((item) => (
+                  <Badge key={item.id} variant="secondary" className="gap-2 px-3 py-1">
+                    {item.title}
+                    <button type="button" onClick={() => toggleShortlist(item)} aria-label={`Remove ${item.title}`}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => setShortlist([])}>
+                Clear
+              </Button>
+              <Button variant="hero" onClick={() => setCompareOpen(true)} disabled={shortlist.length < 2}>
+                <Scale className="mr-2 h-4 w-4" />
+                Compare Vehicles
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Dialog open={compareOpen} onOpenChange={setCompareOpen}>
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Compare Vehicles</DialogTitle>
+          </DialogHeader>
+              <div className="grid gap-4 overflow-x-auto lg:grid-cols-3">
+            {shortlist.map((item) => (
+              <div key={item.id} className="flex h-full min-w-[260px] flex-col rounded-xl border border-border bg-card p-4">
+                <img
+                  src={resolveImageUrl(item.imageUrl) || FALLBACK_IMAGE}
+                  alt={item.title}
+                  className="h-40 w-full rounded-lg object-cover"
+                />
+                <h3 className="mt-4 font-display text-2xl tracking-wider break-words">{item.title}</h3>
+                <div className="mt-4 space-y-3 text-sm">
+                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Price</span><span className="text-right break-words">KES {(item.priceCents / 100).toLocaleString()}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Type</span><span className="capitalize text-right break-words">{item.listingType}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Year</span><span className="text-right break-words">{item.year ?? "N/A"}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Mileage</span><span className="text-right break-words">{formatMileage(item)}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Fuel</span><span className="text-right break-words">{item.fuel ?? "N/A"}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Power</span><span className="text-right break-words">{item.powerHp ? `${item.powerHp} HP` : "N/A"}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Location</span><span className="text-right break-words">{item.location ?? "TBA"}</span></div>
+                </div>
+                <div className="mt-auto flex flex-col gap-2 pt-4 sm:flex-row">
+                  <Button variant="secondary" size="sm" className="w-full sm:flex-1" onClick={() => navigate(`/market/${item.id}`)}>
+                    View Details
+                  </Button>
+                  <Button variant="hero" size="sm" className="w-full sm:flex-1" onClick={() => openBooking(item)}>
+                    {item.listingType === "rent" ? "Rent" : "Buy"}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(bookingListing)} onOpenChange={() => setBookingListing(null)}>
         <DialogContent>

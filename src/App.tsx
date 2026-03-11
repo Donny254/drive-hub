@@ -22,6 +22,7 @@ const MyBookings = lazy(() => import("./pages/MyBookings"));
 const MyServiceBookings = lazy(() => import("./pages/MyServiceBookings"));
 const MyEventRegistrations = lazy(() => import("./pages/MyEventRegistrations"));
 const ListingDetails = lazy(() => import("./pages/ListingDetails"));
+const SellerProfile = lazy(() => import("./pages/SellerProfile"));
 const AdminServices = lazy(() => import("./pages/AdminServices"));
 const AdminEvents = lazy(() => import("./pages/AdminEvents"));
 const AdminProducts = lazy(() => import("./pages/AdminProducts"));
@@ -54,6 +55,7 @@ const App = () => (
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/market/:id" element={<ListingDetails />} />
+              <Route path="/sellers/:id" element={<SellerProfile />} />
               <Route
                 path="/my-listings"
                 element={

@@ -4,7 +4,7 @@ import heroDashboard from "@/assets/hero-dashboard.jpg";
 
 const HeroSection = () => {
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+    <section className="relative flex min-h-screen items-center justify-center overflow-hidden">
       {/* Background Image */}
       <div 
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
@@ -48,7 +48,7 @@ const HeroSection = () => {
           <p className="text-primary/90 uppercase tracking-[0.3em] text-sm mb-4 animate-fade-in font-medium">
             Kenya's Premier Automotive Destination
           </p>
-          <h1 className="font-display text-6xl md:text-8xl lg:text-9xl leading-none tracking-wider animate-fade-in">
+          <h1 className="font-display animate-fade-in text-5xl leading-none tracking-wider min-[380px]:text-6xl md:text-8xl lg:text-9xl">
             DRIVE YOUR
             <span 
               className="block text-primary"
@@ -59,33 +59,33 @@ const HeroSection = () => {
               PASSION
             </span>
           </h1>
-          <p className="mt-6 text-lg md:text-xl text-muted-foreground max-w-xl animate-fade-in" style={{ animationDelay: "0.2s" }}>
+          <p className="mt-6 max-w-xl text-base text-muted-foreground animate-fade-in md:text-xl" style={{ animationDelay: "0.2s" }}>
             East Africa's exclusive marketplace for performance cars and luxury SUVs. Buy, sell, or rent high-end vehicles from trusted dealers across Kenya and the continent.
           </p>
-          <div className="flex flex-wrap gap-4 mt-10 animate-fade-in" style={{ animationDelay: "0.4s" }}>
-            <Link to="/market">
-              <Button variant="hero" size="xl" className="shadow-glow">
+          <div className="mt-10 flex flex-col gap-4 animate-fade-in sm:flex-row sm:flex-wrap" style={{ animationDelay: "0.4s" }}>
+            <Link to="/market" className="w-full sm:w-auto">
+              <Button variant="hero" size="xl" className="w-full shadow-glow sm:w-auto">
                 Explore Market
               </Button>
             </Link>
-            <Link to="/services">
-              <Button variant="heroOutline" size="xl">
+            <Link to="/services" className="w-full sm:w-auto">
+              <Button variant="heroOutline" size="xl" className="w-full sm:w-auto">
                 Our Services
               </Button>
             </Link>
           </div>
 
           {/* Stats bar */}
-          <div className="flex flex-wrap gap-8 mt-16 animate-fade-in" style={{ animationDelay: "0.6s" }}>
-            <div className="text-center">
+          <div className="mt-16 grid grid-cols-1 gap-6 animate-fade-in sm:grid-cols-3 sm:gap-8" style={{ animationDelay: "0.6s" }}>
+            <div className="text-center sm:text-left">
               <p className="font-display text-3xl text-primary">500+</p>
               <p className="text-sm text-muted-foreground">Premium Cars</p>
             </div>
-            <div className="text-center">
+            <div className="text-center sm:text-left">
               <p className="font-display text-3xl text-primary">50+</p>
               <p className="text-sm text-muted-foreground">Trusted Dealers</p>
             </div>
-            <div className="text-center">
+            <div className="text-center sm:text-left">
               <p className="font-display text-3xl text-primary">10+</p>
               <p className="text-sm text-muted-foreground">African Countries</p>
             </div>

@@ -109,7 +109,7 @@ const AdminPosts = () => {
           title: "Electric Supercars",
           excerpt: "The rise of EV performance",
           content: "Full content goes here",
-          imageUrl: "https://example.com/post.jpg",
+          imageUrl: "/placeholder.svg",
           status: "published",
           publishedAt: "2026-03-01T10:00",
         },
@@ -194,7 +194,12 @@ const AdminPosts = () => {
                 />
                 <span className="inline-flex h-10 items-center rounded-md bg-secondary px-4 text-sm">Import CSV</span>
               </label>
-              <Dialog>
+              <Dialog
+                open={Boolean(creating)}
+                onOpenChange={(open) => {
+                  if (!open) setCreating(null);
+                }}
+              >
                 <DialogTrigger asChild>
                   <Button variant="hero" onClick={() => setCreating({ ...emptyPost })}>
                     New Post
@@ -348,7 +353,12 @@ const AdminPosts = () => {
                     <TableCell>{post.publishedAt ?? "—"}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Dialog>
+                        <Dialog
+                          open={editing?.id === post.id}
+                          onOpenChange={(open) => {
+                            if (!open) setEditing(null);
+                          }}
+                        >
                           <DialogTrigger asChild>
                             <Button variant="secondary" size="sm" onClick={() => setEditing({ ...post })}>
                               Edit

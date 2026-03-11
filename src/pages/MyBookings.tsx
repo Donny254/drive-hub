@@ -76,7 +76,44 @@ const MyBookings = () => {
             {!loading && error && <p className="text-destructive">{error}</p>}
 
             {!loading && !error && (
-              <div className="rounded-xl border border-border bg-card">
+              <>
+                <div className="grid gap-4 md:hidden">
+                  {bookings.map((booking) => (
+                    <div key={booking.id} className="rounded-xl border border-border bg-card p-4">
+                      <div className="flex items-start gap-3">
+                        {booking.listingImageUrl ? (
+                          <img
+                            src={resolveImageUrl(booking.listingImageUrl)}
+                            alt={booking.listingTitle ?? "Listing"}
+                            className="h-16 w-20 rounded-md border border-border object-cover"
+                          />
+                        ) : (
+                          <div className="h-16 w-20 rounded-md border border-dashed border-border bg-secondary/40" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium break-words">{booking.listingTitle ?? booking.listingId.slice(0, 8)}</p>
+                          <p className="mt-1 text-sm text-muted-foreground">Booking #{booking.id.slice(0, 8)}</p>
+                        </div>
+                      </div>
+                      <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
+                        <div className="flex justify-between gap-3"><span>Start</span><span className="text-right break-words">{booking.startDate ?? "--"}</span></div>
+                        <div className="flex justify-between gap-3"><span>End</span><span className="text-right break-words">{booking.endDate ?? "--"}</span></div>
+                        <div className="flex justify-between gap-3"><span>Payment</span><span className="text-right break-words capitalize">{booking.paymentStatus ?? "unpaid"}{booking.amountCents ? ` - KES ${(booking.amountCents / 100).toLocaleString()}` : ""}</span></div>
+                        <div className="flex justify-between gap-3"><span>Status</span><span className="text-right capitalize">{booking.status}</span></div>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="mt-4 w-full"
+                        disabled={booking.status === "cancelled"}
+                        onClick={() => cancelBooking(booking.id)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <div className="hidden rounded-xl border border-border bg-card md:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -131,7 +168,8 @@ const MyBookings = () => {
                     ))}
                   </TableBody>
                 </Table>
-              </div>
+                </div>
+              </>
             )}
           </div>
         </div>
