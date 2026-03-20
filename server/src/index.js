@@ -44,7 +44,18 @@ app.use(
     origin: (origin, callback) => {
       // Allow non-browser clients and same-origin server-to-server requests.
       if (!origin) return callback(null, true);
-      if (!isProduction && allowedOrigins.length === 0) return callback(null, true);
+      if (!isProduction) {
+        const isLocalDevOrigin =
+          /^https?:\/\/localhost(?::\d+)?$/.test(origin) ||
+          /^https?:\/\/127\.0\.0\.1(?::\d+)?$/.test(origin) ||
+          /^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(origin) ||
+          /^https?:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(origin) ||
+          /^https?:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(?::\d+)?$/.test(origin);
+
+        if (allowedOrigins.length === 0 || isLocalDevOrigin || allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+      }
       if (allowedOrigins.includes(origin)) return callback(null, true);
       return callback(null, false);
     },
