@@ -74,6 +74,7 @@ export function useMarketData() {
   const [cryptoAssets, setCryptoAssets] = useState<Asset[]>([]);
   const [nseAssets] = useState<Asset[]>(NSE_STOCKS);
   const [stockAssets] = useState<Asset[]>(GLOBAL_STOCKS);
+  const [cryptoDataSource, setCryptoDataSource] = useState<"live" | "demo">("live");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,11 +108,13 @@ export function useMarketData() {
         }));
 
       setCryptoAssets(assets);
+      setCryptoDataSource("live");
       setError(null);
     } catch (err) {
       console.error("Error fetching crypto data:", err);
-      setError("Failed to fetch market data");
+      setError("Live crypto market data is unavailable. Showing demo fallback values.");
       setCryptoAssets(getFallbackCryptoData());
+      setCryptoDataSource("demo");
     } finally {
       setLoading(false);
     }
@@ -149,6 +152,7 @@ export function useMarketData() {
     cryptoAssets,
     nseAssets,
     stockAssets,
+    cryptoDataSource,
     loading,
     error,
     refetch: fetchCryptoData,

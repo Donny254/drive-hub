@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 
 let transporter = null;
+let mailHealthLogged = false;
 
 const getTransporter = () => {
   if (transporter) return transporter;
@@ -20,9 +21,42 @@ const getTransporter = () => {
 
 const getDefaultFrom = () => process.env.SMTP_FROM || "no-reply@wheelsnationke.local";
 
+export const getMailHealth = () => ({
+  configured: Boolean(process.env.SMTP_HOST),
+  host: process.env.SMTP_HOST || null,
+  port: Number(process.env.SMTP_PORT || 587),
+  from: getDefaultFrom(),
+  notifyEmail: process.env.INQUIRY_NOTIFY_EMAIL || process.env.SMTP_USER || null,
+});
+
+export const logMailHealth = () => {
+  if (mailHealthLogged) return;
+  mailHealthLogged = true;
+
+  const health = getMailHealth();
+  if (!health.configured) {
+    const message = "Email transport is not configured. Password reset and notification emails will be skipped.";
+    if (process.env.NODE_ENV === "production") {
+      console.warn(message);
+    } else {
+      console.log(message);
+    }
+    return;
+  }
+
+  console.log(
+    `Email transport configured for ${health.host}:${health.port} (from ${health.from}).`
+  );
+};
+
 const sendMail = async ({ to, subject, text, replyTo }) => {
   const transport = getTransporter();
-  if (!transport || !to) return false;
+  if (!transport || !to) {
+    if (process.env.NODE_ENV === "production") {
+      console.warn(`Skipped email "${subject}" because mail transport or recipient is unavailable.`);
+    }
+    return false;
+  }
 
   await transport.sendMail({
     from: getDefaultFrom(),

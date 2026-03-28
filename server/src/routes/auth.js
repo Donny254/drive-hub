@@ -10,19 +10,19 @@ import { createRateLimiter } from "../middleware/rateLimit.js";
 
 const router = Router();
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
-const loginRateLimit = createRateLimiter({
+export const loginRateLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 8,
   message: "Too many login attempts. Please wait a few minutes and try again.",
   keyFn: (req) => `${req.ip}:${String(req.body?.email || "").toLowerCase().trim()}`,
 });
-const forgotPasswordRateLimit = createRateLimiter({
+export const forgotPasswordRateLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 5,
   message: "Too many reset requests. Please wait a few minutes and try again.",
   keyFn: (req) => `${req.ip}:${String(req.body?.email || "").toLowerCase().trim()}`,
 });
-const resetPasswordRateLimit = createRateLimiter({
+export const resetPasswordRateLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 8,
   message: "Too many reset attempts. Please wait a few minutes and try again.",
@@ -30,9 +30,18 @@ const resetPasswordRateLimit = createRateLimiter({
 });
 
 const signToken = (user) =>
-  jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, {
-    expiresIn: "7d",
-  });
+  jwt.sign(
+    {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      tokenVersion: user.authTokenVersion ?? user.auth_token_version ?? 0,
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: "7d",
+    }
+  );
 
 const getPasswordResetBaseUrl = () =>
   process.env.FRONTEND_URL || process.env.CORS_ORIGIN || "http://localhost:5173";
@@ -61,6 +70,7 @@ const toAuthUser = (row) => ({
   name: row.name,
   phone: row.phone || null,
   role: row.role,
+  authTokenVersion: row.auth_token_version ?? 0,
   createdAt: row.created_at,
 });
 
@@ -84,7 +94,7 @@ router.post("/register", async (req, res, next) => {
     const result = await query(
       `INSERT INTO users (email, name, phone, role, password_hash)
        VALUES ($1, $2, $3, 'user', $4)
-       RETURNING id, email, name, phone, role, created_at`,
+       RETURNING id, email, name, phone, role, auth_token_version, created_at`,
       [email.toLowerCase(), name ?? null, normalizedPhone, passwordHash]
     );
 
@@ -107,7 +117,7 @@ router.post("/login", loginRateLimit, async (req, res, next) => {
     }
 
     const result = await query(
-      "SELECT id, email, name, phone, role, password_hash, created_at FROM users WHERE email = $1",
+      "SELECT id, email, name, phone, role, password_hash, auth_token_version, created_at FROM users WHERE email = $1",
       [email.toLowerCase()]
     );
 
@@ -129,7 +139,7 @@ router.post("/login", loginRateLimit, async (req, res, next) => {
   }
 });
 
-router.post("/forgot-password", forgotPasswordRateLimit, async (req, res, next) => {
+export const forgotPasswordHandler = async (req, res, next) => {
   try {
     const { email } = req.body;
     if (!email) {
@@ -180,13 +190,19 @@ router.post("/forgot-password", forgotPasswordRateLimit, async (req, res, next) 
       });
     }
 
+    if (!emailSent && process.env.NODE_ENV === "production") {
+      console.warn(`Password reset email could not be sent for ${normalizedEmail}.`);
+    }
+
     return res.json(payload);
   } catch (error) {
     next(error);
   }
-});
+};
 
-router.post("/reset-password", resetPasswordRateLimit, async (req, res, next) => {
+router.post("/forgot-password", forgotPasswordRateLimit, forgotPasswordHandler);
+
+export const resetPasswordHandler = async (req, res, next) => {
   try {
     const { token, password } = req.body;
     if (!token || !password) {
@@ -215,6 +231,7 @@ router.post("/reset-password", resetPasswordRateLimit, async (req, res, next) =>
     await query(
       `UPDATE users
        SET password_hash = $2,
+           auth_token_version = auth_token_version + 1,
            password_reset_token_hash = NULL,
            password_reset_expires_at = NULL
        WHERE id = $1`,
@@ -225,12 +242,14 @@ router.post("/reset-password", resetPasswordRateLimit, async (req, res, next) =>
   } catch (error) {
     next(error);
   }
-});
+};
+
+router.post("/reset-password", resetPasswordRateLimit, resetPasswordHandler);
 
 router.get("/me", requireAuth, async (req, res, next) => {
   try {
     const result = await query(
-      "SELECT id, email, name, phone, role, created_at FROM users WHERE id = $1",
+      "SELECT id, email, name, phone, role, auth_token_version, created_at FROM users WHERE id = $1",
       [req.user.id]
     );
     if (result.rowCount === 0) {

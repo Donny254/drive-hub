@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
@@ -16,6 +16,14 @@ const ForgotPassword = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [devResetUrl, setDevResetUrl] = useState<string | null>(null);
+  const devResetToken = useMemo(() => {
+    if (!devResetUrl) return null;
+    try {
+      return new URL(devResetUrl).searchParams.get("token");
+    } catch {
+      return null;
+    }
+  }, [devResetUrl]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,6 +66,21 @@ const ForgotPassword = () => {
     }
   };
 
+  const openDevLink = () => {
+    if (!devResetUrl) return;
+    window.open(devResetUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const copyDevToken = async () => {
+    if (!devResetToken) return;
+    try {
+      await navigator.clipboard.writeText(devResetToken);
+      toast.success("Reset token copied.");
+    } catch {
+      toast.error("Unable to copy reset token.");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -96,10 +119,35 @@ const ForgotPassword = () => {
                   <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                     Development Reset Link
                   </p>
+                  <p className="text-xs text-muted-foreground">
+                    Local email is not configured, so you can open the reset flow directly here.
+                  </p>
+                  {devResetToken && (
+                    <div className="space-y-1">
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                        Reset Token
+                      </p>
+                      <p className="break-all text-sm text-muted-foreground">{devResetToken}</p>
+                    </div>
+                  )}
                   <p className="break-all text-sm text-muted-foreground">{devResetUrl}</p>
-                  <Button type="button" variant="outline" className="w-full" onClick={copyDevLink}>
-                    Copy Reset Link
-                  </Button>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <Button type="button" variant="outline" className="w-full" onClick={copyDevLink}>
+                      Copy Link
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={copyDevToken}
+                      disabled={!devResetToken}
+                    >
+                      Copy Token
+                    </Button>
+                    <Button type="button" variant="secondary" className="w-full" onClick={openDevLink}>
+                      Open Reset
+                    </Button>
+                  </div>
                 </div>
               )}
 

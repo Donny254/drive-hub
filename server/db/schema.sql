@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
   seller_verification_status text NOT NULL DEFAULT 'unverified' CHECK (seller_verification_status IN ('unverified', 'pending', 'verified')),
   seller_verified_at timestamptz,
   password_hash text,
+  auth_token_version integer NOT NULL DEFAULT 0,
   password_reset_token_hash text,
   password_reset_expires_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
@@ -333,6 +334,9 @@ FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
 
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS password_hash text;
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS auth_token_version integer NOT NULL DEFAULT 0;
 
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS password_reset_token_hash text;

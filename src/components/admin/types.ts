@@ -233,3 +233,10 @@ export type AdminAnalytics = {
     inquiriesCount: number;
   }>;
 };
+
+export type SystemHealth = {
+  ok: boolean;
+  db: "ok" | "down";
+  mail?: "configured" | "not_configured";
+  time: string;
+};

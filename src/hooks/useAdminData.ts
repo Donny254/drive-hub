@@ -13,6 +13,7 @@ import type {
   Service,
   ServiceBooking,
   SiteSettings,
+  SystemHealth,
   User,
 } from "@/components/admin/types";
 
@@ -35,6 +36,7 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
   const [eventRegistrations, setEventRegistrations] = useState<EventRegistration[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
+  const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +45,16 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
     if (!token) return defaultHeaders;
     return { Authorization: `Bearer ${token}` };
   }, [token]);
+
+  const fetchSystemHealth = useCallback(async () => {
+    const healthRes = await apiFetch("/api/health");
+    if (!healthRes.ok) {
+      throw new Error("Failed to load system health");
+    }
+    const health = (await healthRes.json()) as SystemHealth;
+    setSystemHealth(health);
+    return health;
+  }, []);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -106,13 +118,14 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
       setPosts(await postsRes.json());
       setSettings(await settingsRes.json());
       setAnalytics(await analyticsRes.json());
+      await fetchSystemHealth();
     } catch (err) {
       console.error(err);
       setError("Failed to load admin data.");
     } finally {
       setLoading(false);
     }
-  }, [authHeaders]);
+  }, [authHeaders, fetchSystemHealth]);
 
   useEffect(() => {
     fetchAll();
@@ -126,6 +139,7 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
     eventRegistrations,
     events,
     fetchAll,
+    fetchSystemHealth,
     inquiries,
     listings,
     loading,
@@ -135,6 +149,7 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
     serviceBookings,
     services,
     settings,
+    systemHealth,
     setAnalytics,
     setBookings,
     setError,
@@ -149,6 +164,7 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
     setServiceBookings,
     setServices,
     setSettings,
+    setSystemHealth,
     setUsers,
     users,
   };

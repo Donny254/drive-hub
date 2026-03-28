@@ -31,6 +31,7 @@ import type {
   Service,
   ServiceBooking,
   SiteSettings,
+  SystemHealth,
   User,
 } from "@/components/admin/types";
 import { Button } from "@/components/ui/button";
@@ -138,6 +139,7 @@ const Admin = () => {
     eventRegistrations,
     events,
     fetchAll,
+    fetchSystemHealth,
     inquiries,
     listings,
     loading,
@@ -147,6 +149,7 @@ const Admin = () => {
     serviceBookings,
     services,
     settings,
+    systemHealth,
     setBookings,
     setEventRegistrations,
     setEvents,
@@ -161,6 +164,7 @@ const Admin = () => {
     setUsers,
     users,
   } = useAdminData({ token });
+  const [refreshingSystemHealth, setRefreshingSystemHealth] = useState(false);
   const initialTab = searchParams.get("tab");
   const [activeTab, setActiveTab] = useState<(typeof ADMIN_TABS)[number]>(
     initialTab && ADMIN_TABS.includes(initialTab as (typeof ADMIN_TABS)[number])
@@ -303,6 +307,18 @@ const Admin = () => {
       description,
       variant: "destructive",
     });
+  };
+
+  const refreshSystemHealth = async () => {
+    try {
+      setRefreshingSystemHealth(true);
+      await fetchSystemHealth();
+      notifySuccess("System status refreshed.");
+    } catch (error) {
+      notifyError("Unable to refresh system status.", error instanceof Error ? error.message : undefined);
+    } finally {
+      setRefreshingSystemHealth(false);
+    }
   };
 
   const {
@@ -565,9 +581,12 @@ const Admin = () => {
                 <AdminOverviewTab
                   analytics={analytics}
                   flaggedMediaListings={flaggedMediaListings}
+                  systemHealth={systemHealth}
+                  refreshingSystemHealth={refreshingSystemHealth}
                   exportFinanceReport={() => exportFinanceReport(orders)}
                   exportFraudReport={() => exportFraudReport(listings)}
                   exportSellerPerformanceReport={exportSellerPerformanceReport}
+                  refreshSystemHealth={refreshSystemHealth}
                   openEdit={openEdit}
                   approveListing={approveListing}
                   statusVariant={statusVariant}

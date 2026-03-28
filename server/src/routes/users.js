@@ -156,9 +156,21 @@ router.put("/:id", requireAuth, requireRole("admin"), async (req, res, next) => 
       return res.status(400).json({ error: "Invalid sellerVerificationStatus" });
     }
 
+    const currentUserResult = await query(
+      "SELECT id, role FROM users WHERE id = $1",
+      [req.params.id]
+    );
+    if (currentUserResult.rowCount === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const currentUser = currentUserResult.rows[0];
+
     maybeSet("name", name ?? undefined);
     if (role) {
       maybeSet("role", role);
+      if (role !== currentUser.role) {
+        updates.push("auth_token_version = auth_token_version + 1");
+      }
     }
     if (sellerVerificationStatus) {
       maybeSet("seller_verification_status", sellerVerificationStatus);
@@ -178,10 +190,6 @@ router.put("/:id", requireAuth, requireRole("admin"), async (req, res, next) => 
        RETURNING id, email, name, phone, role, seller_verification_status, seller_verified_at, created_at`,
       values
     );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
 
     res.json(toApi(result.rows[0]));
   } catch (error) {

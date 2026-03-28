@@ -1,5 +1,9 @@
 const buckets = new Map();
 
+export const resetRateLimitBuckets = () => {
+  buckets.clear();
+};
+
 const getClientIp = (req) => {
   const forwarded = req.headers["x-forwarded-for"];
   if (typeof forwarded === "string" && forwarded.length > 0) {

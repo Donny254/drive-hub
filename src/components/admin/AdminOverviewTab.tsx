@@ -1,7 +1,9 @@
-import type { AdminAnalytics, Listing } from "@/components/admin/types";
+import { useEffect, useMemo, useState } from "react";
+import type { AdminAnalytics, Listing, SystemHealth } from "@/components/admin/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TabsContent } from "@/components/ui/tabs";
 import { resolveImageUrl } from "@/lib/api";
@@ -9,9 +11,12 @@ import { resolveImageUrl } from "@/lib/api";
 type AdminOverviewTabProps = {
   analytics: AdminAnalytics | null;
   flaggedMediaListings: Listing[];
+  systemHealth: SystemHealth | null;
+  refreshingSystemHealth?: boolean;
   exportFinanceReport: () => void;
   exportFraudReport: () => void;
   exportSellerPerformanceReport: () => void;
+  refreshSystemHealth: () => Promise<void> | void;
   openEdit: (listing: Listing) => Promise<void> | void;
   approveListing: (listing: Listing) => Promise<void> | void;
   statusVariant: (status?: string | null) => "default" | "secondary" | "destructive" | "outline";
@@ -20,17 +25,57 @@ type AdminOverviewTabProps = {
 const AdminOverviewTab = ({
   analytics,
   flaggedMediaListings,
+  systemHealth,
+  refreshingSystemHealth = false,
   exportFinanceReport,
   exportFraudReport,
   exportSellerPerformanceReport,
+  refreshSystemHealth,
   openEdit,
   approveListing,
   statusVariant,
 }: AdminOverviewTabProps) => {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNow(Date.now());
+    }, 30_000);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const healthFreshnessLabel = useMemo(() => {
+    if (!systemHealth?.time) return "Health check unavailable.";
+    const checkedAt = new Date(systemHealth.time).getTime();
+    if (Number.isNaN(checkedAt)) {
+      return `Last health check: ${systemHealth.time}`;
+    }
+
+    const diffSeconds = Math.max(0, Math.floor((now - checkedAt) / 1000));
+    if (diffSeconds < 5) return "Checked just now";
+    if (diffSeconds < 60) return `Checked ${diffSeconds}s ago`;
+
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    if (diffMinutes < 60) return `Checked ${diffMinutes}m ago`;
+
+    const diffHours = Math.floor(diffMinutes / 60);
+    return `Checked ${diffHours}h ago`;
+  }, [now, systemHealth?.time]);
+
   return (
     <TabsContent value="overview" className="mt-6">
       {analytics && (
         <div className="grid gap-8">
+          {systemHealth?.mail === "not_configured" && (
+            <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-100">
+              <AlertTitle>Email is not configured</AlertTitle>
+              <AlertDescription>
+                Password reset links, inquiry notifications, and ticket emails will be skipped until SMTP is configured.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="rounded-2xl border border-border bg-card p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -54,6 +99,42 @@ const AdminOverviewTab = ({
           </div>
 
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <Card className="rounded-2xl">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle className="text-base">System Status</CardTitle>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void refreshSystemHealth()}
+                    disabled={refreshingSystemHealth}
+                  >
+                    {refreshingSystemHealth ? "Refreshing..." : "Refresh"}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-muted-foreground">Database</span>
+                  <Badge variant={systemHealth?.db === "ok" ? "default" : "destructive"}>
+                    {systemHealth?.db === "ok" ? "Connected" : "Down"}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-muted-foreground">Email</span>
+                  <Badge variant={systemHealth?.mail === "configured" ? "default" : "secondary"}>
+                    {systemHealth?.mail === "configured" ? "Configured" : "Not configured"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {healthFreshnessLabel}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {systemHealth?.time ? new Date(systemHealth.time).toLocaleString() : ""}
+                </p>
+              </CardContent>
+            </Card>
             <Card className="rounded-2xl">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Live Listings</CardTitle>

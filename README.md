@@ -78,6 +78,7 @@ DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/wheelsnationke
 CORS_ORIGIN=http://localhost:5173
 JWT_SECRET=replace-with-a-long-random-secret
 PGSSL=false
+PGSSL_REJECT_UNAUTHORIZED=true
 
 MPESA_ENV=sandbox
 MPESA_CONSUMER_KEY=your_consumer_key
@@ -149,27 +150,7 @@ Expected:
 
 ```bash
 cd server
-node --input-type=module <<'EOF2'
-import pg from 'pg';
-import { hashPassword } from './src/utils/password.js';
-
-const { Pool } = pg;
-const pool = new Pool({ connectionString: 'postgresql://postgres:postgres@127.0.0.1:5432/wheelsnationke' });
-
-const email = 'admin@wheelsnationke.co.ke';
-const passwordHash = await hashPassword('123456');
-
-await pool.query(
-  `INSERT INTO users (email, name, role, password_hash)
-   VALUES ($1, $2, 'admin', $3)
-   ON CONFLICT (email)
-   DO UPDATE SET role = 'admin', password_hash = EXCLUDED.password_hash, name = EXCLUDED.name`,
-  [email, 'Admin', passwordHash]
-);
-
-console.log('Admin ready:', email);
-await pool.end();
-EOF2
+npm run seed:admin
 ```
 
 Default login:
@@ -195,6 +176,8 @@ npm run build
 - Set `NODE_ENV=production`.
 - Set a real `CORS_ORIGIN` domain list.
 - Use managed Postgres + SSL (`PGSSL=true`) in production.
+- Leave `PGSSL_REJECT_UNAUTHORIZED=true` unless you have a very specific provider exception.
+- If your DB provider gives you a custom CA certificate, set `PGSSL_CA` or `PGSSL_CA_FILE`.
 - Never commit real credentials.
 
 ## Common errors and fixes

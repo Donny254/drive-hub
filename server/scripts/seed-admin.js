@@ -24,7 +24,8 @@ const run = async () => {
          name = EXCLUDED.name,
          phone = EXCLUDED.phone,
          password_hash = EXCLUDED.password_hash,
-         role = EXCLUDED.role`,
+         role = EXCLUDED.role,
+         auth_token_version = users.auth_token_version + 1`,
       [
         DEFAULT_ADMIN.name,
         DEFAULT_ADMIN.email,
