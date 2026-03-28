@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch, uploadImage } from "@/lib/api";
+import { toast } from "@/components/ui/sonner";
 
 export type Listing = {
   id: string;
@@ -178,10 +179,12 @@ export const useMyListingsManager = ({ token }: UseMyListingsManagerParams) => {
         const errorData = await resp.json().catch(() => ({}));
         const message = errorData.error || "Failed to update listing";
         setFormError(message);
+        toast.error(message);
         throw new Error(message);
       }
       setEditingListing(null);
       await fetchListings();
+      toast.success("Listing updated and resubmitted for review.");
     },
     [authHeaders, editImages, fetchListings, uploading]
   );
@@ -202,6 +205,7 @@ export const useMyListingsManager = ({ token }: UseMyListingsManagerParams) => {
       const validationError = validateListingDraft({ ...listing, imageUrl: payload.imageUrl }, createImages);
       if (validationError) {
         setFormError(validationError);
+        toast.error(validationError);
         throw new Error(validationError);
       }
       (payload as typeof payload & { imageUrls?: string[] }).imageUrls = createImages;
@@ -214,12 +218,14 @@ export const useMyListingsManager = ({ token }: UseMyListingsManagerParams) => {
         const errorData = await resp.json().catch(() => ({}));
         const message = errorData.error || "Failed to create listing";
         setFormError(message);
+        toast.error(message);
         throw new Error(message);
       }
 
       setCreatingListing(null);
       setCreateImages([]);
       await fetchListings();
+      toast.success("Listing created and submitted for review.");
     },
     [authHeaders, createImages, fetchListings, uploading]
   );
@@ -252,10 +258,12 @@ export const useMyListingsManager = ({ token }: UseMyListingsManagerParams) => {
           }
         }
         setFormError(null);
+        toast.success("Image uploaded.");
         return true;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Upload failed";
         setFormError(message);
+        toast.error(message);
         return false;
       } finally {
         setUploading(false);
@@ -333,6 +341,10 @@ export const useMyListingsManager = ({ token }: UseMyListingsManagerParams) => {
             }
           : prev
       );
+      toast.success("Image added.");
+    } else {
+      const errorData = await addResp.json().catch(() => ({}));
+      toast.error(errorData.error || "Failed to add image");
     }
     setEditImageUrl("");
   }, [authHeaders, editImageUrl, editingListing?.id]);
@@ -340,15 +352,21 @@ export const useMyListingsManager = ({ token }: UseMyListingsManagerParams) => {
   const removeEditImage = useCallback(
     async (image: { id: string; url: string }) => {
       if (!editingListing) return;
-      await apiFetch(`/api/listings/${editingListing.id}/images/${image.id}`, {
+      const resp = await apiFetch(`/api/listings/${editingListing.id}/images/${image.id}`, {
         method: "DELETE",
         headers: authHeaders,
       });
+      if (!resp.ok) {
+        const errorData = await resp.json().catch(() => ({}));
+        toast.error(errorData.error || "Failed to remove image");
+        return;
+      }
       setEditImages((prev) => prev.filter((item) => item.url !== image.url));
       if (editingListing.imageUrl === image.url) {
         const nextUrl = editImages.find((item) => item.url !== image.url)?.url || null;
         setEditingListing({ ...editingListing, imageUrl: nextUrl });
       }
+      toast.success("Image removed.");
     },
     [authHeaders, editImages, editingListing]
   );
@@ -357,11 +375,17 @@ export const useMyListingsManager = ({ token }: UseMyListingsManagerParams) => {
     async (nextImages: Array<{ id: string; url: string }>) => {
       if (!editingListing) return;
       setEditImages(nextImages);
-      await apiFetch(`/api/listings/${editingListing.id}/images/reorder`, {
+      const resp = await apiFetch(`/api/listings/${editingListing.id}/images/reorder`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({ imageIds: nextImages.map((img) => img.id) }),
       });
+      if (!resp.ok) {
+        const errorData = await resp.json().catch(() => ({}));
+        toast.error(errorData.error || "Failed to reorder images");
+        return;
+      }
+      toast.success("Image order updated.");
     },
     [authHeaders, editingListing]
   );
@@ -369,8 +393,14 @@ export const useMyListingsManager = ({ token }: UseMyListingsManagerParams) => {
   const deleteListing = useCallback(
     async (id: string) => {
       const resp = await apiFetch(`/api/listings/${id}`, { method: "DELETE", headers: authHeaders });
-      if (!resp.ok) throw new Error("Failed to delete listing");
+      if (!resp.ok) {
+        const errorData = await resp.json().catch(() => ({}));
+        const message = errorData.error || "Failed to delete listing";
+        toast.error(message);
+        throw new Error(message);
+      }
       await fetchListings();
+      toast.success("Listing deleted.");
     },
     [authHeaders, fetchListings]
   );

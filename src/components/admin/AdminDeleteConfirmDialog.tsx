@@ -1,14 +1,5 @@
 import type { DeleteTarget } from "@/components/admin/types";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import ActionConfirmDialog from "@/components/shared/ActionConfirmDialog";
 
 type AdminDeleteConfirmDialogProps = {
   deleteTarget: DeleteTarget;
@@ -21,28 +12,22 @@ const AdminDeleteConfirmDialog = ({
   setDeleteTarget,
   confirmSingleDelete,
 }: AdminDeleteConfirmDialogProps) => {
+  const itemLabel = deleteTarget?.kind || "item";
+
   return (
-    <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Delete this item?</AlertDialogTitle>
-          <AlertDialogDescription>
-            {deleteTarget
-              ? `This will permanently remove ${deleteTarget.kind} "${deleteTarget.label}".`
-              : "This action cannot be undone."}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            onClick={confirmSingleDelete}
-          >
-            Delete
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ActionConfirmDialog
+      open={Boolean(deleteTarget)}
+      onOpenChange={(open) => !open && setDeleteTarget(null)}
+      title={`Delete ${itemLabel}?`}
+      description={
+        deleteTarget
+          ? `This will permanently remove ${deleteTarget.kind} "${deleteTarget.label}". This action cannot be undone.`
+          : "This action cannot be undone."
+      }
+      cancelLabel={`Keep ${itemLabel}`}
+      confirmLabel={`Delete ${itemLabel}`}
+      onConfirm={confirmSingleDelete}
+    />
   );
 };
 

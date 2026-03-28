@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -106,6 +107,9 @@ const AdminOrdersTab = ({
                     <DialogContent>
                       <DialogHeader>
                         <DialogTitle>Edit Order</DialogTitle>
+                        <DialogDescription>
+                          Update the order total or payment status for this purchase before saving your changes.
+                        </DialogDescription>
                       </DialogHeader>
                       {editingOrder && (
                         <div className="grid gap-4">
@@ -213,6 +217,9 @@ const AdminOrdersTab = ({
                           <DialogContent>
                             <DialogHeader>
                               <DialogTitle>Edit Order</DialogTitle>
+                              <DialogDescription>
+                                Update the order total or payment status for this purchase before saving your changes.
+                              </DialogDescription>
                             </DialogHeader>
                             {editingOrder && (
                               <div className="grid gap-4">
@@ -282,6 +289,9 @@ const AdminOrdersTab = ({
         <DialogContent className="max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Order Details</DialogTitle>
+            <DialogDescription>
+              Review the full order summary, customer reference, and line items for this purchase.
+            </DialogDescription>
           </DialogHeader>
           {orderDetailsLoading && <p className="text-muted-foreground">Loading order details...</p>}
           {orderDetailsError && <p className="text-sm text-destructive">{orderDetailsError}</p>}

@@ -986,11 +986,11 @@ const AdminListingsTab = ({
                       <AlertDialogHeader>
                         <AlertDialogTitle>Delete selected listings?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          This will permanently remove {selectedListingIds.length} selected listings from the marketplace.
+                          This will permanently remove {selectedListingIds.length} selected listings from the marketplace. This action cannot be undone.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel>Keep Listings</AlertDialogCancel>
                         <AlertDialogAction
                           className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                           onClick={bulkDeleteListings}

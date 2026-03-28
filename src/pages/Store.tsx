@@ -4,12 +4,14 @@ import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ShoppingCart, Plus, Minus, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
+import { toast } from "@/components/ui/sonner";
+import { feedbackText, getApiErrorMessage } from "@/lib/feedback";
 
 interface Product {
   id: string;
@@ -48,6 +50,8 @@ const Store = () => {
       const resp = await apiFetch("/api/products?active=true");
       if (resp.ok) {
         setProducts(await resp.json());
+      } else {
+        toast.error(await getApiErrorMessage(resp, "Failed to load store items"));
       }
     };
     load();
@@ -75,6 +79,7 @@ const Store = () => {
       }
       return [...prev, { ...product, quantity: 1 }];
     });
+    toast.success(`${product.name} added to cart.`);
   };
 
   const removeFromCart = (productId: string) => {
@@ -148,6 +153,7 @@ const Store = () => {
     if (cart.length === 0) return;
     if (!customerName.trim() || !customerPhone.trim()) {
       setCheckoutError("Name and phone are required.");
+      toast.error("Name and phone are required.");
       return;
     }
     setCheckoutLoading(true);
@@ -172,8 +178,7 @@ const Store = () => {
       });
 
       if (!resp.ok) {
-        const errorData = await resp.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to place order");
+        throw new Error(await getApiErrorMessage(resp, "Failed to place order"));
       }
 
       const data = await resp.json().catch(() => ({}));
@@ -181,6 +186,7 @@ const Store = () => {
       setCheckoutSuccess(
         customerMessage || "M-Pesa prompt sent. Complete the payment on your phone."
       );
+      toast.success(customerMessage || "M-Pesa prompt sent. Complete payment on your phone.");
       if (data?.orderId) {
         setPaymentOrderId(data.orderId);
         setPaymentStatus("pending");
@@ -191,7 +197,9 @@ const Store = () => {
       setCustomerPhone("");
       setCustomerAddress("");
     } catch (err) {
-      setCheckoutError(err instanceof Error ? err.message : "Failed to place order.");
+      const message = err instanceof Error ? err.message : "Failed to place order.";
+      setCheckoutError(message);
+      toast.error(message);
     } finally {
       setCheckoutLoading(false);
     }
@@ -366,6 +374,9 @@ const Store = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Checkout</DialogTitle>
+            <DialogDescription>
+              Confirm your customer details and delivery information before we send the M-Pesa payment prompt for this order.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             <div className="grid gap-2">

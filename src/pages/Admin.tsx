@@ -715,11 +715,11 @@ const Admin = () => {
                       <AlertDialogHeader>
                         <AlertDialogTitle>Delete selected users?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          This will permanently remove {selectedUserIds.length} selected user accounts.
+                          This will permanently remove {selectedUserIds.length} selected user accounts. This action cannot be undone.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel>Keep Users</AlertDialogCancel>
                         <AlertDialogAction
                           className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                           onClick={bulkDeleteUsers}

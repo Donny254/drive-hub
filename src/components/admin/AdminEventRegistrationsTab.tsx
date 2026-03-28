@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -107,6 +108,9 @@ const AdminEventRegistrationsTab = ({
                           <DialogContent>
                             <DialogHeader>
                               <DialogTitle>Edit Event Registration</DialogTitle>
+                              <DialogDescription>
+                                Adjust the registration status, attendee ticket count, or notes for this event booking.
+                              </DialogDescription>
                             </DialogHeader>
                             {editingEventRegistration && (
                               <div className="grid gap-4">

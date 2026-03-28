@@ -3,11 +3,13 @@ import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { getTicketQrImageUrl, toTicketQrPayload } from "@/lib/ticketQr";
 import { downloadEventReceipt, printEventReceipt } from "@/lib/printEventReceipt";
+import { toast } from "@/components/ui/sonner";
+import ActionConfirmDialog from "@/components/shared/ActionConfirmDialog";
 
 type EventRegistration = {
   id: string;
@@ -49,6 +51,8 @@ const MyEventRegistrations = () => {
   const [ticketsLoadingId, setTicketsLoadingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<EventRegistration | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
@@ -62,6 +66,7 @@ const MyEventRegistrations = () => {
     } catch (err) {
       console.error(err);
       setError("Failed to load your event registrations.");
+      toast.error("Failed to load your event registrations.");
     } finally {
       setLoading(false);
     }
@@ -77,8 +82,13 @@ const MyEventRegistrations = () => {
       headers: authHeaders,
       body: JSON.stringify({ status: "cancelled" }),
     });
-    if (!resp.ok) throw new Error("Failed to cancel registration");
-    fetchRegistrations();
+    if (!resp.ok) {
+      const errorData = await resp.json().catch(() => ({}));
+      toast.error(errorData.error || "Failed to cancel registration");
+      throw new Error(errorData.error || "Failed to cancel registration");
+    }
+    await fetchRegistrations();
+    toast.success("Registration cancelled.");
   };
 
   const payRegistration = async (registration: EventRegistration) => {
@@ -92,9 +102,12 @@ const MyEventRegistrations = () => {
     });
     if (!resp.ok) {
       const errorData = await resp.json().catch(() => ({}));
-      throw new Error(errorData.error || "Failed to start M-Pesa payment");
+      const message = errorData.error || "Failed to start M-Pesa payment";
+      toast.error(message);
+      throw new Error(message);
     }
-    fetchRegistrations();
+    await fetchRegistrations();
+    toast.success("M-Pesa prompt sent. Complete payment on your phone.");
   };
 
   const loadTickets = async (registrationId: string) => {
@@ -104,9 +117,14 @@ const MyEventRegistrations = () => {
       const resp = await apiFetch(`/api/event-registrations/registration/${registrationId}/tickets`, {
         headers: authHeaders,
       });
-      if (!resp.ok) throw new Error("Failed to load tickets");
+      if (!resp.ok) {
+        const errorData = await resp.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to load tickets");
+      }
       const tickets = (await resp.json()) as EventTicket[];
       setTicketsByRegistration((prev) => ({ ...prev, [registrationId]: tickets }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to load tickets");
     } finally {
       setTicketsLoadingId(null);
     }
@@ -115,11 +133,13 @@ const MyEventRegistrations = () => {
   const handlePrintReceipt = async (registration: EventRegistration) => {
     const tickets = ticketsByRegistration[registration.id] || [];
     await printEventReceipt(registration, tickets);
+    toast.success("Receipt opened for printing.");
   };
 
   const handleDownloadReceipt = async (registration: EventRegistration) => {
     const tickets = ticketsByRegistration[registration.id] || [];
     await downloadEventReceipt(registration, tickets);
+    toast.success("Receipt downloaded.");
   };
 
   return (
@@ -166,6 +186,9 @@ const MyEventRegistrations = () => {
                           <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
                             <DialogHeader>
                               <DialogTitle>Tickets for {registration.eventTitle ?? "Event"}</DialogTitle>
+                              <DialogDescription>
+                                Review issued tickets, scan-ready QR codes, and receipt actions for this event registration.
+                              </DialogDescription>
                             </DialogHeader>
                             {ticketsLoadingId === registration.id && (
                               <p className="text-sm text-muted-foreground">Loading tickets...</p>
@@ -235,7 +258,7 @@ const MyEventRegistrations = () => {
                           size="sm"
                           className="w-full"
                           disabled={registration.status === "cancelled"}
-                          onClick={() => cancelRegistration(registration.id)}
+                          onClick={() => setCancelTarget(registration)}
                         >
                           Cancel
                         </Button>
@@ -281,6 +304,9 @@ const MyEventRegistrations = () => {
                             <DialogContent>
                               <DialogHeader>
                                 <DialogTitle>Tickets for {registration.eventTitle ?? "Event"}</DialogTitle>
+                                <DialogDescription>
+                                  Review issued tickets, scan-ready QR codes, and receipt actions for this event registration.
+                                </DialogDescription>
                               </DialogHeader>
                               {ticketsLoadingId === registration.id && (
                                 <p className="text-sm text-muted-foreground">Loading tickets...</p>
@@ -355,7 +381,7 @@ const MyEventRegistrations = () => {
                               variant="destructive"
                               size="sm"
                               disabled={registration.status === "cancelled"}
-                              onClick={() => cancelRegistration(registration.id)}
+                              onClick={() => setCancelTarget(registration)}
                             >
                               Cancel
                             </Button>
@@ -371,6 +397,26 @@ const MyEventRegistrations = () => {
           </div>
         </div>
       </main>
+      <ActionConfirmDialog
+        open={Boolean(cancelTarget)}
+        onOpenChange={(open) => !open && setCancelTarget(null)}
+        title="Cancel registration?"
+        description={`This will cancel your registration${cancelTarget?.eventTitle ? ` for "${cancelTarget.eventTitle}"` : ""}. You can’t undo this from your account.`}
+        cancelLabel="Keep Registration"
+        confirmLabel="Cancel Registration"
+        loading={cancelLoading}
+        loadingLabel="Cancelling..."
+        onConfirm={async () => {
+          if (!cancelTarget) return;
+          try {
+            setCancelLoading(true);
+            await cancelRegistration(cancelTarget.id);
+            setCancelTarget(null);
+          } finally {
+            setCancelLoading(false);
+          }
+        }}
+      />
       <Footer />
     </div>
   );

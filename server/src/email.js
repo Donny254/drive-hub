@@ -249,3 +249,24 @@ export const sendSellerDigestEmail = async ({ to, sellerName, dateLabel, summary
     text: lines.join("\n"),
   });
 };
+
+export const sendPasswordResetEmail = async ({ to, name, resetUrl }) => {
+  if (!to || !resetUrl) return false;
+
+  const lines = [
+    `Hello ${name || "there"},`,
+    "",
+    "We received a request to reset your WheelsnationKe password.",
+    "Open the link below to choose a new password:",
+    resetUrl,
+    "",
+    "This link expires in 1 hour.",
+    "If you did not request a password reset, you can ignore this email.",
+  ];
+
+  return sendMail({
+    to,
+    subject: "Reset your WheelsnationKe password",
+    text: lines.join("\n"),
+  });
+};

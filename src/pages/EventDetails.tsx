@@ -4,7 +4,7 @@ import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -13,6 +13,7 @@ import { Calendar, MapPin } from "lucide-react";
 import carEvent from "@/assets/car-event.jpg";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { getApiErrorMessage } from "@/lib/feedback";
 
 type EventItem = {
   id: string;
@@ -152,8 +153,7 @@ const EventDetails = () => {
       });
 
       if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        throw new Error(errData.error || "Failed to register for event");
+        throw new Error(await getApiErrorMessage(resp, "Failed to register for event"));
       }
 
       setRegisterSuccess("Registration submitted. We will contact you soon.");
@@ -304,6 +304,9 @@ const EventDetails = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Register{event ? `: ${event.title}` : ""}</DialogTitle>
+            <DialogDescription>
+              Share your attendee details and ticket quantity to register for this event. We will use your phone number for payment and ticket confirmation when required.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             <div className="grid gap-2">

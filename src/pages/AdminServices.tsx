@@ -12,6 +12,8 @@ import AdminFormDialog from "@/components/admin/AdminFormDialog";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl, uploadImage } from "@/lib/api";
 import { downloadCsv, parseCsv, toCsv } from "@/lib/csv";
+import { toast } from "@/components/ui/sonner";
+import { feedbackText, getApiErrorMessage } from "@/lib/feedback";
 
 type Service = {
   id: string;
@@ -55,7 +57,11 @@ const AdminServices = () => {
 
   const fetchServices = useCallback(async () => {
     const resp = await apiFetch("/api/services", { headers: authHeaders });
-    if (resp.ok) setServices(await resp.json());
+    if (resp.ok) {
+      setServices(await resp.json());
+      return;
+    }
+    toast.error(await getApiErrorMessage(resp, "Failed to load services"));
   }, [authHeaders]);
 
   useEffect(() => {
@@ -85,6 +91,9 @@ const AdminServices = () => {
       } else {
         setEditing((prev) => (prev ? { ...prev, imageUrl: result.url } : prev));
       }
+      toast.success(feedbackText.uploaded());
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Image upload failed");
     } finally {
       setUploading(false);
     }
@@ -123,7 +132,7 @@ const AdminServices = () => {
     const text = await file.text();
     const rows = parseCsv(text);
     for (const row of rows) {
-      await apiFetch("/api/services", {
+      const resp = await apiFetch("/api/services", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -135,8 +144,13 @@ const AdminServices = () => {
           active: row.active === "true",
         }),
       });
+      if (!resp.ok) {
+        toast.error(await getApiErrorMessage(resp, "Failed to import services"));
+        return;
+      }
     }
-    fetchServices();
+    await fetchServices();
+    toast.success(feedbackText.imported("service", rows.length));
   };
 
   const createService = async () => {
@@ -148,8 +162,11 @@ const AdminServices = () => {
     });
     if (resp.ok) {
       setCreating(null);
-      fetchServices();
+      await fetchServices();
+      toast.success(feedbackText.created("service"));
+      return;
     }
+    toast.error(await getApiErrorMessage(resp, "Failed to create service"));
   };
 
   const saveService = async () => {
@@ -161,13 +178,21 @@ const AdminServices = () => {
     });
     if (resp.ok) {
       setEditing(null);
-      fetchServices();
+      await fetchServices();
+      toast.success(feedbackText.updated("service"));
+      return;
     }
+    toast.error(await getApiErrorMessage(resp, "Failed to update service"));
   };
 
   const deleteService = async (id: string) => {
     const resp = await apiFetch(`/api/services/${id}`, { method: "DELETE", headers: authHeaders });
-    if (resp.ok) fetchServices();
+    if (resp.ok) {
+      await fetchServices();
+      toast.success(feedbackText.deleted("service"));
+      return;
+    }
+    toast.error(await getApiErrorMessage(resp, "Failed to delete service"));
   };
 
   return (
@@ -206,7 +231,12 @@ const AdminServices = () => {
                     New Service
                   </Button>
                 </DialogTrigger>
-                <AdminFormDialog title="Create Service" actionLabel="Create" onAction={createService}>
+                <AdminFormDialog
+                  title="Create Service"
+                  description="Add a new service offering with pricing, features, and imagery before it appears publicly."
+                  actionLabel="Create"
+                  onAction={createService}
+                >
                   {creating && (
                     <div className="grid gap-4">
                       <div className="grid gap-2">
@@ -369,7 +399,12 @@ const AdminServices = () => {
                               Edit
                             </Button>
                           </DialogTrigger>
-                          <AdminFormDialog title="Edit Service" actionLabel="Save" onAction={saveService}>
+                          <AdminFormDialog
+                            title="Edit Service"
+                            description="Update service details, pricing, feature highlights, or imagery for this offering."
+                            actionLabel="Save"
+                            onAction={saveService}
+                          >
                             {editing && (
                               <div className="grid gap-4">
                                 <div className="grid gap-2">

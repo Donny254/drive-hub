@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -100,6 +101,9 @@ const AdminBookingsTab = ({
                     <DialogContent>
                       <DialogHeader>
                         <DialogTitle>Update Booking</DialogTitle>
+                        <DialogDescription>
+                          Change the status of this booking request to approve, reject, or cancel it.
+                        </DialogDescription>
                       </DialogHeader>
                       {editingBooking && (
                         <div className="grid gap-4">
@@ -218,6 +222,9 @@ const AdminBookingsTab = ({
                           <DialogContent>
                             <DialogHeader>
                               <DialogTitle>Update Booking</DialogTitle>
+                              <DialogDescription>
+                                Change the status of this booking request to approve, reject, or cancel it.
+                              </DialogDescription>
                             </DialogHeader>
                             {editingBooking && (
                               <div className="grid gap-4">

@@ -16,6 +16,8 @@ const Store = lazy(() => import("./pages/Store"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Admin = lazy(() => import("./pages/Admin"));
 const MyListings = lazy(() => import("./pages/MyListings"));
 const MyBookings = lazy(() => import("./pages/MyBookings"));
@@ -54,6 +56,8 @@ const App = () => (
               <Route path="/store" element={<Store />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/market/:id" element={<ListingDetails />} />
               <Route path="/sellers/:id" element={<SellerProfile />} />
               <Route

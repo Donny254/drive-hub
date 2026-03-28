@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -16,6 +17,8 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import DatePickerField from "@/components/shared/DatePickerField";
+import { getTodayDateValue } from "@/lib/date";
 
 type AdminServiceBookingsTabProps = {
   serviceBookings: ServiceBooking[];
@@ -32,6 +35,7 @@ const AdminServiceBookingsTab = ({
   saveServiceBooking,
   statusVariant,
 }: AdminServiceBookingsTabProps) => {
+  const todayDate = getTodayDateValue();
   return (
     <TabsContent value="service-bookings" className="mt-6">
       <Card className="rounded-2xl">
@@ -104,6 +108,9 @@ const AdminServiceBookingsTab = ({
                           <DialogContent>
                             <DialogHeader>
                               <DialogTitle>Edit Service Booking</DialogTitle>
+                              <DialogDescription>
+                                Update the scheduled date, status, or notes for this customer service booking.
+                              </DialogDescription>
                             </DialogHeader>
                             {editingServiceBooking && (
                               <div className="grid gap-4">
@@ -126,15 +133,16 @@ const AdminServiceBookingsTab = ({
                                 </div>
                                 <div className="grid gap-2">
                                   <Label>Scheduled Date</Label>
-                                  <Input
-                                    type="date"
+                                  <DatePickerField
                                     value={editingServiceBooking.scheduledDate ?? ""}
-                                    onChange={(e) =>
+                                    onChange={(value) =>
                                       setEditingServiceBooking({
                                         ...editingServiceBooking,
-                                        scheduledDate: e.target.value || null,
+                                        scheduledDate: value || null,
                                       })
                                     }
+                                    minDate={todayDate}
+                                    placeholder="Select scheduled date"
                                   />
                                 </div>
                                 <div className="grid gap-2">

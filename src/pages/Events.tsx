@@ -4,7 +4,7 @@ import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,6 +13,8 @@ import carEvent from "@/assets/car-event.jpg";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
 import { downloadEventReceipt, printEventReceipt } from "@/lib/printEventReceipt";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "@/components/ui/sonner";
+import { feedbackText, getApiErrorMessage } from "@/lib/feedback";
 
 type EventItem = {
   id: string;
@@ -106,6 +108,8 @@ const Events = () => {
         ]);
         if (eventsRes.ok) setEvents(await eventsRes.json());
         if (postsRes.ok) setPosts(await postsRes.json());
+        if (!eventsRes.ok) toast.error(await getApiErrorMessage(eventsRes, "Failed to load events"));
+        if (!postsRes.ok) toast.error(await getApiErrorMessage(postsRes, "Failed to load blog posts"));
       } finally {
         setLoading(false);
       }
@@ -149,12 +153,14 @@ const Events = () => {
             setRegisterSuccess("Payment received. Your tickets are ready.");
             setPendingRegistrationId(null);
             setCompletedRegistrationId(pendingRegistrationId);
+            toast.success("Payment received. Your tickets are ready.");
           }
           return;
         }
         if (paymentStatus === "failed" && !cancelled) {
           setRegisterError("M-Pesa payment failed. Try again from My Event Registrations.");
           setPendingRegistrationId(null);
+          toast.error("M-Pesa payment failed. Try again.");
         }
       } catch {
         // Ignore transient polling errors.
@@ -184,6 +190,7 @@ const Events = () => {
     if (!selectedEvent) return;
     if (!contactName.trim() || !contactPhone.trim()) {
       setRegisterError("Name and phone are required.");
+      toast.error("Name and phone are required.");
       return;
     }
     setRegisterLoading(true);
@@ -202,8 +209,7 @@ const Events = () => {
       });
 
       if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        throw new Error(errData.error || "Failed to register for event");
+        throw new Error(await getApiErrorMessage(resp, "Failed to register for event"));
       }
 
       const data = (await resp.json().catch(() => ({}))) as RegistrationResponse;
@@ -218,20 +224,23 @@ const Events = () => {
           }),
         });
         if (!paymentResp.ok) {
-          const errData = await paymentResp.json().catch(() => ({}));
-          throw new Error(errData.error || "Failed to initiate M-Pesa payment");
+          throw new Error(await getApiErrorMessage(paymentResp, "Failed to initiate M-Pesa payment"));
         }
         setPendingRegistrationId(data.id);
         setRegisterSuccess("M-Pesa prompt sent. Complete payment to generate your tickets.");
         setGeneratedTickets([]);
+        toast.success("M-Pesa prompt sent. Complete payment on your phone.");
       } else {
         const ticketsData = Array.isArray(data.generatedTickets) ? data.generatedTickets : [];
         setGeneratedTickets(ticketsData);
         setRegisterSuccess("Registration submitted. Your tickets are ready.");
         setCompletedRegistrationId(data.id);
+        toast.success("Registration submitted. Your tickets are ready.");
       }
     } catch (err) {
-      setRegisterError(err instanceof Error ? err.message : "Failed to register.");
+      const message = err instanceof Error ? err.message : "Failed to register.";
+      setRegisterError(message);
+      toast.error(message);
     } finally {
       setRegisterLoading(false);
     }
@@ -262,6 +271,7 @@ const Events = () => {
       },
       generatedTickets
     );
+    toast.success(feedbackText.printingOpened("ticket"));
   };
 
   const handleDownloadTicket = async () => {
@@ -284,6 +294,7 @@ const Events = () => {
       },
       generatedTickets
     );
+    toast.success(feedbackText.downloaded("ticket"));
   };
 
   return (
@@ -490,6 +501,9 @@ const Events = () => {
             <DialogTitle>
               Register{selectedEvent ? `: ${selectedEvent.title}` : ""}
             </DialogTitle>
+            <DialogDescription>
+              Enter your attendee details and ticket quantity. Free events issue tickets immediately, while paid events send an M-Pesa prompt before tickets are generated.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             <div className="grid gap-2">

@@ -12,6 +12,8 @@ import AdminFormDialog from "@/components/admin/AdminFormDialog";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl, uploadImage } from "@/lib/api";
 import { downloadCsv, parseCsv, toCsv } from "@/lib/csv";
+import { toast } from "@/components/ui/sonner";
+import { feedbackText, getApiErrorMessage } from "@/lib/feedback";
 
 type Product = {
   id: string;
@@ -60,7 +62,11 @@ const AdminProducts = () => {
 
   const fetchProducts = useCallback(async () => {
     const resp = await apiFetch("/api/products", { headers: authHeaders });
-    if (resp.ok) setProducts(await resp.json());
+    if (resp.ok) {
+      setProducts(await resp.json());
+      return;
+    }
+    toast.error(await getApiErrorMessage(resp, "Failed to load products"));
   }, [authHeaders]);
 
   useEffect(() => {
@@ -91,6 +97,9 @@ const AdminProducts = () => {
       } else {
         setEditing((prev) => (prev ? { ...prev, imageUrl: result.url } : prev));
       }
+      toast.success(feedbackText.uploaded());
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Image upload failed");
     } finally {
       setUploading(false);
     }
@@ -133,7 +142,7 @@ const AdminProducts = () => {
     const text = await file.text();
     const rows = parseCsv(text);
     for (const row of rows) {
-      await apiFetch("/api/products", {
+      const resp = await apiFetch("/api/products", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -147,8 +156,13 @@ const AdminProducts = () => {
           active: row.active === "true",
         }),
       });
+      if (!resp.ok) {
+        toast.error(await getApiErrorMessage(resp, "Failed to import products"));
+        return;
+      }
     }
-    fetchProducts();
+    await fetchProducts();
+    toast.success(feedbackText.imported("product", rows.length));
   };
 
   const createProduct = async () => {
@@ -160,8 +174,11 @@ const AdminProducts = () => {
     });
     if (resp.ok) {
       setCreating(null);
-      fetchProducts();
+      await fetchProducts();
+      toast.success(feedbackText.created("product"));
+      return;
     }
+    toast.error(await getApiErrorMessage(resp, "Failed to create product"));
   };
 
   const saveProduct = async () => {
@@ -173,13 +190,21 @@ const AdminProducts = () => {
     });
     if (resp.ok) {
       setEditing(null);
-      fetchProducts();
+      await fetchProducts();
+      toast.success(feedbackText.updated("product"));
+      return;
     }
+    toast.error(await getApiErrorMessage(resp, "Failed to update product"));
   };
 
   const deleteProduct = async (id: string) => {
     const resp = await apiFetch(`/api/products/${id}`, { method: "DELETE", headers: authHeaders });
-    if (resp.ok) fetchProducts();
+    if (resp.ok) {
+      await fetchProducts();
+      toast.success(feedbackText.deleted("product"));
+      return;
+    }
+    toast.error(await getApiErrorMessage(resp, "Failed to delete product"));
   };
 
   return (
@@ -218,7 +243,12 @@ const AdminProducts = () => {
                     New Product
                   </Button>
                 </DialogTrigger>
-                <AdminFormDialog title="Create Product" actionLabel="Create" onAction={createProduct}>
+                <AdminFormDialog
+                  title="Create Product"
+                  description="Add a new store product with pricing, stock, sizes, and product artwork before it goes live."
+                  actionLabel="Create"
+                  onAction={createProduct}
+                >
                   {creating && (
                     <div className="grid gap-4">
                       <div className="grid gap-2">
@@ -408,7 +438,12 @@ const AdminProducts = () => {
                               Edit
                             </Button>
                           </DialogTrigger>
-                          <AdminFormDialog title="Edit Product" actionLabel="Save" onAction={saveProduct}>
+                          <AdminFormDialog
+                            title="Edit Product"
+                            description="Update product details, pricing, stock, sizes, or artwork for this store item."
+                            actionLabel="Save"
+                            onAction={saveProduct}
+                          >
                             {editing && (
                               <div className="grid gap-4">
                                 <div className="grid gap-2">

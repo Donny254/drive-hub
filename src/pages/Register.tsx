@@ -7,6 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import BrandLogo from "@/components/branding/BrandLogo";
 import { useAuth } from "@/context/AuthContext";
+import PasswordField from "@/components/shared/PasswordField";
+import { getPasswordValidationMessage, PASSWORD_MIN_LENGTH } from "@/lib/password";
+import PasswordRequirements from "@/components/shared/PasswordRequirements";
 
 const Register = () => {
   const navigate = useNavigate();
@@ -22,6 +25,12 @@ const Register = () => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    const passwordMessage = getPasswordValidationMessage(password);
+    if (passwordMessage) {
+      setError(passwordMessage);
+      setLoading(false);
+      return;
+    }
     try {
       await register(name, email, phone, password);
       navigate("/");
@@ -98,13 +107,17 @@ const Register = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
+                <PasswordField
                   id="password"
-                  type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  toggleLabel="password"
                   required
                 />
+                <p className="text-xs text-muted-foreground">
+                  Use at least {PASSWORD_MIN_LENGTH} characters with uppercase, lowercase, and a number.
+                </p>
+                <PasswordRequirements password={password} />
               </div>
 
               {error && <p className="text-sm text-destructive">{error}</p>}

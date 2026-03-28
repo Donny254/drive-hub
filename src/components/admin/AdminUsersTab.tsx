@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -178,6 +179,9 @@ const AdminUsersTab = ({
                     <DialogContent>
                       <DialogHeader>
                         <DialogTitle>Edit User</DialogTitle>
+                        <DialogDescription>
+                          Update this account’s contact details, role, or seller verification status before saving.
+                        </DialogDescription>
                       </DialogHeader>
                       {editingUser && (
                         <div className="grid gap-4">
@@ -346,6 +350,9 @@ const AdminUsersTab = ({
                           <DialogContent>
                             <DialogHeader>
                               <DialogTitle>Edit User</DialogTitle>
+                              <DialogDescription>
+                                Update this account’s contact details, role, or seller verification status before saving.
+                              </DialogDescription>
                             </DialogHeader>
                             {editingUser && (
                               <div className="grid gap-4">

@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
+import { toast } from "@/components/ui/sonner";
+import ActionConfirmDialog from "@/components/shared/ActionConfirmDialog";
 
 type Booking = {
   id: string;
@@ -24,6 +26,8 @@ const MyBookings = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Booking | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   const authHeaders = useMemo(() => {
     if (!token) return {};
@@ -40,6 +44,7 @@ const MyBookings = () => {
     } catch (err) {
       console.error(err);
       setError("Failed to load your bookings.");
+      toast.error("Failed to load your bookings.");
     } finally {
       setLoading(false);
     }
@@ -55,8 +60,13 @@ const MyBookings = () => {
       headers: authHeaders,
       body: JSON.stringify({ status: "cancelled" }),
     });
-    if (!resp.ok) throw new Error("Failed to cancel booking");
-    fetchBookings();
+    if (!resp.ok) {
+      const errorData = await resp.json().catch(() => ({}));
+      toast.error(errorData.error || "Failed to cancel booking");
+      throw new Error(errorData.error || "Failed to cancel booking");
+    }
+    await fetchBookings();
+    toast.success("Booking cancelled.");
   };
 
   return (
@@ -106,7 +116,7 @@ const MyBookings = () => {
                         size="sm"
                         className="mt-4 w-full"
                         disabled={booking.status === "cancelled"}
-                        onClick={() => cancelBooking(booking.id)}
+                        onClick={() => setCancelTarget(booking)}
                       >
                         Cancel
                       </Button>
@@ -159,7 +169,7 @@ const MyBookings = () => {
                             variant="destructive"
                             size="sm"
                             disabled={booking.status === "cancelled"}
-                            onClick={() => cancelBooking(booking.id)}
+                            onClick={() => setCancelTarget(booking)}
                           >
                             Cancel
                           </Button>
@@ -174,6 +184,26 @@ const MyBookings = () => {
           </div>
         </div>
       </main>
+      <ActionConfirmDialog
+        open={Boolean(cancelTarget)}
+        onOpenChange={(open) => !open && setCancelTarget(null)}
+        title="Cancel booking?"
+        description={`This will cancel booking ${cancelTarget ? `#${cancelTarget.id.slice(0, 8)}` : ""}. You can’t undo this from your account.`}
+        cancelLabel="Keep Booking"
+        confirmLabel="Cancel Booking"
+        loading={cancelLoading}
+        loadingLabel="Cancelling..."
+        onConfirm={async () => {
+          if (!cancelTarget) return;
+          try {
+            setCancelLoading(true);
+            await cancelBooking(cancelTarget.id);
+            setCancelTarget(null);
+          } finally {
+            setCancelLoading(false);
+          }
+        }}
+      />
       <Footer />
     </div>
   );
