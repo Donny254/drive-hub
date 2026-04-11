@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
@@ -81,6 +81,8 @@ const Events = () => {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+  const [postsError, setPostsError] = useState<string | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
   const [contactName, setContactName] = useState("");
@@ -98,24 +100,58 @@ const Events = () => {
   const totalAmountCents = (selectedEvent?.priceCents || 0) * tickets;
   const isPaidEvent = totalAmountCents > 0;
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
-        const [eventsRes, postsRes] = await Promise.all([
-          apiFetch("/api/events?status=upcoming"),
-          apiFetch("/api/posts?status=published"),
-        ]);
-        if (eventsRes.ok) setEvents(await eventsRes.json());
-        if (postsRes.ok) setPosts(await postsRes.json());
-        if (!eventsRes.ok) toast.error(await getApiErrorMessage(eventsRes, "Failed to load events"));
-        if (!postsRes.ok) toast.error(await getApiErrorMessage(postsRes, "Failed to load blog posts"));
-      } finally {
-        setLoading(false);
+  const loadPageData = useCallback(async () => {
+    setLoading(true);
+    setEventsError(null);
+    setPostsError(null);
+
+    const [eventsResult, postsResult] = await Promise.allSettled([
+      apiFetch("/api/events?status=upcoming"),
+      apiFetch("/api/posts?status=published"),
+    ]);
+
+    if (eventsResult.status === "fulfilled") {
+      const eventsRes = eventsResult.value;
+      if (eventsRes.ok) {
+        const data = await eventsRes.json();
+        setEvents(Array.isArray(data) ? data : []);
+      } else {
+        const message = await getApiErrorMessage(eventsRes, "Failed to load events");
+        setEvents([]);
+        setEventsError(message);
+        toast.error(message);
       }
-    };
-    load();
+    } else {
+      const message = "Unable to load events right now.";
+      setEvents([]);
+      setEventsError(message);
+      toast.error(message);
+    }
+
+    if (postsResult.status === "fulfilled") {
+      const postsRes = postsResult.value;
+      if (postsRes.ok) {
+        const data = await postsRes.json();
+        setPosts(Array.isArray(data) ? data : []);
+      } else {
+        const message = await getApiErrorMessage(postsRes, "Failed to load blog posts");
+        setPosts([]);
+        setPostsError(message);
+        toast.error(message);
+      }
+    } else {
+      const message = "Unable to load blog posts right now.";
+      setPosts([]);
+      setPostsError(message);
+      toast.error(message);
+    }
+
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    void loadPageData();
+  }, [loadPageData]);
 
   useEffect(() => {
     if (!registerOpen) return;
@@ -351,6 +387,16 @@ const Events = () => {
 
             {!loading && activeSection === "events" && (
               <div className="space-y-10">
+                {eventsError && (
+                  <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <span>{eventsError}</span>
+                      <Button variant="outline" size="sm" onClick={() => void loadPageData()}>
+                        Retry
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {featuredEvent && (
                   <div className="grid grid-cols-1 gap-8 overflow-hidden rounded-2xl border border-border bg-card lg:grid-cols-2">
                     <img
@@ -394,7 +440,7 @@ const Events = () => {
                   </div>
                 )}
 
-                {otherEvents.length === 0 ? (
+                {!featuredEvent && otherEvents.length === 0 ? (
                   <div className="text-center text-muted-foreground py-12">
                     No upcoming events right now.
                   </div>
@@ -440,6 +486,16 @@ const Events = () => {
 
             {!loading && activeSection === "blogs" && (
               <div className="space-y-10">
+                {postsError && (
+                  <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <span>{postsError}</span>
+                      <Button variant="outline" size="sm" onClick={() => void loadPageData()}>
+                        Retry
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {featuredPost && (
                   <div className="grid grid-cols-1 gap-8 overflow-hidden rounded-2xl border border-border bg-card lg:grid-cols-2">
                     <img
@@ -463,7 +519,7 @@ const Events = () => {
                   </div>
                 )}
 
-                {otherPosts.length === 0 ? (
+                {!featuredPost && otherPosts.length === 0 ? (
                   <div className="text-center text-muted-foreground py-12">
                     No blog posts available yet.
                   </div>
