@@ -180,6 +180,21 @@ npm run build
 - If your DB provider gives you a custom CA certificate, set `PGSSL_CA` or `PGSSL_CA_FILE`.
 - Never commit real credentials.
 
+## Docker and CI
+
+Build and run the app locally with Docker:
+
+```bash
+docker compose up --build
+```
+
+The frontend will be available on `http://localhost:4173` and the API on `http://localhost:8080`.
+
+The repository also includes `.github/workflows/ci.yml` to run:
+
+- frontend lint, tests, and build
+- backend Node syntax checks
+
 ## Common errors and fixes
 
 ### `ECONNREFUSED 127.0.0.1:5432`

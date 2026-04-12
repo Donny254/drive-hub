@@ -6,10 +6,12 @@ import AdminBulkActionBar from "@/components/admin/AdminBulkActionBar";
 import AdminBookingsTab from "@/components/admin/AdminBookingsTab";
 import AdminDeleteConfirmDialog from "@/components/admin/AdminDeleteConfirmDialog";
 import AdminEventRegistrationsTab from "@/components/admin/AdminEventRegistrationsTab";
+import AdminCryptoPaymentsTab from "@/components/admin/AdminCryptoPaymentsTab";
 import AdminOverviewTab from "@/components/admin/AdminOverviewTab";
 import AdminInquiriesTab from "@/components/admin/AdminInquiriesTab";
 import AdminOrdersTab from "@/components/admin/AdminOrdersTab";
 import AdminListingsTab from "@/components/admin/AdminListingsTab";
+import AdminPayoutsTab from "@/components/admin/AdminPayoutsTab";
 import AdminServiceBookingsTab from "@/components/admin/AdminServiceBookingsTab";
 import AdminSettingsTab from "@/components/admin/AdminSettingsTab";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
@@ -18,6 +20,7 @@ import AdminUsersTab from "@/components/admin/AdminUsersTab";
 import type {
   AdminAnalytics,
   Booking,
+  CryptoTransaction,
   DeleteTarget,
   EventItem,
   EventRegistration,
@@ -28,6 +31,7 @@ import type {
   OrderItem,
   Post,
   Product,
+  Payout,
   Service,
   ServiceBooking,
   SiteSettings,
@@ -90,6 +94,8 @@ const ADMIN_TABS = [
   "listings",
   "orders",
   "bookings",
+  "crypto-payments",
+  "payouts",
   "service-bookings",
   "event-registrations",
   "inquiries",
@@ -135,6 +141,7 @@ const Admin = () => {
     analytics,
     authHeaders,
     bookings,
+    cryptoTransactions,
     error,
     eventRegistrations,
     events,
@@ -144,6 +151,7 @@ const Admin = () => {
     listings,
     loading,
     orders,
+    payouts,
     posts,
     products,
     serviceBookings,
@@ -181,6 +189,7 @@ const Admin = () => {
   const [creatingProduct, setCreatingProduct] = useState<Product | null>(null);
   const [creatingPost, setCreatingPost] = useState<Post | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [editingPayout, setEditingPayout] = useState<Payout | null>(null);
   const [orderDetailsOpen, setOrderDetailsOpen] = useState(false);
   const [orderDetails, setOrderDetails] = useState<{ order: Order; items: OrderItem[] } | null>(null);
   const [orderDetailsLoading, setOrderDetailsLoading] = useState(false);
@@ -321,6 +330,34 @@ const Admin = () => {
     }
   };
 
+  const openCryptoReview = (transaction: CryptoTransaction) => {
+    if (transaction.relationType === "order" && transaction.orderId) {
+      const order = orders.find((item) => item.id === transaction.orderId);
+      if (order) {
+        setEditingOrder({ ...order });
+        setActiveTab("orders");
+      }
+      return;
+    }
+
+    if (transaction.relationType === "booking" && transaction.bookingId) {
+      const booking = bookings.find((item) => item.id === transaction.bookingId);
+      if (booking) {
+        setEditingBooking({ ...booking });
+        setActiveTab("bookings");
+      }
+      return;
+    }
+
+    if (transaction.relationType === "event_registration" && transaction.eventRegistrationId) {
+      const registration = eventRegistrations.find((item) => item.id === transaction.eventRegistrationId);
+      if (registration) {
+        setEditingEventRegistration({ ...registration });
+        setActiveTab("event-registrations");
+      }
+    }
+  };
+
   const {
     approveListing,
     bulkApproveListings,
@@ -346,6 +383,7 @@ const Admin = () => {
     exportSellerPerformanceReport,
     loadOrderDetails,
     saveBooking,
+    savePayout,
     saveEvent,
     saveEventRegistration,
     saveInquiry,
@@ -366,6 +404,8 @@ const Admin = () => {
     inquiries,
     users,
     bookings,
+    editingPayout,
+    setEditingPayout,
     selectedListingIds,
     selectedInquiryIds,
     selectedUserIds,
@@ -566,6 +606,8 @@ const Admin = () => {
                   <TabsTrigger className="rounded-xl px-4 py-2" value="overview">Overview</TabsTrigger>
                   <TabsTrigger className="rounded-xl px-4 py-2" value="listings">Listings</TabsTrigger>
                   <TabsTrigger className="rounded-xl px-4 py-2" value="bookings">Bookings</TabsTrigger>
+                  <TabsTrigger className="rounded-xl px-4 py-2" value="crypto-payments">Crypto Payments</TabsTrigger>
+                  <TabsTrigger className="rounded-xl px-4 py-2" value="payouts">Payouts</TabsTrigger>
                   <TabsTrigger className="rounded-xl px-4 py-2" value="service-bookings">Service Bookings</TabsTrigger>
                   <TabsTrigger className="rounded-xl px-4 py-2" value="event-registrations">Event Registrations</TabsTrigger>
                   <TabsTrigger className="rounded-xl px-4 py-2" value="inquiries">Inquiries</TabsTrigger>
@@ -582,6 +624,7 @@ const Admin = () => {
                   analytics={analytics}
                   flaggedMediaListings={flaggedMediaListings}
                   systemHealth={systemHealth}
+                  cryptoTransactions={cryptoTransactions}
                   refreshingSystemHealth={refreshingSystemHealth}
                   exportFinanceReport={() => exportFinanceReport(orders)}
                   exportFraudReport={() => exportFraudReport(listings)}
@@ -589,6 +632,7 @@ const Admin = () => {
                   refreshSystemHealth={refreshSystemHealth}
                   openEdit={openEdit}
                   approveListing={approveListing}
+                  openCryptoReview={openCryptoReview}
                   statusVariant={statusVariant}
                 />
 
@@ -640,28 +684,46 @@ const Admin = () => {
                   addEditImageUrl={addEditImageUrl}
                 />
 
-                <AdminOrdersTab
-                  orders={orders}
-                  editingOrder={editingOrder}
-                  setEditingOrder={setEditingOrder}
-                  saveOrder={saveOrder}
-                  loadOrderDetails={loadOrderDetails}
-                  orderDetailsOpen={orderDetailsOpen}
-                  setOrderDetailsOpen={setOrderDetailsOpen}
-                  orderDetails={orderDetails}
-                  orderDetailsLoading={orderDetailsLoading}
-                  orderDetailsError={orderDetailsError}
-                  setDeleteTarget={setDeleteTarget}
-                  statusVariant={statusVariant}
+                  <AdminOrdersTab
+                    orders={orders}
+                    editingOrder={editingOrder}
+                    setEditingOrder={setEditingOrder}
+                    saveOrder={saveOrder}
+                    loadOrderDetails={loadOrderDetails}
+                    orderDetailsOpen={orderDetailsOpen}
+                    setOrderDetailsOpen={setOrderDetailsOpen}
+                    orderDetails={orderDetails}
+                    orderDetailsLoading={orderDetailsLoading}
+                    orderDetailsError={orderDetailsError}
+                    setDeleteTarget={setDeleteTarget}
+                    statusVariant={statusVariant}
+                    formatMoney={formatMoney}
+                    token={token}
+                  />
+
+                  <AdminBookingsTab
+                    bookings={bookings}
+                    editingBooking={editingBooking}
+                    setEditingBooking={setEditingBooking}
+                    saveBooking={saveBooking}
+                    setDeleteTarget={setDeleteTarget}
+                    statusVariant={statusVariant}
+                    formatMoney={formatMoney}
+                    token={token}
+                  />
+
+                <AdminCryptoPaymentsTab
+                  cryptoTransactions={cryptoTransactions}
+                  openCryptoReview={openCryptoReview}
                   formatMoney={formatMoney}
+                  statusVariant={statusVariant}
                 />
 
-                <AdminBookingsTab
-                  bookings={bookings}
-                  editingBooking={editingBooking}
-                  setEditingBooking={setEditingBooking}
-                  saveBooking={saveBooking}
-                  setDeleteTarget={setDeleteTarget}
+                <AdminPayoutsTab
+                  payouts={payouts}
+                  editingPayout={editingPayout}
+                  setEditingPayout={setEditingPayout}
+                  savePayout={savePayout}
                   statusVariant={statusVariant}
                   formatMoney={formatMoney}
                 />
@@ -674,13 +736,14 @@ const Admin = () => {
                   statusVariant={statusVariant}
                 />
 
-                <AdminEventRegistrationsTab
-                  eventRegistrations={eventRegistrations}
-                  editingEventRegistration={editingEventRegistration}
-                  setEditingEventRegistration={setEditingEventRegistration}
-                  saveEventRegistration={saveEventRegistration}
-                  statusVariant={statusVariant}
-                />
+                  <AdminEventRegistrationsTab
+                    eventRegistrations={eventRegistrations}
+                    editingEventRegistration={editingEventRegistration}
+                    setEditingEventRegistration={setEditingEventRegistration}
+                    saveEventRegistration={saveEventRegistration}
+                    statusVariant={statusVariant}
+                    token={token}
+                  />
 
                 <TabsContent value="inquiries" className="mt-6">
                   <AdminInquiriesTab

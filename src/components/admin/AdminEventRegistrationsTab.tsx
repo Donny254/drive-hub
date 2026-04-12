@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import CryptoProofUploader from "@/components/shared/CryptoProofUploader";
 
 type AdminEventRegistrationsTabProps = {
   eventRegistrations: EventRegistration[];
@@ -24,6 +25,7 @@ type AdminEventRegistrationsTabProps = {
   setEditingEventRegistration: Dispatch<SetStateAction<EventRegistration | null>>;
   saveEventRegistration: () => Promise<void> | void;
   statusVariant: (status?: string | null) => "default" | "secondary" | "destructive" | "outline";
+  token?: string | null;
 };
 
 const AdminEventRegistrationsTab = ({
@@ -32,6 +34,7 @@ const AdminEventRegistrationsTab = ({
   setEditingEventRegistration,
   saveEventRegistration,
   statusVariant,
+  token,
 }: AdminEventRegistrationsTabProps) => {
   return (
     <TabsContent value="event-registrations" className="mt-6">
@@ -52,7 +55,7 @@ const AdminEventRegistrationsTab = ({
                 {eventRegistrations.filter((registration) => registration.status === "pending").length} pending
               </div>
               <div className="rounded-full border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
-                {eventRegistrations.filter((registration) => registration.status === "confirmed").length} confirmed
+                {eventRegistrations.filter((registration) => registration.paymentStatus === "paid" || registration.status === "confirmed").length} confirmed
               </div>
             </div>
           </div>
@@ -82,7 +85,14 @@ const AdminEventRegistrationsTab = ({
                         </p>
                       </div>
                     </TableCell>
-                    <TableCell>{registration.tickets}</TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        <p>{registration.tickets}</p>
+                        <p className="mt-1 text-xs text-muted-foreground capitalize">
+                          {registration.paymentMethod ?? "manual"} • {registration.paymentStatus ?? "unpaid"}
+                        </p>
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <Badge variant={statusVariant(registration.status)} className="capitalize">
                         {registration.status}
@@ -145,6 +155,71 @@ const AdminEventRegistrationsTab = ({
                                     }
                                   />
                                 </div>
+                                <div className="grid gap-2">
+                                  <Label>Payment Method</Label>
+                                  <select
+                                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                                    value={editingEventRegistration.paymentMethod ?? ""}
+                                    onChange={(e) =>
+                                      setEditingEventRegistration({
+                                        ...editingEventRegistration,
+                                        paymentMethod: e.target.value || null,
+                                      })
+                                    }
+                                  >
+                                    <option value="">Not set</option>
+                                    <option value="mpesa">M-Pesa</option>
+                                    <option value="crypto">Crypto</option>
+                                    <option value="free">Free</option>
+                                    <option value="bank">Bank</option>
+                                  </select>
+                                </div>
+                                <div className="grid gap-2">
+                                  <Label>Payment Status</Label>
+                                  <select
+                                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                                    value={editingEventRegistration.paymentStatus ?? "unpaid"}
+                                    onChange={(e) =>
+                                      setEditingEventRegistration({
+                                        ...editingEventRegistration,
+                                        paymentStatus: e.target.value as EventRegistration["paymentStatus"],
+                                      })
+                                    }
+                                  >
+                                    <option value="unpaid">Unpaid</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="paid">Paid</option>
+                                    <option value="failed">Failed</option>
+                                  </select>
+                                </div>
+                                {editingEventRegistration.paymentMethod === "crypto" && (
+                                  <div className="grid gap-4">
+                                    <CryptoProofUploader
+                                      token={token}
+                                      proofImageUrl={editingEventRegistration.cryptoProofImageUrl ?? null}
+                                      onProofImageUrlChange={(value) =>
+                                        setEditingEventRegistration({
+                                          ...editingEventRegistration,
+                                          cryptoProofImageUrl: value,
+                                        })
+                                      }
+                                      label="Crypto Proof Image"
+                                      description="Upload or replace the crypto transfer proof linked to this registration."
+                                    />
+                                    <div className="grid gap-2">
+                                      <Label>Crypto Review Notes</Label>
+                                      <Textarea
+                                        value={editingEventRegistration.cryptoReviewNotes ?? ""}
+                                        onChange={(e) =>
+                                          setEditingEventRegistration({
+                                            ...editingEventRegistration,
+                                            cryptoReviewNotes: e.target.value || null,
+                                          })
+                                        }
+                                      />
+                                    </div>
+                                  </div>
+                                )}
                                 <div className="grid gap-2">
                                   <Label>Notes</Label>
                                   <Textarea

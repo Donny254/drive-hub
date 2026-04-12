@@ -31,6 +31,11 @@ CREATE TABLE IF NOT EXISTS site_settings (
   bank_branch text,
   bank_swift text,
   bank_instructions text,
+  seller_commission_rate integer NOT NULL DEFAULT 0 CHECK (seller_commission_rate >= 0 AND seller_commission_rate <= 100),
+  crypto_currency text,
+  crypto_network text,
+  crypto_wallet_address text,
+  crypto_instructions text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -166,8 +171,24 @@ CREATE TABLE IF NOT EXISTS orders (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid REFERENCES users(id) ON DELETE SET NULL,
   total_cents integer NOT NULL,
+  payment_method text,
+  payment_status text NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'pending', 'paid', 'failed')),
+  paid_at timestamptz,
   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'cancelled', 'refunded')),
   created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS seller_payouts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  booking_id uuid NOT NULL UNIQUE REFERENCES bookings(id) ON DELETE CASCADE,
+  seller_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  amount_cents integer NOT NULL,
+  fee_cents integer NOT NULL DEFAULT 0,
+  payout_status text NOT NULL DEFAULT 'pending' CHECK (payout_status IN ('pending', 'paid', 'failed', 'cancelled')),
+  payout_at timestamptz,
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS order_items (
@@ -261,6 +282,25 @@ CREATE TABLE IF NOT EXISTS mpesa_transactions (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS crypto_transactions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id uuid REFERENCES orders(id) ON DELETE SET NULL,
+  booking_id uuid REFERENCES bookings(id) ON DELETE SET NULL,
+  event_registration_id uuid REFERENCES event_registrations(id) ON DELETE SET NULL,
+  asset text NOT NULL DEFAULT 'USDT',
+  network text,
+  wallet_address text,
+  payer_wallet text,
+  transaction_hash text NOT NULL,
+  proof_image_url text,
+  amount_cents integer NOT NULL,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'paid', 'failed', 'cancelled')),
+  review_notes text,
+  response jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 ALTER TABLE bookings
   ADD COLUMN IF NOT EXISTS amount_cents integer;
 
@@ -275,6 +315,15 @@ ALTER TABLE bookings
 
 ALTER TABLE events
   ADD COLUMN IF NOT EXISTS price_cents integer NOT NULL DEFAULT 0;
+
+ALTER TABLE orders
+  ADD COLUMN IF NOT EXISTS payment_method text;
+
+ALTER TABLE orders
+  ADD COLUMN IF NOT EXISTS payment_status text NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid', 'pending', 'paid', 'failed'));
+
+ALTER TABLE orders
+  ADD COLUMN IF NOT EXISTS paid_at timestamptz;
 
 ALTER TABLE event_registrations
   ADD COLUMN IF NOT EXISTS amount_cents integer NOT NULL DEFAULT 0;
@@ -293,6 +342,24 @@ ALTER TABLE mpesa_transactions
 
 ALTER TABLE mpesa_transactions
   ADD COLUMN IF NOT EXISTS event_registration_id uuid REFERENCES event_registrations(id) ON DELETE SET NULL;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS crypto_currency text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS crypto_network text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS crypto_wallet_address text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS crypto_instructions text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS seller_commission_rate integer NOT NULL DEFAULT 0 CHECK (seller_commission_rate >= 0 AND seller_commission_rate <= 100);
+
+ALTER TABLE crypto_transactions
+  ADD COLUMN IF NOT EXISTS proof_image_url text;
 
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS trigger AS $$
@@ -330,6 +397,11 @@ FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
 DROP TRIGGER IF EXISTS mpesa_transactions_set_updated_at ON mpesa_transactions;
 CREATE TRIGGER mpesa_transactions_set_updated_at
 BEFORE UPDATE ON mpesa_transactions
+FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
+
+DROP TRIGGER IF EXISTS crypto_transactions_set_updated_at ON crypto_transactions;
+CREATE TRIGGER crypto_transactions_set_updated_at
+BEFORE UPDATE ON crypto_transactions
 FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
 
 ALTER TABLE users

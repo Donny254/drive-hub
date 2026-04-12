@@ -21,27 +21,34 @@ const DatePickerField = ({
   const minDateParsed = parseDateInputValue(minDate);
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="secondary" className="justify-between" type="button" disabled={disabled}>
-          {formatDateButtonLabel(value, placeholder)}
+    <div className="flex gap-2">
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button variant="secondary" className="justify-between" type="button" disabled={disabled}>
+            {formatDateButtonLabel(value, placeholder)}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            selected={parseDateInputValue(value)}
+            disabled={(date) => Boolean(minDateParsed && date < minDateParsed)}
+            onSelect={(date) => {
+              if (!date) return;
+              onChange(
+                `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
+              );
+            }}
+            numberOfMonths={1}
+          />
+        </PopoverContent>
+      </Popover>
+      {value && !disabled ? (
+        <Button type="button" variant="ghost" onClick={() => onChange("")} aria-label="Clear date">
+          Clear
         </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
-          mode="single"
-          selected={parseDateInputValue(value)}
-          disabled={(date) => Boolean(minDateParsed && date < minDateParsed)}
-          onSelect={(date) => {
-            if (!date) return;
-            onChange(
-              `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
-            );
-          }}
-          numberOfMonths={1}
-        />
-      </PopoverContent>
-    </Popover>
+      ) : null}
+    </div>
   );
 };
 

@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
@@ -9,13 +9,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Car, Fuel, Gauge, Calendar, DollarSign, MapPin, Scale, ShieldCheck, BookmarkPlus, X } from "lucide-react";
+import { ArrowDown, ArrowUp, BookmarkPlus, Calendar, Car, DollarSign, Fuel, Gauge, MapPin, Scale, ShieldCheck, X } from "lucide-react";
 import MarketSlider from "@/components/market/MarketSlider";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
 import { getApiErrorMessage } from "@/lib/feedback";
 import { isEndBeforeStart, isPastDateValue } from "@/lib/date";
+import CryptoProofUploader from "@/components/shared/CryptoProofUploader";
+import CryptoPaymentTimeline from "@/components/shared/CryptoPaymentTimeline";
+import CryptoPaymentDetails from "@/components/shared/CryptoPaymentDetails";
+import useCryptoPaymentStatus from "@/hooks/useCryptoPaymentStatus";
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?w=600";
@@ -57,6 +61,13 @@ type SavedSearch = {
   };
 };
 
+type CryptoDetails = {
+  asset: string;
+  network: string | null;
+  walletAddress: string | null;
+  instructions: string | null;
+};
+
 const tabs = [
   { id: "all", label: "All Cars" },
   { id: "buy", label: "Buy" },
@@ -95,6 +106,11 @@ const Market = () => {
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookingId, setBookingId] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<"idle" | "pending" | "paid" | "failed">("idle");
+  const [paymentMethod, setPaymentMethod] = useState<"mpesa" | "crypto">("mpesa");
+  const [cryptoDetails, setCryptoDetails] = useState<CryptoDetails | null>(null);
+  const [transactionHash, setTransactionHash] = useState("");
+  const [payerWallet, setPayerWallet] = useState("");
+  const [proofImageUrl, setProofImageUrl] = useState<string | null>(null);
   const [bookingAvailability, setBookingAvailability] = useState<
     Array<{ startDate: string | null; endDate: string | null }>
   >([]);
@@ -109,6 +125,22 @@ const Market = () => {
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [purchaseSuccess, setPurchaseSuccess] = useState<string | null>(null);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
+
+  const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+  const bookingDialogRef = useRef<HTMLDivElement | null>(null);
+  const isAdmin = user?.role === "admin";
+
+  const {
+    data: cryptoStatusData,
+    loading: cryptoStatusLoading,
+    error: cryptoStatusError,
+    refresh: refreshCryptoStatus,
+  } = useCryptoPaymentStatus(
+    bookingId ? `/api/payments/crypto/booking-status/${bookingId}` : null,
+    Boolean(bookingListing && paymentMethod === "crypto" && bookingId),
+    5000,
+    authHeaders
+  );
 
   const fetchListings = useCallback(async () => {
     try {
@@ -143,6 +175,23 @@ const Market = () => {
   useEffect(() => {
     fetchListings();
   }, [fetchListings]);
+
+  useEffect(() => {
+    const loadCryptoDetails = async () => {
+      try {
+        const resp = await apiFetch("/api/payments/crypto-details");
+        if (resp.ok) {
+          setCryptoDetails(await resp.json().catch(() => null));
+        } else {
+          setCryptoDetails(null);
+        }
+      } catch (err) {
+        console.error("Failed to load crypto details", err);
+        setCryptoDetails(null);
+      }
+    };
+    void loadCryptoDetails();
+  }, []);
 
   useEffect(() => {
     try {
@@ -194,6 +243,10 @@ const Market = () => {
     setBookingPhone("");
     setBookingId(null);
     setPaymentStatus("idle");
+    setPaymentMethod("mpesa");
+    setTransactionHash("");
+    setPayerWallet("");
+    setProofImageUrl(null);
     setBookingAvailability([]);
     setPurchaseSuccess(null);
     setPurchaseError(null);
@@ -238,6 +291,16 @@ const Market = () => {
       toast.error("Phone number is required.");
       return;
     }
+    if (bookingListing.listingType === "rent" && paymentMethod === "crypto" && !transactionHash.trim()) {
+      setBookingError("Transaction hash is required for crypto payment.");
+      toast.error("Transaction hash is required for crypto payment.");
+      return;
+    }
+    if (bookingListing.listingType === "rent" && paymentMethod === "crypto" && !proofImageUrl) {
+      setBookingError("Payment proof image is required for crypto payment.");
+      toast.error("Payment proof image is required for crypto payment.");
+      return;
+    }
     if (bookingListing.listingType === "rent") {
       const available = isRangeAvailable(bookingStart, bookingEnd || bookingStart);
       if (!available) {
@@ -254,7 +317,11 @@ const Market = () => {
       const effectiveEnd =
         bookingListing.listingType === "rent" ? bookingEnd || null : null;
 
-      const resp = await apiFetch("/api/payments/mpesa/stkpush-booking", {
+      const endpoint =
+        paymentMethod === "crypto"
+          ? "/api/payments/crypto/booking"
+          : "/api/payments/mpesa/stkpush-booking";
+      const resp = await apiFetch(endpoint, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: JSON.stringify({
@@ -262,6 +329,11 @@ const Market = () => {
           startDate: effectiveStart,
           endDate: effectiveEnd,
           phoneNumber: bookingPhone,
+          transactionHash,
+          payerWallet,
+          proofImageUrl,
+          asset: cryptoDetails?.asset,
+          network: cryptoDetails?.network,
         }),
       });
 
@@ -271,11 +343,17 @@ const Market = () => {
 
       const data = await resp.json().catch(() => ({}));
       setBookingId(data.bookingId || null);
-      setPaymentStatus("pending");
+      setPaymentStatus(paymentMethod === "crypto" ? "idle" : "pending");
       setBookingSuccess(
-        data?.response?.CustomerMessage || "M-Pesa prompt sent. Complete the payment on your phone."
+        paymentMethod === "crypto"
+          ? data?.message || "Crypto payment submitted for review."
+          : data?.response?.CustomerMessage || "M-Pesa prompt sent. Complete the payment on your phone."
       );
-      toast.success(data?.response?.CustomerMessage || "M-Pesa prompt sent. Complete payment on your phone.");
+      toast.success(
+        paymentMethod === "crypto"
+          ? data?.message || "Crypto payment submitted for review."
+          : data?.response?.CustomerMessage || "M-Pesa prompt sent. Complete payment on your phone."
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to create booking.";
       setBookingError(message);
@@ -320,7 +398,7 @@ const Market = () => {
   };
 
   useEffect(() => {
-    if (!bookingListing || !bookingId || paymentStatus !== "pending") return;
+    if (!bookingListing || !bookingId || paymentStatus !== "pending" || paymentMethod !== "mpesa") return;
     let active = true;
 
     const poll = async () => {
@@ -350,7 +428,7 @@ const Market = () => {
       active = false;
       window.clearInterval(intervalId);
     };
-  }, [bookingListing, bookingId, paymentStatus, token]);
+  }, [bookingListing, bookingId, paymentMethod, paymentStatus, token]);
 
   const computeDaysBetween = (start: string, end?: string | null) => {
     if (!start) return 1;
@@ -429,6 +507,18 @@ const Market = () => {
     ? (bookingListing.priceCents / 100) * totalDays
     : 0;
   const isHighValue = bookingListing ? bookingListing.priceCents > 50000000 : false;
+  const bookingBasePrice = bookingListing
+    ? bookingListing.listingType === "rent"
+      ? `${(bookingListing.priceCents / 100).toLocaleString()} / day`
+      : `KES ${(bookingListing.priceCents / 100).toLocaleString()}`
+    : "KES 0";
+  const scrollBookingDialog = (direction: "top" | "bottom") => {
+    if (!bookingDialogRef.current) return;
+    bookingDialogRef.current.scrollTo({
+      top: direction === "top" ? 0 : bookingDialogRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  };
   const clearFilters = () => {
     setSearch("");
     setYear("");
@@ -862,16 +952,26 @@ const Market = () => {
       </Dialog>
 
       <Dialog open={Boolean(bookingListing)} onOpenChange={() => setBookingListing(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto" ref={bookingDialogRef}>
           <DialogHeader>
             <DialogTitle>
               {bookingListing?.listingType === "rent" ? "Rent" : "Buy"} {bookingListing?.title}
             </DialogTitle>
             <DialogDescription>
-              Confirm your booking or purchase details below. Rental requests collect dates and payment details, while high-value purchases switch to a manual payment request flow.
+              Confirm your booking or purchase details below. Rental requests collect dates, proof, and payment details, while high-value purchases switch to a manual payment request flow.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" size="sm" onClick={() => scrollBookingDialog("top")}>
+                <ArrowUp className="mr-2 h-4 w-4" />
+                Scroll to top
+              </Button>
+              <Button type="button" variant="secondary" size="sm" onClick={() => scrollBookingDialog("bottom")}>
+                <ArrowDown className="mr-2 h-4 w-4" />
+                Scroll to payment
+              </Button>
+            </div>
             {bookingListing?.listingType === "rent" && (
               <>
                 <div className="grid gap-2">
@@ -943,17 +1043,79 @@ const Market = () => {
               </>
             )}
             <div className="grid gap-2">
-              <Label>Phone (M-Pesa)</Label>
+              <Label>Phone</Label>
               <Input
                 placeholder="07xx xxx xxx"
                 value={bookingPhone}
                 onChange={(e) => setBookingPhone(e.target.value)}
               />
             </div>
-            <div className="flex items-center justify-between border-t border-border pt-4">
-              <span>Total</span>
-              <span className="font-display text-xl text-primary">KES {totalPrice.toLocaleString()}</span>
+            <div className="rounded-md border border-border bg-card p-4 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Base price</span>
+                <span className="font-medium">{bookingBasePrice}</span>
+              </div>
+              {bookingListing?.listingType === "rent" && (
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Duration</span>
+                  <span className="font-medium">
+                    {totalDays} day{totalDays > 1 ? "s" : ""}
+                  </span>
+                </div>
+              )}
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Payment method</span>
+                <span className="font-medium capitalize">{paymentMethod}</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
+                <span className="font-medium">Total</span>
+                <span className="font-semibold text-primary">KES {totalPrice.toLocaleString()}</span>
+              </div>
             </div>
+            <div className="grid gap-2">
+              <Label>Payment Method</Label>
+              <select
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value as "mpesa" | "crypto")}
+              >
+                <option value="mpesa">M-Pesa</option>
+                <option value="crypto">Crypto</option>
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {paymentMethod === "crypto"
+                  ? "Crypto payments are reviewed manually after proof and transaction details are submitted."
+                  : "M-Pesa sends a payment prompt to your phone for instant confirmation."}
+              </p>
+            </div>
+            {paymentMethod === "crypto" && (
+              <CryptoPaymentDetails
+                asset={cryptoDetails?.asset}
+                network={cryptoDetails?.network}
+                walletAddress={cryptoDetails?.walletAddress}
+                instructions={cryptoDetails?.instructions}
+                showAdminShortcut={isAdmin}
+              />
+            )}
+            {paymentMethod === "crypto" && (
+              <div className="grid gap-4">
+                <CryptoProofUploader
+                  token={token}
+                  proofImageUrl={proofImageUrl}
+                  onProofImageUrlChange={setProofImageUrl}
+                  label="Payment proof"
+                  description="Upload a clear transfer screenshot or receipt before submitting."
+                />
+                <div className="grid gap-2">
+                  <Label>Transaction Hash</Label>
+                  <Input value={transactionHash} onChange={(e) => setTransactionHash(e.target.value)} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Payer Wallet (optional)</Label>
+                  <Input value={payerWallet} onChange={(e) => setPayerWallet(e.target.value)} />
+                </div>
+              </div>
+            )}
             {bookingListing?.listingType !== "rent" && isHighValue && (
               <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
                 <p className="font-medium text-foreground">Bank Transfer Required</p>
@@ -982,14 +1144,30 @@ const Market = () => {
                   .join(", ")}
               </p>
             )}
+            <div className="sticky bottom-4 z-20 flex justify-end">
+              <Button type="button" variant="secondary" size="sm" onClick={() => scrollBookingDialog("top")}>
+                <ArrowUp className="mr-2 h-4 w-4" />
+                Back to top
+              </Button>
+            </div>
+            {paymentMethod === "crypto" && bookingId && (
+              <CryptoPaymentTimeline
+                resource={cryptoStatusData?.resource || null}
+                transaction={cryptoStatusData?.transaction || null}
+                loading={cryptoStatusLoading}
+                error={cryptoStatusError}
+                onRefresh={refreshCryptoStatus}
+                refreshing={cryptoStatusLoading}
+              />
+            )}
             {bookingError && <p className="text-sm text-destructive">{bookingError}</p>}
             {bookingSuccess && <p className="text-sm text-emerald-500">{bookingSuccess}</p>}
-            {paymentStatus === "pending" && (
+            {paymentStatus === "pending" && paymentMethod === "mpesa" && (
               <p className="text-sm text-muted-foreground">Waiting for M-Pesa confirmation...</p>
             )}
           </div>
           <DialogFooter>
-            {paymentStatus === "paid" ? (
+            {paymentStatus === "paid" || (bookingListing?.listingType === "rent" && paymentMethod === "crypto" && bookingSuccess) ? (
               <Button variant="hero" onClick={() => setBookingListing(null)}>
                 Done
               </Button>
@@ -999,7 +1177,13 @@ const Market = () => {
               </Button>
             ) : (
               <Button variant="hero" onClick={submitBooking} disabled={bookingLoading}>
-                {bookingLoading ? "Requesting..." : "Pay with M-Pesa"}
+                {bookingLoading
+                  ? paymentMethod === "crypto"
+                    ? "Submitting..."
+                    : "Requesting..."
+                  : paymentMethod === "crypto"
+                    ? "Submit Crypto Payment"
+                    : "Pay with M-Pesa"}
               </Button>
             )}
           </DialogFooter>

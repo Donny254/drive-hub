@@ -3,6 +3,7 @@ import { apiFetch } from "@/lib/api";
 import type {
   AdminAnalytics,
   Booking,
+  CryptoTransaction,
   EventItem,
   EventRegistration,
   Inquiry,
@@ -10,6 +11,7 @@ import type {
   Order,
   Post,
   Product,
+  Payout,
   Service,
   ServiceBooking,
   SiteSettings,
@@ -35,9 +37,11 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
   const [serviceBookings, setServiceBookings] = useState<ServiceBooking[]>([]);
   const [eventRegistrations, setEventRegistrations] = useState<EventRegistration[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+  const [payouts, setPayouts] = useState<Payout[]>([]);
   const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
+  const [cryptoTransactions, setCryptoTransactions] = useState<CryptoTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,6 +79,8 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
         postsRes,
         settingsRes,
         analyticsRes,
+        cryptoTransactionsRes,
+        payoutsRes,
       ] = await Promise.all([
         apiFetch("/api/listings?limit=200", { headers: authHeaders }),
         apiFetch("/api/orders", { headers: authHeaders }),
@@ -89,6 +95,8 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
         apiFetch("/api/posts", { headers: authHeaders }),
         apiFetch("/api/settings", { headers: authHeaders }),
         apiFetch("/api/listings/analytics/admin", { headers: authHeaders }),
+        apiFetch("/api/payments/crypto-transactions?status=all", { headers: authHeaders }),
+        apiFetch("/api/payouts", { headers: authHeaders }),
       ]);
 
       if (!listingsRes.ok) throw new Error("Failed to load listings");
@@ -104,6 +112,8 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
       if (!postsRes.ok) throw new Error("Failed to load posts");
       if (!settingsRes.ok) throw new Error("Failed to load settings");
       if (!analyticsRes.ok) throw new Error("Failed to load analytics");
+      if (!cryptoTransactionsRes.ok) throw new Error("Failed to load crypto transactions");
+      if (!payoutsRes.ok) throw new Error("Failed to load payouts");
 
       setListings(await listingsRes.json());
       setOrders(await ordersRes.json());
@@ -118,6 +128,8 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
       setPosts(await postsRes.json());
       setSettings(await settingsRes.json());
       setAnalytics(await analyticsRes.json());
+      setCryptoTransactions(await cryptoTransactionsRes.json());
+      setPayouts(await payoutsRes.json());
       await fetchSystemHealth();
     } catch (err) {
       console.error(err);
@@ -135,6 +147,7 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
     analytics,
     authHeaders,
     bookings,
+    cryptoTransactions,
     error,
     eventRegistrations,
     events,
@@ -144,6 +157,7 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
     listings,
     loading,
     orders,
+    payouts,
     posts,
     products,
     serviceBookings,
@@ -152,6 +166,7 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
     systemHealth,
     setAnalytics,
     setBookings,
+    setCryptoTransactions,
     setError,
     setEventRegistrations,
     setEvents,
@@ -159,6 +174,7 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
     setListings,
     setLoading,
     setOrders,
+    setPayouts,
     setPosts,
     setProducts,
     setServiceBookings,

@@ -14,9 +14,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TabsContent } from "@/components/ui/tabs";
 import { resolveImageUrl } from "@/lib/api";
+import CryptoProofUploader from "@/components/shared/CryptoProofUploader";
 
 type AdminOrdersTabProps = {
   orders: Order[];
@@ -32,6 +34,7 @@ type AdminOrdersTabProps = {
   setDeleteTarget: Dispatch<SetStateAction<DeleteTarget>>;
   statusVariant: (status?: string | null) => "default" | "secondary" | "destructive" | "outline";
   formatMoney: (cents?: number | null) => string;
+  token?: string | null;
 };
 
 const AdminOrdersTab = ({
@@ -48,6 +51,7 @@ const AdminOrdersTab = ({
   setDeleteTarget,
   statusVariant,
   formatMoney,
+  token,
 }: AdminOrdersTabProps) => {
   return (
     <TabsContent value="orders" className="mt-6">
@@ -68,7 +72,7 @@ const AdminOrdersTab = ({
                 {orders.filter((order) => order.status === "pending").length} pending
               </div>
               <div className="rounded-full border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
-                {orders.filter((order) => order.status === "paid").length} paid
+                {orders.filter((order) => order.paymentStatus === "paid" || order.status === "paid").length} paid
               </div>
             </div>
           </div>
@@ -88,7 +92,10 @@ const AdminOrdersTab = ({
                     {order.status}
                   </Badge>
                 </div>
-                <p className="mt-3 text-sm text-muted-foreground">{formatMoney(order.totalCents)}</p>
+                <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+                  <p>{formatMoney(order.totalCents)}</p>
+                  <p className="capitalize">{order.paymentMethod ?? "manual"} • {order.paymentStatus ?? "unpaid"}</p>
+                </div>
                 <div className="mt-4 flex flex-col gap-2">
                   <Button variant="secondary" size="sm" className="w-full" onClick={() => loadOrderDetails(order.id)}>
                     View
@@ -144,6 +151,70 @@ const AdminOrdersTab = ({
                               <option value="refunded">Refunded</option>
                             </select>
                           </div>
+                          <div className="grid gap-2">
+                            <Label>Payment Method</Label>
+                            <select
+                              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                              value={editingOrder.paymentMethod ?? ""}
+                              onChange={(e) =>
+                                setEditingOrder({
+                                  ...editingOrder,
+                                  paymentMethod: e.target.value || null,
+                                })
+                              }
+                            >
+                              <option value="">Not set</option>
+                              <option value="mpesa">M-Pesa</option>
+                              <option value="crypto">Crypto</option>
+                              <option value="bank">Bank</option>
+                            </select>
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Payment Status</Label>
+                            <select
+                              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                              value={editingOrder.paymentStatus ?? "unpaid"}
+                              onChange={(e) =>
+                                setEditingOrder({
+                                  ...editingOrder,
+                                  paymentStatus: e.target.value as Order["paymentStatus"],
+                                })
+                              }
+                            >
+                              <option value="unpaid">Unpaid</option>
+                              <option value="pending">Pending</option>
+                              <option value="paid">Paid</option>
+                              <option value="failed">Failed</option>
+                            </select>
+                          </div>
+                          {editingOrder.paymentMethod === "crypto" && (
+                            <div className="grid gap-4">
+                              <CryptoProofUploader
+                                token={token}
+                                proofImageUrl={editingOrder.cryptoProofImageUrl ?? null}
+                                onProofImageUrlChange={(value) =>
+                                  setEditingOrder({
+                                    ...editingOrder,
+                                    cryptoProofImageUrl: value,
+                                  })
+                                }
+                                label="Crypto Proof Image"
+                                description="Upload or replace the crypto transfer proof linked to this order."
+                              />
+                              <div className="grid gap-2">
+                                <Label>Crypto Review Notes</Label>
+                                <Textarea
+                                  value={editingOrder.cryptoReviewNotes ?? ""}
+                                  onChange={(e) =>
+                                    setEditingOrder({
+                                      ...editingOrder,
+                                      cryptoReviewNotes: e.target.value || null,
+                                    })
+                                  }
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                       <DialogFooter>
@@ -197,7 +268,14 @@ const AdminOrdersTab = ({
                         {order.status}
                       </Badge>
                     </TableCell>
-                    <TableCell>{formatMoney(order.totalCents)}</TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        <p>{formatMoney(order.totalCents)}</p>
+                        <p className="mt-1 text-xs text-muted-foreground capitalize">
+                          {order.paymentMethod ?? "manual"} • {order.paymentStatus ?? "unpaid"}
+                        </p>
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button variant="secondary" size="sm" onClick={() => loadOrderDetails(order.id)}>
@@ -254,6 +332,70 @@ const AdminOrdersTab = ({
                                     <option value="refunded">Refunded</option>
                                   </select>
                                 </div>
+                                <div className="grid gap-2">
+                                  <Label>Payment Method</Label>
+                                  <select
+                                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                                    value={editingOrder.paymentMethod ?? ""}
+                                    onChange={(e) =>
+                                      setEditingOrder({
+                                        ...editingOrder,
+                                        paymentMethod: e.target.value || null,
+                                      })
+                                    }
+                                  >
+                                    <option value="">Not set</option>
+                                    <option value="mpesa">M-Pesa</option>
+                                    <option value="crypto">Crypto</option>
+                                    <option value="bank">Bank</option>
+                                  </select>
+                                </div>
+                                <div className="grid gap-2">
+                                  <Label>Payment Status</Label>
+                                  <select
+                                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                                    value={editingOrder.paymentStatus ?? "unpaid"}
+                                    onChange={(e) =>
+                                      setEditingOrder({
+                                        ...editingOrder,
+                                        paymentStatus: e.target.value as Order["paymentStatus"],
+                                      })
+                                    }
+                                  >
+                                    <option value="unpaid">Unpaid</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="paid">Paid</option>
+                                    <option value="failed">Failed</option>
+                                  </select>
+                                </div>
+                          {editingOrder.paymentMethod === "crypto" && (
+                                <div className="grid gap-4">
+                                  <CryptoProofUploader
+                                    token={token}
+                                    proofImageUrl={editingOrder.cryptoProofImageUrl ?? null}
+                                    onProofImageUrlChange={(value) =>
+                                      setEditingOrder({
+                                        ...editingOrder,
+                                        cryptoProofImageUrl: value,
+                                      })
+                                    }
+                                    label="Crypto Proof Image"
+                                    description="Upload or replace the crypto transfer proof linked to this order."
+                                  />
+                                  <div className="grid gap-2">
+                                    <Label>Crypto Review Notes</Label>
+                                    <Textarea
+                                      value={editingOrder.cryptoReviewNotes ?? ""}
+                                      onChange={(e) =>
+                                        setEditingOrder({
+                                          ...editingOrder,
+                                          cryptoReviewNotes: e.target.value || null,
+                                        })
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                              )}
                               </div>
                             )}
                             <DialogFooter>

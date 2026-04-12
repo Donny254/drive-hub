@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import { getTicketQrImageUrl, toTicketQrPayload } from "@/lib/ticketQr";
+import { dataUrlToFormat, fetchBrandLogoDataUrl, fetchImageDataUrl } from "@/lib/pdfBranding";
 
 type ReceiptRegistration = {
   id: string;
@@ -42,33 +43,6 @@ const formatDateRange = (start?: string | null, end?: string | null) => {
   return formatDate(start || end);
 };
 
-const getLogoUrl = () => `${window.location.origin}/brand/wheelsnationke-logo.png`;
-
-const dataUrlToFormat = (dataUrl: string) => {
-  if (dataUrl.startsWith("data:image/png")) return "PNG";
-  if (dataUrl.startsWith("data:image/webp")) return "WEBP";
-  return "JPEG";
-};
-
-const blobToDataUrl = (blob: Blob) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(String(reader.result || ""));
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-
-const fetchImageDataUrl = async (url: string) => {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) return null;
-    const blob = await response.blob();
-    return await blobToDataUrl(blob);
-  } catch {
-    return null;
-  }
-};
-
 const drawLabelValue = (
   doc: jsPDF,
   label: string,
@@ -97,7 +71,7 @@ const buildPdfDocument = async (registration: ReceiptRegistration, tickets: Rece
   const contentWidth = pageWidth - margin * 2;
 
   const [logoDataUrl, ...qrDataUrls] = await Promise.all([
-    fetchImageDataUrl(getLogoUrl()),
+    fetchBrandLogoDataUrl(),
     ...tickets.map((ticket) => fetchImageDataUrl(getTicketQrImageUrl(ticket.ticketNumber, 240))),
   ]);
 

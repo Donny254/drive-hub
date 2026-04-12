@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
@@ -7,11 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ShoppingCart, Plus, Minus, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Minus, Plus, ShoppingCart, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
 import { feedbackText, getApiErrorMessage } from "@/lib/feedback";
+import CryptoProofUploader from "@/components/shared/CryptoProofUploader";
+import CryptoPaymentTimeline from "@/components/shared/CryptoPaymentTimeline";
+import CryptoPaymentDetails from "@/components/shared/CryptoPaymentDetails";
+import useCryptoPaymentStatus from "@/hooks/useCryptoPaymentStatus";
 
 interface Product {
   id: string;
@@ -28,6 +32,13 @@ interface CartItem extends Product {
   selectedSize?: string;
 }
 
+type CryptoDetails = {
+  asset: string;
+  network: string | null;
+  walletAddress: string | null;
+  instructions: string | null;
+};
+
 const Store = () => {
   const navigate = useNavigate();
   const { token, user } = useAuth();
@@ -36,14 +47,43 @@ const Store = () => {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState("All");
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const checkoutDialogRef = useRef<HTMLDivElement | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+
+  const scrollCheckoutDialog = (direction: "top" | "bottom") => {
+    if (!checkoutDialogRef.current) return;
+    checkoutDialogRef.current.scrollTo({
+      top: direction === "top" ? 0 : checkoutDialogRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  };
   const [checkoutSuccess, setCheckoutSuccess] = useState<string | null>(null);
   const [paymentOrderId, setPaymentOrderId] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<"idle" | "pending" | "paid" | "failed">("idle");
+  const [paymentMethod, setPaymentMethod] = useState<"mpesa" | "crypto">("mpesa");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
+  const [cryptoDetails, setCryptoDetails] = useState<CryptoDetails | null>(null);
+  const isAdmin = user?.role === "admin";
+  const [transactionHash, setTransactionHash] = useState("");
+  const [payerWallet, setPayerWallet] = useState("");
+  const [proofImageUrl, setProofImageUrl] = useState<string | null>(null);
+  const [submittedOrderTotalCents, setSubmittedOrderTotalCents] = useState(0);
+  const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+
+  const {
+    data: cryptoStatusData,
+    loading: cryptoStatusLoading,
+    error: cryptoStatusError,
+    refresh: refreshCryptoStatus,
+  } = useCryptoPaymentStatus(
+    paymentOrderId ? `/api/payments/crypto/status/${paymentOrderId}` : null,
+    Boolean(checkoutOpen && paymentMethod === "crypto" && paymentOrderId),
+    5000,
+    authHeaders
+  );
 
   useEffect(() => {
     const load = async () => {
@@ -55,6 +95,16 @@ const Store = () => {
       }
     };
     load();
+  }, []);
+
+  useEffect(() => {
+    const loadCryptoDetails = async () => {
+      const resp = await apiFetch("/api/payments/crypto-details");
+      if (resp.ok) {
+        setCryptoDetails(await resp.json().catch(() => null));
+      }
+    };
+    void loadCryptoDetails();
   }, []);
 
   const categories = useMemo(() => {
@@ -113,11 +163,16 @@ const Store = () => {
     setCheckoutSuccess(null);
     setPaymentOrderId(null);
     setPaymentStatus("idle");
+    setPaymentMethod("mpesa");
+    setTransactionHash("");
+    setPayerWallet("");
+    setProofImageUrl(null);
+    setSubmittedOrderTotalCents(cartTotalCents);
     setCheckoutOpen(true);
   };
 
   useEffect(() => {
-    if (!checkoutOpen || !paymentOrderId || paymentStatus !== "pending") return;
+    if (!checkoutOpen || !paymentOrderId || paymentStatus !== "pending" || paymentMethod !== "mpesa") return;
     let active = true;
 
     const poll = async () => {
@@ -147,7 +202,7 @@ const Store = () => {
       active = false;
       window.clearInterval(intervalId);
     };
-  }, [checkoutOpen, paymentOrderId, paymentStatus, token]);
+  }, [checkoutOpen, paymentMethod, paymentOrderId, paymentStatus, token]);
 
   const submitOrder = async () => {
     if (cart.length === 0) return;
@@ -156,6 +211,17 @@ const Store = () => {
       toast.error("Name and phone are required.");
       return;
     }
+    if (paymentMethod === "crypto" && !transactionHash.trim()) {
+      setCheckoutError("Transaction hash is required for crypto payment.");
+      toast.error("Transaction hash is required for crypto payment.");
+      return;
+    }
+    if (paymentMethod === "crypto" && !proofImageUrl) {
+      setCheckoutError("Payment proof image is required for crypto payment.");
+      toast.error("Payment proof image is required for crypto payment.");
+      return;
+    }
+    setSubmittedOrderTotalCents(cartTotalCents);
     setCheckoutLoading(true);
     setCheckoutError(null);
     try {
@@ -168,12 +234,19 @@ const Store = () => {
         imageUrl: item.imageUrl,
       }));
 
-      const resp = await apiFetch("/api/payments/mpesa/stkpush", {
+      const endpoint =
+        paymentMethod === "crypto" ? "/api/payments/crypto/checkout" : "/api/payments/mpesa/stkpush";
+      const resp = await apiFetch(endpoint, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: JSON.stringify({
           phoneNumber: customerPhone,
           items: orderItems,
+          transactionHash,
+          payerWallet,
+          proofImageUrl,
+          asset: cryptoDetails?.asset,
+          network: cryptoDetails?.network,
         }),
       });
 
@@ -182,20 +255,34 @@ const Store = () => {
       }
 
       const data = await resp.json().catch(() => ({}));
-      const customerMessage = data?.response?.CustomerMessage;
+      const customerMessage =
+        paymentMethod === "crypto"
+          ? data?.message || "Crypto payment submitted for review."
+          : data?.response?.CustomerMessage;
       setCheckoutSuccess(
-        customerMessage || "M-Pesa prompt sent. Complete the payment on your phone."
+        customerMessage ||
+          (paymentMethod === "crypto"
+            ? "Crypto payment submitted for review."
+            : "M-Pesa prompt sent. Complete the payment on your phone.")
       );
-      toast.success(customerMessage || "M-Pesa prompt sent. Complete payment on your phone.");
+      toast.success(
+        customerMessage ||
+          (paymentMethod === "crypto"
+            ? "Crypto payment submitted for review."
+            : "M-Pesa prompt sent. Complete payment on your phone.")
+      );
       if (data?.orderId) {
         setPaymentOrderId(data.orderId);
-        setPaymentStatus("pending");
+        setPaymentStatus(paymentMethod === "crypto" ? "idle" : "pending");
       }
       setCart([]);
       setIsCartOpen(false);
       setCustomerName("");
       setCustomerPhone("");
       setCustomerAddress("");
+      if (paymentMethod !== "crypto") {
+        setCheckoutOpen(false);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to place order.";
       setCheckoutError(message);
@@ -371,14 +458,24 @@ const Store = () => {
       )}
 
       <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto" ref={checkoutDialogRef}>
           <DialogHeader>
             <DialogTitle>Checkout</DialogTitle>
             <DialogDescription>
-              Confirm your customer details and delivery information before we send the M-Pesa payment prompt for this order.
+              Confirm your customer details and delivery information before we send the M-Pesa payment prompt or record a crypto proof for manual review.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" size="sm" onClick={() => scrollCheckoutDialog("top")}>
+                <ArrowUp className="mr-2 h-4 w-4" />
+                Scroll to top
+              </Button>
+              <Button type="button" variant="secondary" size="sm" onClick={() => scrollCheckoutDialog("bottom")}>
+                <ArrowDown className="mr-2 h-4 w-4" />
+                Scroll to payment
+              </Button>
+            </div>
             <div className="grid gap-2">
               <Label>Name</Label>
               <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
@@ -388,22 +485,94 @@ const Store = () => {
               <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
             </div>
             <div className="grid gap-2">
+              <Label>Payment Method</Label>
+              <select
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value as "mpesa" | "crypto")}
+              >
+                <option value="mpesa">M-Pesa</option>
+                <option value="crypto">Crypto</option>
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {paymentMethod === "crypto"
+                  ? "Crypto orders are reviewed manually after you submit proof and a transaction hash."
+                  : "M-Pesa sends a payment prompt to your phone for instant confirmation."}
+              </p>
+            </div>
+            <div className="grid gap-2">
               <Label>Delivery Address (optional)</Label>
               <Input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} />
             </div>
+            <div className="rounded-md border border-border bg-card p-4 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Items</span>
+                <span className="font-medium">{cartCount}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span className="font-medium">KES {cartTotal.toLocaleString()}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Payment method</span>
+                <span className="font-medium capitalize">{paymentMethod}</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
+                <span className="font-medium">Total</span>
+                <span className="font-semibold text-primary">KES {(checkoutSuccess ? submittedOrderTotalCents : cartTotalCents).toLocaleString()}</span>
+              </div>
+            </div>
+            {paymentMethod === "crypto" && (
+              <CryptoPaymentDetails
+                asset={cryptoDetails?.asset}
+                network={cryptoDetails?.network}
+                walletAddress={cryptoDetails?.walletAddress}
+                instructions={cryptoDetails?.instructions}
+                showAdminShortcut={isAdmin}
+              />
+            )}
+            {paymentMethod === "crypto" && (
+              <div className="grid gap-4">
+                <CryptoProofUploader
+                  token={token}
+                  proofImageUrl={proofImageUrl}
+                  onProofImageUrlChange={setProofImageUrl}
+                  label="Payment proof"
+                  description="Upload a clear transfer screenshot or receipt before submitting."
+                />
+                <div className="grid gap-2">
+                  <Label>Transaction Hash</Label>
+                  <Input value={transactionHash} onChange={(e) => setTransactionHash(e.target.value)} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Payer Wallet (optional)</Label>
+                  <Input value={payerWallet} onChange={(e) => setPayerWallet(e.target.value)} />
+                </div>
+              </div>
+            )}
             {checkoutError && <p className="text-sm text-destructive">{checkoutError}</p>}
             {checkoutSuccess && <p className="text-sm text-emerald-500">{checkoutSuccess}</p>}
-            {paymentStatus === "pending" && (
+            <div className="sticky bottom-4 z-20 flex justify-end">
+              <Button type="button" variant="secondary" size="sm" onClick={() => checkoutDialogRef.current?.scrollTo({ top: 0, behavior: "smooth" })}>
+                <ArrowUp className="mr-2 h-4 w-4" />
+                Back to top
+              </Button>
+            </div>
+            {paymentMethod === "crypto" && paymentOrderId && (
+              <CryptoPaymentTimeline
+                resource={cryptoStatusData?.resource || null}
+                transaction={cryptoStatusData?.transaction || null}
+                loading={cryptoStatusLoading}
+                error={cryptoStatusError}
+                onRefresh={refreshCryptoStatus}
+                refreshing={cryptoStatusLoading}
+              />
+            )}
+            {paymentStatus === "pending" && paymentMethod === "mpesa" && (
               <p className="text-sm text-muted-foreground">
                 Waiting for M-Pesa confirmation...
               </p>
             )}
-            <div className="flex items-center justify-between border-t border-border pt-4">
-              <span>Total</span>
-              <span className="font-display text-xl text-primary">
-                KES {cartTotal.toLocaleString()}
-              </span>
-            </div>
           </div>
           <DialogFooter>
             {paymentStatus === "paid" || checkoutSuccess ? (
@@ -412,7 +581,13 @@ const Store = () => {
               </Button>
             ) : (
               <Button variant="hero" onClick={submitOrder} disabled={checkoutLoading}>
-                {checkoutLoading ? "Requesting..." : "Pay with M-Pesa"}
+                {checkoutLoading
+                  ? paymentMethod === "crypto"
+                    ? "Submitting..."
+                    : "Requesting..."
+                  : paymentMethod === "crypto"
+                    ? "Submit Crypto Payment"
+                    : "Pay with M-Pesa"}
               </Button>
             )}
           </DialogFooter>

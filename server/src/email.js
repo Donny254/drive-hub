@@ -207,6 +207,34 @@ export const sendEventTicketEmail = async ({
   });
 };
 
+export const sendCryptoPaymentStatusEmail = async ({
+  to,
+  customerName,
+  referenceLabel,
+  paymentStatus,
+  reviewNotes,
+}) => {
+  if (!to) return false;
+
+  const normalizedStatus = paymentStatus === "paid" ? "approved" : paymentStatus === "failed" ? "rejected" : paymentStatus;
+  const lines = [
+    `Hello ${customerName || "there"},`,
+    "",
+    `Your crypto payment for ${referenceLabel || "your request"} has been ${normalizedStatus}.`,
+    reviewNotes ? `Review notes: ${reviewNotes}` : null,
+    "",
+    paymentStatus === "paid"
+      ? "You can continue in your WheelsnationKe account."
+      : "Please review the notes and submit a new payment proof if needed.",
+  ].filter(Boolean);
+
+  return sendMail({
+    to,
+    subject: `Crypto payment ${normalizedStatus}: ${referenceLabel || "WheelsnationKe"}`,
+    text: lines.join("\n"),
+  });
+};
+
 export const sendAdminDigestEmail = async ({ to, dateLabel, summary, topRiskListings, topViewedListings }) => {
   if (!to) return false;
 

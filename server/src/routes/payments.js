@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { query } from "../db.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, requireRole } from "../middleware/auth.js";
 import { issueTicketsForRegistration } from "../utils/eventTickets.js";
 import { sendEventTicketEmail } from "../email.js";
 import { sendEventTicketMessage } from "../notifications.js";
@@ -110,6 +110,129 @@ const computeDays = (startDate, endDate) => {
 
 const computeCartTotal = (items) =>
   items.reduce((sum, item) => sum + item.priceCents * item.quantity, 0);
+
+const loadSettingsRow = async () => {
+  const result = await query("SELECT * FROM site_settings WHERE id = true");
+  return result.rowCount > 0 ? result.rows[0] : null;
+};
+
+const getCryptoDetails = async () => {
+  const settings = await loadSettingsRow().catch(() => null);
+  return {
+    asset: settings?.crypto_currency || process.env.CRYPTO_CURRENCY || "USDT",
+    network: settings?.crypto_network || process.env.CRYPTO_NETWORK || null,
+    walletAddress: settings?.crypto_wallet_address || process.env.CRYPTO_WALLET_ADDRESS || null,
+    instructions:
+      settings?.crypto_instructions ||
+      process.env.CRYPTO_INSTRUCTIONS ||
+      "Send payment, then submit the transaction hash for manual confirmation.",
+  };
+};
+
+const requireCryptoConfig = async (res) => {
+  const details = await getCryptoDetails();
+  if (!details.walletAddress) {
+    res.status(400).json({ error: "Crypto payment is not configured yet" });
+    return null;
+  }
+  return details;
+};
+
+const normalizeCryptoPayload = (body, cryptoDetails) => {
+  const asset = String(body.asset || cryptoDetails.asset || "USDT").trim().toUpperCase();
+  const network = String(body.network || cryptoDetails.network || "").trim() || null;
+  const payerWallet = String(body.payerWallet || "").trim() || null;
+  const transactionHash = String(body.transactionHash || "").trim();
+  const proofImageUrl = String(body.proofImageUrl || "").trim() || null;
+  return {
+    asset,
+    network,
+    payerWallet,
+    transactionHash,
+    proofImageUrl,
+    walletAddress: cryptoDetails.walletAddress,
+  };
+};
+
+const ensureCryptoProof = (payload) => {
+  if (!payload.transactionHash) {
+    return "Transaction hash is required";
+  }
+  if (!payload.proofImageUrl) {
+    return "Payment proof image is required";
+  }
+  return null;
+};
+
+const ensureUniqueCryptoHash = async (transactionHash) => {
+  const normalizedHash = String(transactionHash || "").trim().toLowerCase();
+  if (!normalizedHash) return "Transaction hash is required";
+  const result = await query(
+    `SELECT id
+     FROM crypto_transactions
+     WHERE lower(transaction_hash) = $1
+       AND status <> 'cancelled'
+     LIMIT 1`,
+    [normalizedHash]
+  );
+  return result.rowCount > 0 ? "This transaction hash has already been submitted" : null;
+};
+
+const latestCryptoSelect = `SELECT *
+  FROM crypto_transactions
+  WHERE %COLUMN% = $1
+  ORDER BY created_at DESC
+  LIMIT 1`;
+
+const notifyPaidRegistration = async (registrationId) => {
+  const registrationResult = await query(
+    `SELECT * FROM event_registrations WHERE id = $1`,
+    [registrationId]
+  );
+  if (registrationResult.rowCount === 0) return;
+
+  const registration = registrationResult.rows[0];
+  if (registration.status === "cancelled") return;
+
+  const createdTickets = await issueTicketsForRegistration(registration);
+  try {
+    const notifyResult = await query(
+      `SELECT u.email, u.name, e.title, e.location, e.start_date, e.end_date
+       FROM event_registrations er
+       LEFT JOIN users u ON u.id = er.user_id
+       LEFT JOIN events e ON e.id = er.event_id
+       WHERE er.id = $1`,
+      [registrationId]
+    );
+    if (notifyResult.rowCount > 0) {
+      const notify = notifyResult.rows[0];
+      await sendEventTicketEmail({
+        to: notify.email,
+        attendeeName: notify.name,
+        registration: {
+          tickets: registration.tickets,
+          paymentMethod: registration.payment_method,
+          paymentStatus: registration.payment_status,
+        },
+        event: {
+          title: notify.title,
+          location: notify.location,
+          startDate: notify.start_date,
+          endDate: notify.end_date,
+        },
+        tickets: createdTickets,
+      });
+      await sendEventTicketMessage({
+        phone: registration.contact_phone,
+        attendeeName: notify.name,
+        eventTitle: notify.title,
+        ticketCodes: createdTickets.map((ticket) => ticket.ticket_number || ticket.ticketNumber),
+      });
+    }
+  } catch (mailError) {
+    console.warn("Paid event ticket email failed:", mailError);
+  }
+};
 
 const insertOrderItems = async (orderId, items) => {
   if (!items || items.length === 0) return;
@@ -519,6 +642,452 @@ router.get("/bank-details", async (req, res) => {
   }
 });
 
+router.get("/crypto-details", async (req, res) => {
+  const details = await getCryptoDetails();
+  res.json(details);
+});
+
+router.get("/crypto-transactions", requireAuth, requireRole("admin"), async (req, res, next) => {
+  try {
+    const status = req.query.status ? String(req.query.status) : null;
+    const values = [];
+    const where = [];
+    if (status && status !== "all") {
+      values.push(status);
+      where.push(`ct.status = $${values.length}`);
+    }
+    const result = await query(
+      `SELECT
+         ct.*,
+         CASE
+           WHEN ct.order_id IS NOT NULL THEN 'order'
+           WHEN ct.booking_id IS NOT NULL THEN 'booking'
+           WHEN ct.event_registration_id IS NOT NULL THEN 'event_registration'
+           ELSE 'unknown'
+         END AS relation_type,
+         o.id AS order_ref,
+         b.id AS booking_ref,
+         er.id AS registration_ref,
+         l.title AS listing_title,
+         e.title AS event_title
+       FROM crypto_transactions ct
+       LEFT JOIN orders o ON o.id = ct.order_id
+       LEFT JOIN bookings b ON b.id = ct.booking_id
+       LEFT JOIN listings l ON l.id = b.listing_id
+       LEFT JOIN event_registrations er ON er.id = ct.event_registration_id
+       LEFT JOIN events e ON e.id = er.event_id
+       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+       ORDER BY ct.created_at DESC`,
+      values
+    );
+
+    return res.json(
+      result.rows.map((row) => ({
+        id: row.id,
+        relationType: row.relation_type,
+        orderId: row.order_id,
+        bookingId: row.booking_id,
+        eventRegistrationId: row.event_registration_id,
+        reference:
+          row.order_ref?.slice?.(0, 8) ||
+          row.booking_ref?.slice?.(0, 8) ||
+          row.registration_ref?.slice?.(0, 8) ||
+          row.id.slice(0, 8),
+        label: row.listing_title || row.event_title || null,
+        asset: row.asset,
+        network: row.network,
+        walletAddress: row.wallet_address,
+        payerWallet: row.payer_wallet,
+        transactionHash: row.transaction_hash,
+        proofImageUrl: row.proof_image_url,
+        amountCents: row.amount_cents,
+        status: row.status,
+        reviewNotes: row.review_notes,
+        createdAt: row.created_at,
+      }))
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/crypto/checkout", requireAuth, async (req, res, next) => {
+  try {
+    const { items } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "items must be a non-empty array" });
+    }
+
+    const cryptoDetails = await requireCryptoConfig(res);
+    if (!cryptoDetails) return;
+
+    const cryptoPayload = normalizeCryptoPayload(req.body, cryptoDetails);
+    const proofError = ensureCryptoProof(cryptoPayload);
+    if (proofError) {
+      return res.status(400).json({ error: proofError });
+    }
+    const duplicateHashError = await ensureUniqueCryptoHash(cryptoPayload.transactionHash);
+    if (duplicateHashError) {
+      return res.status(400).json({ error: duplicateHashError });
+    }
+
+    const normalizedItems = items.map((item) => ({
+      productId: item.productId || item.id || null,
+      quantity: Number(item.quantity),
+      size: item.size || item.selectedSize || null,
+    }));
+
+    if (normalizedItems.some((item) => !item.productId)) {
+      return res.status(400).json({ error: "Each item must include a productId" });
+    }
+
+    if (normalizedItems.some((item) => !Number.isInteger(item.quantity) || item.quantity <= 0)) {
+      return res.status(400).json({ error: "Each item must include a valid quantity" });
+    }
+
+    const productIds = normalizedItems.map((item) => item.productId);
+    const productsResult = await query(
+      `SELECT id, name, price_cents, image_url, active
+       FROM products
+       WHERE id = ANY($1::uuid[])`,
+      [productIds]
+    );
+    const productById = new Map(productsResult.rows.map((row) => [row.id, row]));
+    const verifiedItems = normalizedItems.map((item) => {
+      const product = productById.get(item.productId);
+      if (!product) return null;
+      if (!product.active) return { error: `Product not active: ${product.name}` };
+      return {
+        productId: product.id,
+        name: product.name,
+        priceCents: Number(product.price_cents),
+        quantity: item.quantity,
+        size: item.size || null,
+        imageUrl: product.image_url || null,
+      };
+    });
+    if (verifiedItems.some((item) => item === null)) {
+      return res.status(400).json({ error: "One or more products were not found" });
+    }
+    const inactiveItem = verifiedItems.find((item) => item && item.error);
+    if (inactiveItem) {
+      return res.status(400).json({ error: inactiveItem.error });
+    }
+
+    const safeItems = verifiedItems.filter(Boolean);
+    const totalCents = computeCartTotal(safeItems);
+    if (!Number.isInteger(totalCents) || totalCents <= 0) {
+      return res.status(400).json({ error: "Order total must be a positive integer" });
+    }
+
+    const orderResult = await query(
+      `INSERT INTO orders (user_id, total_cents, payment_method, payment_status, status)
+       VALUES ($1, $2, 'crypto', 'pending', 'pending')
+       RETURNING *`,
+      [req.user.id, totalCents]
+    );
+    const order = orderResult.rows[0];
+    await insertOrderItems(order.id, safeItems);
+
+    const txResult = await query(
+      `INSERT INTO crypto_transactions
+       (order_id, asset, network, wallet_address, payer_wallet, transaction_hash, proof_image_url, amount_cents, status, response)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
+       RETURNING *`,
+      [
+        order.id,
+        cryptoPayload.asset,
+        cryptoPayload.network,
+        cryptoPayload.walletAddress,
+        cryptoPayload.payerWallet,
+        cryptoPayload.transactionHash,
+        cryptoPayload.proofImageUrl,
+        totalCents,
+        {
+          submittedBy: req.user.id,
+          submittedAt: new Date().toISOString(),
+        },
+      ]
+    );
+
+    return res.status(201).json({
+      orderId: order.id,
+      transactionId: txResult.rows[0].id,
+      status: "pending",
+      paymentMethod: "crypto",
+      paymentStatus: "pending",
+      walletAddress: cryptoPayload.walletAddress,
+      asset: cryptoPayload.asset,
+      network: cryptoPayload.network,
+      proofImageUrl: cryptoPayload.proofImageUrl,
+      message: "Crypto payment submitted for review.",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/crypto/booking", requireAuth, async (req, res, next) => {
+  try {
+    const { listingId, startDate, endDate } = req.body;
+    if (!listingId) {
+      return res.status(400).json({ error: "listingId is required" });
+    }
+
+    const cryptoDetails = await requireCryptoConfig(res);
+    if (!cryptoDetails) return;
+    const cryptoPayload = normalizeCryptoPayload(req.body, cryptoDetails);
+    const proofError = ensureCryptoProof(cryptoPayload);
+    if (proofError) {
+      return res.status(400).json({ error: proofError });
+    }
+    const duplicateHashError = await ensureUniqueCryptoHash(cryptoPayload.transactionHash);
+    if (duplicateHashError) {
+      return res.status(400).json({ error: duplicateHashError });
+    }
+
+    const listingResult = await query(
+      "SELECT id, title, price_cents, listing_type, status FROM listings WHERE id = $1",
+      [listingId]
+    );
+    if (listingResult.rowCount === 0) {
+      return res.status(404).json({ error: "Listing not found" });
+    }
+    const listing = listingResult.rows[0];
+    if (listing.status !== "active") {
+      return res.status(400).json({ error: "Listing is not available" });
+    }
+
+    const days = listing.listing_type === "rent" ? computeDays(startDate, endDate) : 1;
+    const totalCents = Number(listing.price_cents || 0) * days;
+    if (!Number.isInteger(totalCents) || totalCents <= 0) {
+      return res.status(400).json({ error: "Invalid listing price" });
+    }
+
+    const bookingResult = await query(
+      `INSERT INTO bookings (user_id, listing_id, start_date, end_date, status, payment_method, payment_status, amount_cents)
+       VALUES ($1, $2, $3, $4, 'pending', 'crypto', 'pending', $5)
+       RETURNING *`,
+      [req.user.id, listing.id, startDate ?? null, endDate ?? null, totalCents]
+    );
+    const booking = bookingResult.rows[0];
+
+    const txResult = await query(
+      `INSERT INTO crypto_transactions
+       (booking_id, asset, network, wallet_address, payer_wallet, transaction_hash, proof_image_url, amount_cents, status, response)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
+       RETURNING *`,
+      [
+        booking.id,
+        cryptoPayload.asset,
+        cryptoPayload.network,
+        cryptoPayload.walletAddress,
+        cryptoPayload.payerWallet,
+        cryptoPayload.transactionHash,
+        cryptoPayload.proofImageUrl,
+        totalCents,
+        {
+          submittedBy: req.user.id,
+          submittedAt: new Date().toISOString(),
+        },
+      ]
+    );
+
+    return res.status(201).json({
+      bookingId: booking.id,
+      transactionId: txResult.rows[0].id,
+      status: "pending",
+      paymentMethod: "crypto",
+      paymentStatus: "pending",
+      proofImageUrl: cryptoPayload.proofImageUrl,
+      message: "Crypto payment submitted for review.",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/crypto/event-registration", requireAuth, async (req, res, next) => {
+  try {
+    const { registrationId } = req.body;
+    if (!registrationId) {
+      return res.status(400).json({ error: "registrationId is required" });
+    }
+
+    const cryptoDetails = await requireCryptoConfig(res);
+    if (!cryptoDetails) return;
+    const cryptoPayload = normalizeCryptoPayload(req.body, cryptoDetails);
+    const proofError = ensureCryptoProof(cryptoPayload);
+    if (proofError) {
+      return res.status(400).json({ error: proofError });
+    }
+    const duplicateHashError = await ensureUniqueCryptoHash(cryptoPayload.transactionHash);
+    if (duplicateHashError) {
+      return res.status(400).json({ error: duplicateHashError });
+    }
+
+    const registrationResult = await query(
+      `SELECT er.*, e.title AS event_title
+       FROM event_registrations er
+       LEFT JOIN events e ON e.id = er.event_id
+       WHERE er.id = $1`,
+      [registrationId]
+    );
+    if (registrationResult.rowCount === 0) {
+      return res.status(404).json({ error: "Event registration not found" });
+    }
+    const registration = registrationResult.rows[0];
+    if (req.user.role !== "admin" && registration.user_id !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    if (registration.status === "cancelled") {
+      return res.status(400).json({ error: "Registration is cancelled" });
+    }
+    if (registration.payment_status === "paid") {
+      return res.status(400).json({ error: "Registration is already paid" });
+    }
+    const totalCents = Number(registration.amount_cents || 0);
+    if (!Number.isInteger(totalCents) || totalCents <= 0) {
+      return res.status(400).json({ error: "This registration does not require payment" });
+    }
+
+    await query(
+      `UPDATE event_registrations
+       SET contact_phone = COALESCE($1, contact_phone),
+           payment_method = 'crypto',
+           payment_status = 'pending'
+       WHERE id = $2`,
+      [req.body.contactPhone || null, registration.id]
+    );
+
+    const txResult = await query(
+      `INSERT INTO crypto_transactions
+       (event_registration_id, asset, network, wallet_address, payer_wallet, transaction_hash, proof_image_url, amount_cents, status, response)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
+       RETURNING *`,
+      [
+        registration.id,
+        cryptoPayload.asset,
+        cryptoPayload.network,
+        cryptoPayload.walletAddress,
+        cryptoPayload.payerWallet,
+        cryptoPayload.transactionHash,
+        cryptoPayload.proofImageUrl,
+        totalCents,
+        {
+          submittedBy: req.user.id,
+          submittedAt: new Date().toISOString(),
+        },
+      ]
+    );
+
+    return res.status(201).json({
+      registrationId: registration.id,
+      transactionId: txResult.rows[0].id,
+      status: "pending",
+      paymentMethod: "crypto",
+      paymentStatus: "pending",
+      proofImageUrl: cryptoPayload.proofImageUrl,
+      message: "Crypto payment submitted for review.",
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/crypto/status/:orderId", requireAuth, async (req, res, next) => {
+  try {
+    const orderResult = await query("SELECT * FROM orders WHERE id = $1", [req.params.orderId]);
+    if (orderResult.rowCount === 0) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+    const order = orderResult.rows[0];
+    if (req.user.role !== "admin" && order.user_id !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const txResult = await query(latestCryptoSelect.replace("%COLUMN%", "order_id"), [req.params.orderId]);
+    const transaction = txResult.rowCount > 0 ? txResult.rows[0] : null;
+    return res.json({
+      order: {
+        id: order.id,
+        totalCents: order.total_cents,
+        status: order.status,
+        paymentMethod: order.payment_method,
+        paymentStatus: order.payment_status,
+        paidAt: order.paid_at,
+        createdAt: order.created_at,
+      },
+      transaction,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/crypto/booking-status/:bookingId", requireAuth, async (req, res, next) => {
+  try {
+    const bookingResult = await query("SELECT * FROM bookings WHERE id = $1", [req.params.bookingId]);
+    if (bookingResult.rowCount === 0) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+    const booking = bookingResult.rows[0];
+    if (req.user.role !== "admin" && booking.user_id !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const txResult = await query(latestCryptoSelect.replace("%COLUMN%", "booking_id"), [req.params.bookingId]);
+    const transaction = txResult.rowCount > 0 ? txResult.rows[0] : null;
+    return res.json({
+      booking: {
+        id: booking.id,
+        amountCents: booking.amount_cents,
+        status: booking.status,
+        paymentMethod: booking.payment_method,
+        paymentStatus: booking.payment_status,
+        paidAt: booking.paid_at,
+        createdAt: booking.created_at,
+      },
+      transaction,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/crypto/event-registration-status/:registrationId", requireAuth, async (req, res, next) => {
+  try {
+    const registrationResult = await query(
+      "SELECT * FROM event_registrations WHERE id = $1",
+      [req.params.registrationId]
+    );
+    if (registrationResult.rowCount === 0) {
+      return res.status(404).json({ error: "Event registration not found" });
+    }
+    const registration = registrationResult.rows[0];
+    if (req.user.role !== "admin" && registration.user_id !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    const txResult = await query(
+      latestCryptoSelect.replace("%COLUMN%", "event_registration_id"),
+      [req.params.registrationId]
+    );
+    const transaction = txResult.rowCount > 0 ? txResult.rows[0] : null;
+    return res.json({
+      registration: {
+        id: registration.id,
+        amountCents: Number(registration.amount_cents || 0),
+        status: registration.status,
+        paymentMethod: registration.payment_method,
+        paymentStatus: registration.payment_status,
+        paidAt: registration.paid_at,
+        createdAt: registration.created_at,
+      },
+      transaction,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get("/mpesa/status/:orderId", requireAuth, async (req, res, next) => {
   try {
     const orderResult = await query("SELECT * FROM orders WHERE id = $1", [req.params.orderId]);
@@ -695,7 +1264,7 @@ router.post("/mpesa/callback", async (req, res, next) => {
         const paymentStatus = status === "paid" ? "paid" : "failed";
         const paidAt = status === "paid" ? new Date().toISOString() : null;
         const registrationStatus = status === "paid" ? "confirmed" : "pending";
-        const registrationResult = await query(
+        await query(
           `UPDATE event_registrations
            SET payment_status = $1,
                paid_at = $2,
@@ -704,49 +1273,8 @@ router.post("/mpesa/callback", async (req, res, next) => {
            RETURNING *`,
           [paymentStatus, paidAt, registrationStatus, eventRegistrationId]
         );
-        if (
-          status === "paid" &&
-          registrationResult.rowCount > 0 &&
-          registrationResult.rows[0].status !== "cancelled"
-        ) {
-          const createdTickets = await issueTicketsForRegistration(registrationResult.rows[0]);
-          try {
-            const notifyResult = await query(
-              `SELECT u.email, u.name, e.title, e.location, e.start_date, e.end_date
-               FROM event_registrations er
-               LEFT JOIN users u ON u.id = er.user_id
-               LEFT JOIN events e ON e.id = er.event_id
-               WHERE er.id = $1`,
-              [eventRegistrationId]
-            );
-            if (notifyResult.rowCount > 0) {
-              const notify = notifyResult.rows[0];
-              await sendEventTicketEmail({
-                to: notify.email,
-                attendeeName: notify.name,
-                registration: {
-                  tickets: registrationResult.rows[0].tickets,
-                  paymentMethod: registrationResult.rows[0].payment_method,
-                  paymentStatus: registrationResult.rows[0].payment_status,
-                },
-                event: {
-                  title: notify.title,
-                  location: notify.location,
-                  startDate: notify.start_date,
-                  endDate: notify.end_date,
-                },
-                tickets: createdTickets,
-              });
-              await sendEventTicketMessage({
-                phone: registrationResult.rows[0].contact_phone,
-                attendeeName: notify.name,
-                eventTitle: notify.title,
-                ticketCodes: createdTickets.map((ticket) => ticket.ticket_number || ticket.ticketNumber),
-              });
-            }
-          } catch (mailError) {
-            console.warn("Paid event ticket email failed:", mailError);
-          }
+        if (status === "paid") {
+          await notifyPaidRegistration(eventRegistrationId);
         }
       }
     }
