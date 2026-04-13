@@ -11,6 +11,11 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl, uploadImage } from "@/lib/api";
 import { downloadCsv, parseCsv, toCsv } from "@/lib/csv";
+import { toast } from "@/components/ui/sonner";
+import { feedbackText, getApiErrorMessage } from "@/lib/feedback";
+import DatePickerField from "@/components/shared/DatePickerField";
+import { getTodayDateValue, isPastDateTimeLocalValue, isEndBeforeStart } from "@/lib/date";
+import DateTimePickerField from "@/components/shared/DateTimePickerField";
 
 type Post = {
   id: string;
@@ -50,12 +55,17 @@ const AdminPosts = () => {
   const [filterStatus, setFilterStatus] = useState("all");
   const [startAfter, setStartAfter] = useState("");
   const [startBefore, setStartBefore] = useState("");
+  const todayDate = useMemo(() => getTodayDateValue(), []);
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
   const fetchPosts = useCallback(async () => {
     const resp = await apiFetch("/api/posts", { headers: authHeaders });
-    if (resp.ok) setPosts(await resp.json());
+    if (resp.ok) {
+      setPosts(await resp.json());
+      return;
+    }
+    toast.error(await getApiErrorMessage(resp, "Failed to load posts"));
   }, [authHeaders]);
 
   useEffect(() => {
@@ -84,6 +94,9 @@ const AdminPosts = () => {
       } else {
         setEditing((prev) => (prev ? { ...prev, imageUrl: result.url } : prev));
       }
+      toast.success(feedbackText.uploaded());
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Image upload failed");
     } finally {
       setUploading(false);
     }
@@ -122,7 +135,7 @@ const AdminPosts = () => {
     const text = await file.text();
     const rows = parseCsv(text);
     for (const row of rows) {
-      await apiFetch("/api/posts", {
+      const resp = await apiFetch("/api/posts", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -134,12 +147,21 @@ const AdminPosts = () => {
           publishedAt: row.publishedAt || null,
         }),
       });
+      if (!resp.ok) {
+        toast.error(await getApiErrorMessage(resp, "Failed to import posts"));
+        return;
+      }
     }
-    fetchPosts();
+    await fetchPosts();
+    toast.success(feedbackText.imported("post", rows.length));
   };
 
   const createPost = async () => {
     if (!creating) return;
+    if (creating.publishedAt && isPastDateTimeLocalValue(creating.publishedAt)) {
+      toast.error("Published date cannot be in the past.");
+      return;
+    }
     const resp = await apiFetch("/api/posts", {
       method: "POST",
       headers: authHeaders,
@@ -147,12 +169,19 @@ const AdminPosts = () => {
     });
     if (resp.ok) {
       setCreating(null);
-      fetchPosts();
+      await fetchPosts();
+      toast.success(feedbackText.created("post"));
+      return;
     }
+    toast.error(await getApiErrorMessage(resp, "Failed to create post"));
   };
 
   const savePost = async () => {
     if (!editing) return;
+    if (editing.publishedAt && isPastDateTimeLocalValue(editing.publishedAt)) {
+      toast.error("Published date cannot be in the past.");
+      return;
+    }
     const resp = await apiFetch(`/api/posts/${editing.id}`, {
       method: "PUT",
       headers: authHeaders,
@@ -160,13 +189,21 @@ const AdminPosts = () => {
     });
     if (resp.ok) {
       setEditing(null);
-      fetchPosts();
+      await fetchPosts();
+      toast.success(feedbackText.updated("post"));
+      return;
     }
+    toast.error(await getApiErrorMessage(resp, "Failed to update post"));
   };
 
   const deletePost = async (id: string) => {
     const resp = await apiFetch(`/api/posts/${id}`, { method: "DELETE", headers: authHeaders });
-    if (resp.ok) fetchPosts();
+    if (resp.ok) {
+      await fetchPosts();
+      toast.success(feedbackText.deleted("post"));
+      return;
+    }
+    toast.error(await getApiErrorMessage(resp, "Failed to delete post"));
   };
 
   return (
@@ -273,12 +310,10 @@ const AdminPosts = () => {
                       </div>
                       <div className="grid gap-2">
                         <Label>Published At</Label>
-                        <Input
-                          type="datetime-local"
+                        <DateTimePickerField
                           value={creating.publishedAt ?? ""}
-                          onChange={(e) =>
-                            setCreating({ ...creating, publishedAt: e.target.value })
-                          }
+                          onChange={(value) => setCreating({ ...creating, publishedAt: value })}
+                          minDate={todayDate}
                         />
                       </div>
                     </div>
@@ -314,21 +349,24 @@ const AdminPosts = () => {
               <option value="draft">Draft</option>
               <option value="published">Published</option>
             </select>
-            <Input
-              type="date"
+            <DatePickerField
               value={startAfter}
-              onChange={(e) => {
-                setStartAfter(e.target.value);
+              onChange={(value) => {
+                setStartAfter(value);
+                if (startBefore && isEndBeforeStart(value, startBefore)) setStartBefore(value);
                 setPage(1);
               }}
+              minDate={todayDate}
+              placeholder="Published after"
             />
-            <Input
-              type="date"
+            <DatePickerField
               value={startBefore}
-              onChange={(e) => {
-                setStartBefore(e.target.value);
+              onChange={(value) => {
+                setStartBefore(value);
                 setPage(1);
               }}
+              minDate={startAfter || todayDate}
+              placeholder="Published before"
             />
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               Page {page} of {totalPages}
@@ -414,7 +452,11 @@ const AdminPosts = () => {
                                 </div>
                                 <div className="grid gap-2">
                                   <Label>Published At</Label>
-                                  <Input type="datetime-local" value={editing.publishedAt ?? ""} onChange={(e) => setEditing({ ...editing, publishedAt: e.target.value })} />
+                                  <DateTimePickerField
+                                    value={editing.publishedAt ?? ""}
+                                    onChange={(value) => setEditing({ ...editing, publishedAt: value })}
+                                    minDate={todayDate}
+                                  />
                                 </div>
                               </div>
                             )}

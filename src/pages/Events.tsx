@@ -1,18 +1,24 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, MapPin, ArrowRight, Flame, Star } from "lucide-react";
+import { ArrowDown, ArrowRight, ArrowUp, Flame, Star, Calendar, MapPin } from "lucide-react";
 import carEvent from "@/assets/car-event.jpg";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
 import { downloadEventReceipt, printEventReceipt } from "@/lib/printEventReceipt";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "@/components/ui/sonner";
+import { feedbackText, getApiErrorMessage } from "@/lib/feedback";
+import CryptoProofUploader from "@/components/shared/CryptoProofUploader";
+import CryptoPaymentTimeline from "@/components/shared/CryptoPaymentTimeline";
+import CryptoPaymentDetails from "@/components/shared/CryptoPaymentDetails";
+import useCryptoPaymentStatus from "@/hooks/useCryptoPaymentStatus";
 
 type EventItem = {
   id: string;
@@ -47,6 +53,13 @@ type RegistrationResponse = {
   generatedTickets?: EventTicket[];
 };
 
+type CryptoDetails = {
+  asset: string;
+  network: string | null;
+  walletAddress: string | null;
+  instructions: string | null;
+};
+
 const formatDate = (value?: string | null) => {
   if (!value) return "TBA";
   const date = new Date(value);
@@ -79,6 +92,8 @@ const Events = () => {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [posts, setPosts] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+  const [postsError, setPostsError] = useState<string | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
   const [contactName, setContactName] = useState("");
@@ -91,26 +106,90 @@ const Events = () => {
   const [registerLoading, setRegisterLoading] = useState(false);
   const [pendingRegistrationId, setPendingRegistrationId] = useState<string | null>(null);
   const [completedRegistrationId, setCompletedRegistrationId] = useState<string | null>(null);
+  const registerDialogRef = useRef<HTMLDivElement | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"mpesa" | "crypto">("mpesa");
+  const [cryptoDetails, setCryptoDetails] = useState<CryptoDetails | null>(null);
+  const [transactionHash, setTransactionHash] = useState("");
+  const [payerWallet, setPayerWallet] = useState("");
+  const [proofImageUrl, setProofImageUrl] = useState<string | null>(null);
+
+  const {
+    data: cryptoStatusData,
+    loading: cryptoStatusLoading,
+    error: cryptoStatusError,
+    refresh: refreshCryptoStatus,
+  } = useCryptoPaymentStatus(
+    completedRegistrationId ? `/api/payments/crypto/event-registration-status/${completedRegistrationId}` : null,
+    Boolean(registerOpen && paymentMethod === "crypto" && completedRegistrationId),
+    5000,
+    token ? { Authorization: `Bearer ${token}` } : {}
+  );
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
   const totalAmountCents = (selectedEvent?.priceCents || 0) * tickets;
   const isPaidEvent = totalAmountCents > 0;
 
+  const loadPageData = useCallback(async () => {
+    setLoading(true);
+    setEventsError(null);
+    setPostsError(null);
+
+    const [eventsResult, postsResult] = await Promise.allSettled([
+      apiFetch("/api/events?status=upcoming"),
+      apiFetch("/api/posts?status=published"),
+    ]);
+
+    if (eventsResult.status === "fulfilled") {
+      const eventsRes = eventsResult.value;
+      if (eventsRes.ok) {
+        const data = await eventsRes.json();
+        setEvents(Array.isArray(data) ? data : []);
+      } else {
+        const message = await getApiErrorMessage(eventsRes, "Failed to load events");
+        setEvents([]);
+        setEventsError(message);
+        toast.error(message);
+      }
+    } else {
+      const message = "Unable to load events right now.";
+      setEvents([]);
+      setEventsError(message);
+      toast.error(message);
+    }
+
+    if (postsResult.status === "fulfilled") {
+      const postsRes = postsResult.value;
+      if (postsRes.ok) {
+        const data = await postsRes.json();
+        setPosts(Array.isArray(data) ? data : []);
+      } else {
+        const message = await getApiErrorMessage(postsRes, "Failed to load blog posts");
+        setPosts([]);
+        setPostsError(message);
+        toast.error(message);
+      }
+    } else {
+      const message = "Unable to load blog posts right now.";
+      setPosts([]);
+      setPostsError(message);
+      toast.error(message);
+    }
+
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
-        const [eventsRes, postsRes] = await Promise.all([
-          apiFetch("/api/events?status=upcoming"),
-          apiFetch("/api/posts?status=published"),
-        ]);
-        if (eventsRes.ok) setEvents(await eventsRes.json());
-        if (postsRes.ok) setPosts(await postsRes.json());
-      } finally {
-        setLoading(false);
+    void loadPageData();
+  }, [loadPageData]);
+
+  useEffect(() => {
+    const loadCryptoDetails = async () => {
+      const resp = await apiFetch("/api/payments/crypto-details");
+      if (resp.ok) {
+        setCryptoDetails(await resp.json().catch(() => null));
       }
     };
-    load();
+    void loadCryptoDetails();
   }, []);
 
   useEffect(() => {
@@ -124,10 +203,14 @@ const Events = () => {
     setGeneratedTickets([]);
     setPendingRegistrationId(null);
     setCompletedRegistrationId(null);
+    setPaymentMethod("mpesa");
+    setTransactionHash("");
+    setPayerWallet("");
+    setProofImageUrl(null);
   }, [registerOpen, user]);
 
   useEffect(() => {
-    if (!registerOpen || !pendingRegistrationId) return undefined;
+    if (!registerOpen || !pendingRegistrationId || paymentMethod !== "mpesa") return undefined;
 
     let cancelled = false;
     const poll = async () => {
@@ -149,12 +232,14 @@ const Events = () => {
             setRegisterSuccess("Payment received. Your tickets are ready.");
             setPendingRegistrationId(null);
             setCompletedRegistrationId(pendingRegistrationId);
+            toast.success("Payment received. Your tickets are ready.");
           }
           return;
         }
         if (paymentStatus === "failed" && !cancelled) {
           setRegisterError("M-Pesa payment failed. Try again from My Event Registrations.");
           setPendingRegistrationId(null);
+          toast.error("M-Pesa payment failed. Try again.");
         }
       } catch {
         // Ignore transient polling errors.
@@ -169,7 +254,7 @@ const Events = () => {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [authHeaders, pendingRegistrationId, registerOpen]);
+  }, [authHeaders, paymentMethod, pendingRegistrationId, registerOpen]);
 
   const openRegister = (event: EventItem) => {
     if (!user) {
@@ -184,6 +269,17 @@ const Events = () => {
     if (!selectedEvent) return;
     if (!contactName.trim() || !contactPhone.trim()) {
       setRegisterError("Name and phone are required.");
+      toast.error("Name and phone are required.");
+      return;
+    }
+    if (isPaidEvent && paymentMethod === "crypto" && !transactionHash.trim()) {
+      setRegisterError("Transaction hash is required for crypto payment.");
+      toast.error("Transaction hash is required for crypto payment.");
+      return;
+    }
+    if (isPaidEvent && paymentMethod === "crypto" && !proofImageUrl) {
+      setRegisterError("Payment proof image is required for crypto payment.");
+      toast.error("Payment proof image is required for crypto payment.");
       return;
     }
     setRegisterLoading(true);
@@ -202,36 +298,68 @@ const Events = () => {
       });
 
       if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        throw new Error(errData.error || "Failed to register for event");
+        throw new Error(await getApiErrorMessage(resp, "Failed to register for event"));
       }
 
       const data = (await resp.json().catch(() => ({}))) as RegistrationResponse;
 
       if (data.paymentRequired) {
-        const paymentResp = await apiFetch("/api/payments/mpesa/stkpush-event-registration", {
-          method: "POST",
-          headers: authHeaders,
-          body: JSON.stringify({
-            registrationId: data.id,
-            phoneNumber: contactPhone,
-          }),
-        });
+        const paymentResp = await apiFetch(
+          paymentMethod === "crypto"
+            ? "/api/payments/crypto/event-registration"
+            : "/api/payments/mpesa/stkpush-event-registration",
+          {
+            method: "POST",
+            headers: authHeaders,
+              body: JSON.stringify({
+                registrationId: data.id,
+                phoneNumber: contactPhone,
+                contactPhone,
+                transactionHash,
+                payerWallet,
+                proofImageUrl,
+                asset: cryptoDetails?.asset,
+                network: cryptoDetails?.network,
+              }),
+            }
+          );
         if (!paymentResp.ok) {
-          const errData = await paymentResp.json().catch(() => ({}));
-          throw new Error(errData.error || "Failed to initiate M-Pesa payment");
+          throw new Error(
+            await getApiErrorMessage(
+              paymentResp,
+              paymentMethod === "crypto"
+                ? "Failed to submit crypto payment"
+                : "Failed to initiate M-Pesa payment"
+            )
+          );
         }
-        setPendingRegistrationId(data.id);
-        setRegisterSuccess("M-Pesa prompt sent. Complete payment to generate your tickets.");
+        if (paymentMethod === "mpesa") {
+          setPendingRegistrationId(data.id);
+        } else {
+          setCompletedRegistrationId(data.id);
+        }
+        setRegisterSuccess(
+          paymentMethod === "crypto"
+            ? "Crypto payment submitted for review. Your tickets will be generated after approval."
+            : "M-Pesa prompt sent. Complete payment to generate your tickets."
+        );
         setGeneratedTickets([]);
+        toast.success(
+          paymentMethod === "crypto"
+            ? "Crypto payment submitted for review."
+            : "M-Pesa prompt sent. Complete payment on your phone."
+        );
       } else {
         const ticketsData = Array.isArray(data.generatedTickets) ? data.generatedTickets : [];
         setGeneratedTickets(ticketsData);
         setRegisterSuccess("Registration submitted. Your tickets are ready.");
         setCompletedRegistrationId(data.id);
+        toast.success("Registration submitted. Your tickets are ready.");
       }
     } catch (err) {
-      setRegisterError(err instanceof Error ? err.message : "Failed to register.");
+      const message = err instanceof Error ? err.message : "Failed to register.";
+      setRegisterError(message);
+      toast.error(message);
     } finally {
       setRegisterLoading(false);
     }
@@ -255,13 +383,14 @@ const Events = () => {
         contactPhone,
         tickets,
         amountCents: totalAmountCents,
-        paymentMethod: isPaidEvent ? "mpesa" : "free",
+        paymentMethod: isPaidEvent ? paymentMethod : "free",
         paymentStatus: "paid",
         paidAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       },
       generatedTickets
     );
+    toast.success(feedbackText.printingOpened("ticket"));
   };
 
   const handleDownloadTicket = async () => {
@@ -277,13 +406,14 @@ const Events = () => {
         contactPhone,
         tickets,
         amountCents: totalAmountCents,
-        paymentMethod: isPaidEvent ? "mpesa" : "free",
+        paymentMethod: isPaidEvent ? paymentMethod : "free",
         paymentStatus: "paid",
         paidAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       },
       generatedTickets
     );
+    toast.success(feedbackText.downloaded("ticket"));
   };
 
   return (
@@ -340,6 +470,16 @@ const Events = () => {
 
             {!loading && activeSection === "events" && (
               <div className="space-y-10">
+                {eventsError && (
+                  <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <span>{eventsError}</span>
+                      <Button variant="outline" size="sm" onClick={() => void loadPageData()}>
+                        Retry
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {featuredEvent && (
                   <div className="grid grid-cols-1 gap-8 overflow-hidden rounded-2xl border border-border bg-card lg:grid-cols-2">
                     <img
@@ -383,7 +523,7 @@ const Events = () => {
                   </div>
                 )}
 
-                {otherEvents.length === 0 ? (
+                {!featuredEvent && otherEvents.length === 0 ? (
                   <div className="text-center text-muted-foreground py-12">
                     No upcoming events right now.
                   </div>
@@ -429,6 +569,16 @@ const Events = () => {
 
             {!loading && activeSection === "blogs" && (
               <div className="space-y-10">
+                {postsError && (
+                  <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <span>{postsError}</span>
+                      <Button variant="outline" size="sm" onClick={() => void loadPageData()}>
+                        Retry
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {featuredPost && (
                   <div className="grid grid-cols-1 gap-8 overflow-hidden rounded-2xl border border-border bg-card lg:grid-cols-2">
                     <img
@@ -452,7 +602,7 @@ const Events = () => {
                   </div>
                 )}
 
-                {otherPosts.length === 0 ? (
+                {!featuredPost && otherPosts.length === 0 ? (
                   <div className="text-center text-muted-foreground py-12">
                     No blog posts available yet.
                   </div>
@@ -485,13 +635,26 @@ const Events = () => {
       <Footer />
 
       <Dialog open={registerOpen} onOpenChange={setRegisterOpen}>
-        <DialogContent>
+         <DialogContent className="max-h-[90vh] overflow-y-auto" ref={registerDialogRef}>
           <DialogHeader>
             <DialogTitle>
               Register{selectedEvent ? `: ${selectedEvent.title}` : ""}
             </DialogTitle>
+            <DialogDescription>
+              Enter your attendee details and ticket quantity. Free events issue tickets immediately, while paid events can be settled by M-Pesa or submitted with a crypto proof image and hash before tickets are generated.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" size="sm" onClick={() => scrollRegisterDialog("top")}>
+                <ArrowUp className="mr-2 h-4 w-4" />
+                Scroll to top
+              </Button>
+              <Button type="button" variant="secondary" size="sm" onClick={() => scrollRegisterDialog("bottom")}>
+                <ArrowDown className="mr-2 h-4 w-4" />
+                Scroll to payment
+              </Button>
+            </div>
             <div className="grid gap-2">
               <Label>Name</Label>
               <Input value={contactName} onChange={(e) => setContactName(e.target.value)} />
@@ -500,6 +663,19 @@ const Events = () => {
               <Label>Phone</Label>
               <Input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
             </div>
+            {isPaidEvent && (
+              <div className="grid gap-2">
+                <Label>Payment Method</Label>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value as "mpesa" | "crypto")}
+                >
+                  <option value="mpesa">M-Pesa</option>
+                  <option value="crypto">Crypto</option>
+                </select>
+              </div>
+            )}
             <div className="grid gap-2">
               <Label>Tickets</Label>
               <Input
@@ -515,23 +691,81 @@ const Events = () => {
             </div>
             <div className="rounded-md border border-border bg-card p-3 text-sm">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">Ticket type</span>
-                <span className="font-medium">
-                  {selectedEvent?.priceCents ? `${formatCurrency(selectedEvent.priceCents)} each` : "Free"}
-                </span>
+                <span className="text-muted-foreground">Ticket price</span>
+                <span className="font-medium">{selectedEvent?.priceCents ? formatCurrency(selectedEvent.priceCents) : "Free"}</span>
               </div>
               <div className="mt-2 flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">Total</span>
+                <span className="text-muted-foreground">Tickets</span>
+                <span className="font-medium">{tickets}</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
+                <span className="font-medium">Total</span>
                 <span className="font-medium">{formatCurrency(totalAmountCents)}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Payment method</span>
+                <span className="text-xs font-medium capitalize text-muted-foreground">{paymentMethod}</span>
               </div>
               {isPaidEvent && (
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Tickets are generated only after successful M-Pesa payment.
+                  {paymentMethod === "crypto"
+                    ? "Crypto payments are reviewed before tickets are issued."
+                    : "M-Pesa payment prompt will be sent after submission."}
                 </p>
               )}
             </div>
+            {isPaidEvent && paymentMethod === "crypto" && (
+              <div className="rounded-md border border-border bg-card p-3 text-sm">
+                <p className="font-medium">Crypto payment instructions</p>
+                <p className="mt-2 text-muted-foreground capitalize">
+                  {cryptoDetails?.asset || "USDT"}
+                  {cryptoDetails?.network ? ` on ${cryptoDetails.network}` : ""}
+                </p>
+                <p className="mt-1 break-all font-mono text-xs text-primary">
+                  {cryptoDetails?.walletAddress || "Wallet not configured"}
+                </p>
+                {cryptoDetails?.instructions ? (
+                  <p className="mt-2 text-muted-foreground">{cryptoDetails.instructions}</p>
+                ) : null}
+              </div>
+            )}
+            {isPaidEvent && paymentMethod === "crypto" && (
+              <div className="grid gap-4">
+                <CryptoProofUploader
+                  token={token}
+                  proofImageUrl={proofImageUrl}
+                  onProofImageUrlChange={setProofImageUrl}
+                  label="Payment proof"
+                  description="Upload a clear transfer screenshot or receipt before submitting."
+                />
+                <div className="grid gap-2">
+                  <Label>Transaction Hash</Label>
+                  <Input value={transactionHash} onChange={(e) => setTransactionHash(e.target.value)} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Payer Wallet (optional)</Label>
+                  <Input value={payerWallet} onChange={(e) => setPayerWallet(e.target.value)} />
+                </div>
+              </div>
+            )}
             {registerError && <p className="text-sm text-destructive">{registerError}</p>}
             {registerSuccess && <p className="text-sm text-emerald-500">{registerSuccess}</p>}
+            <div className="sticky bottom-4 z-20 flex justify-end">
+              <Button type="button" variant="secondary" size="sm" onClick={() => scrollRegisterDialog("top")}>
+                <ArrowUp className="mr-2 h-4 w-4" />
+                Back to top
+              </Button>
+            </div>
+            {isPaidEvent && paymentMethod === "crypto" && completedRegistrationId && (
+              <CryptoPaymentTimeline
+                resource={cryptoStatusData?.resource || null}
+                transaction={cryptoStatusData?.transaction || null}
+                loading={cryptoStatusLoading}
+                error={cryptoStatusError}
+                onRefresh={refreshCryptoStatus}
+                refreshing={cryptoStatusLoading}
+              />
+            )}
             {generatedTickets.length > 0 && (
               <div className="rounded-md border border-border bg-card p-3">
                 <p className="text-sm font-medium">Ticket Codes</p>
@@ -575,7 +809,9 @@ const Events = () => {
                   : pendingRegistrationId
                     ? "Waiting for Payment..."
                     : isPaidEvent
-                      ? "Pay with M-Pesa"
+                      ? paymentMethod === "crypto"
+                        ? "Submit Crypto Payment"
+                        : "Pay with M-Pesa"
                       : "Generate Ticket"}
               </Button>
             )}

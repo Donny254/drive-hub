@@ -82,6 +82,11 @@ export type Order = {
   id: string;
   userId: string;
   totalCents: number;
+  paymentMethod?: string | null;
+  paymentStatus?: "unpaid" | "pending" | "paid" | "failed";
+  paidAt?: string | null;
+  cryptoReviewNotes?: string | null;
+  cryptoProofImageUrl?: string | null;
   status: "pending" | "paid" | "cancelled" | "refunded";
   createdAt: string;
   itemsCount?: number;
@@ -108,8 +113,11 @@ export type Booking = {
   startDate: string | null;
   endDate: string | null;
   status: "pending" | "confirmed" | "cancelled" | "rejected";
+  paymentMethod?: string | null;
   paymentStatus?: "unpaid" | "pending" | "paid" | "failed";
   amountCents?: number | null;
+  cryptoReviewNotes?: string | null;
+  cryptoProofImageUrl?: string | null;
   createdAt: string;
 };
 
@@ -131,6 +139,11 @@ export type EventRegistration = {
   userId: string;
   eventId: string;
   eventTitle: string | null;
+  paymentMethod?: string | null;
+  paymentStatus?: "unpaid" | "pending" | "paid" | "failed";
+  paidAt?: string | null;
+  cryptoReviewNotes?: string | null;
+  cryptoProofImageUrl?: string | null;
   contactName: string | null;
   contactPhone: string | null;
   tickets: number;
@@ -197,6 +210,11 @@ export type SiteSettings = {
   bankBranch: string | null;
   bankSwift: string | null;
   bankInstructions: string | null;
+  sellerCommissionRate: number;
+  cryptoCurrency: string | null;
+  cryptoNetwork: string | null;
+  cryptoWalletAddress: string | null;
+  cryptoInstructions: string | null;
 };
 
 export type AdminAnalytics = {
@@ -232,4 +250,50 @@ export type AdminAnalytics = {
     viewsCount: number;
     inquiriesCount: number;
   }>;
+};
+
+export type SystemHealth = {
+  ok: boolean;
+  db: "ok" | "down";
+  mail?: "configured" | "not_configured";
+  time: string;
+};
+
+export type CryptoTransaction = {
+  id: string;
+  relationType: "order" | "booking" | "event_registration" | "unknown";
+  orderId?: string | null;
+  bookingId?: string | null;
+  eventRegistrationId?: string | null;
+  reference: string;
+  label: string | null;
+  asset: string;
+  network: string | null;
+  walletAddress: string | null;
+  payerWallet: string | null;
+  transactionHash: string;
+  proofImageUrl: string | null;
+  amountCents: number;
+  status: "pending" | "paid" | "failed" | "cancelled";
+  reviewNotes: string | null;
+  createdAt: string;
+};
+
+export type Payout = {
+  id: string;
+  bookingId: string;
+  sellerId: string;
+  listingId: string | null;
+  listingTitle: string | null;
+  buyerName: string | null;
+  amountCents: number;
+  feeCents: number;
+  payoutAmountCents: number;
+  payoutStatus: "pending" | "paid" | "failed" | "cancelled";
+  payoutAt: string | null;
+  notes: string | null;
+  paymentMethod: string | null;
+  paymentStatus: string | null;
+  createdAt: string;
+  updatedAt: string;
 };

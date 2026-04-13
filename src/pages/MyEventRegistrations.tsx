@@ -1,13 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { getTicketQrImageUrl, toTicketQrPayload } from "@/lib/ticketQr";
 import { downloadEventReceipt, printEventReceipt } from "@/lib/printEventReceipt";
+import { toast } from "@/components/ui/sonner";
+import ActionConfirmDialog from "@/components/shared/ActionConfirmDialog";
+import CryptoProofUploader from "@/components/shared/CryptoProofUploader";
+import CryptoPaymentTimeline from "@/components/shared/CryptoPaymentTimeline";
+import CryptoPaymentDetails from "@/components/shared/CryptoPaymentDetails";
+import useCryptoPaymentStatus from "@/hooks/useCryptoPaymentStatus";
+import { ArrowDown, ArrowUp } from "lucide-react";
 
 type EventRegistration = {
   id: string;
@@ -35,6 +44,13 @@ type EventTicket = {
   checkedInAt: string | null;
 };
 
+type CryptoDetails = {
+  asset: string;
+  network: string | null;
+  walletAddress: string | null;
+  instructions: string | null;
+};
+
 const formatCurrency = (amountCents?: number) =>
   new Intl.NumberFormat("en-KE", {
     style: "currency",
@@ -49,8 +65,34 @@ const MyEventRegistrations = () => {
   const [ticketsLoadingId, setTicketsLoadingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<EventRegistration | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cryptoDetails, setCryptoDetails] = useState<CryptoDetails | null>(null);
+  const [payTarget, setPayTarget] = useState<EventRegistration | null>(null);
+  const [payMethod, setPayMethod] = useState<"mpesa" | "crypto">("mpesa");
+  const [paying, setPaying] = useState(false);
+  const [transactionHash, setTransactionHash] = useState("");
+  const [payerWallet, setPayerWallet] = useState("");
+  const [proofImageUrl, setProofImageUrl] = useState<string | null>(null);
+  const [trackingRegistration, setTrackingRegistration] = useState<EventRegistration | null>(null);
+  const payDialogRef = useRef<HTMLDivElement | null>(null);
+  const trackingDialogRef = useRef<HTMLDivElement | null>(null);
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+
+  const {
+    data: cryptoStatusData,
+    loading: cryptoStatusLoading,
+    error: cryptoStatusError,
+    refresh: refreshCryptoStatus,
+  } = useCryptoPaymentStatus(
+    trackingRegistration?.paymentMethod === "crypto"
+      ? `/api/payments/crypto/event-registration-status/${trackingRegistration.id}`
+      : null,
+    Boolean(trackingRegistration && trackingRegistration.paymentMethod === "crypto"),
+    5000,
+    authHeaders
+  );
 
   const fetchRegistrations = useCallback(async () => {
     try {
@@ -62,6 +104,7 @@ const MyEventRegistrations = () => {
     } catch (err) {
       console.error(err);
       setError("Failed to load your event registrations.");
+      toast.error("Failed to load your event registrations.");
     } finally {
       setLoading(false);
     }
@@ -71,30 +114,101 @@ const MyEventRegistrations = () => {
     fetchRegistrations();
   }, [fetchRegistrations]);
 
+  useEffect(() => {
+    const loadCryptoDetails = async () => {
+      const resp = await apiFetch("/api/payments/crypto-details");
+      if (resp.ok) {
+        setCryptoDetails(await resp.json().catch(() => null));
+      }
+    };
+    void loadCryptoDetails();
+  }, []);
+
+  useEffect(() => {
+    if (!payTarget) return;
+    setProofImageUrl(null);
+    setTransactionHash("");
+    setPayerWallet("");
+    setPayMethod("mpesa");
+    setTrackingRegistration(null);
+  }, [payTarget]);
+
   const cancelRegistration = async (id: string) => {
     const resp = await apiFetch(`/api/event-registrations/${id}`, {
       method: "PUT",
       headers: authHeaders,
       body: JSON.stringify({ status: "cancelled" }),
     });
-    if (!resp.ok) throw new Error("Failed to cancel registration");
-    fetchRegistrations();
+    if (!resp.ok) {
+      const errorData = await resp.json().catch(() => ({}));
+      toast.error(errorData.error || "Failed to cancel registration");
+      throw new Error(errorData.error || "Failed to cancel registration");
+    }
+    await fetchRegistrations();
+    toast.success("Registration cancelled.");
   };
 
   const payRegistration = async (registration: EventRegistration) => {
-    const resp = await apiFetch("/api/payments/mpesa/stkpush-event-registration", {
-      method: "POST",
-      headers: authHeaders,
-      body: JSON.stringify({
-        registrationId: registration.id,
-        phoneNumber: registration.contactPhone,
-      }),
-    });
-    if (!resp.ok) {
-      const errorData = await resp.json().catch(() => ({}));
-      throw new Error(errorData.error || "Failed to start M-Pesa payment");
+    if (payMethod === "crypto" && !transactionHash.trim()) {
+      toast.error("Transaction hash is required for crypto payment.");
+      return;
     }
-    fetchRegistrations();
+    if (payMethod === "crypto" && !proofImageUrl) {
+      toast.error("Payment proof image is required for crypto payment.");
+      return;
+    }
+    setPaying(true);
+    try {
+      const endpoint =
+        payMethod === "crypto"
+          ? "/api/payments/crypto/event-registration"
+          : "/api/payments/mpesa/stkpush-event-registration";
+      const resp = await apiFetch(endpoint, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          registrationId: registration.id,
+          phoneNumber: registration.contactPhone,
+          contactPhone: registration.contactPhone,
+          transactionHash,
+          payerWallet,
+          proofImageUrl,
+          asset: cryptoDetails?.asset,
+          network: cryptoDetails?.network,
+        }),
+      });
+      if (!resp.ok) {
+        const errorData = await resp.json().catch(() => ({}));
+        const message =
+          errorData.error ||
+          (payMethod === "crypto" ? "Failed to submit crypto payment" : "Failed to start M-Pesa payment");
+        toast.error(message);
+        throw new Error(message);
+      }
+      await fetchRegistrations();
+      toast.success(
+        payMethod === "crypto"
+          ? "Crypto payment submitted for review."
+          : "M-Pesa prompt sent. Complete payment on your phone."
+      );
+      if (payMethod === "crypto") {
+        setTrackingRegistration({
+          ...registration,
+          paymentMethod: "crypto",
+          paymentStatus: "pending",
+        });
+        setPayTarget(null);
+      } else {
+        setTrackingRegistration(null);
+        setPayTarget(null);
+      }
+      setTransactionHash("");
+      setPayerWallet("");
+      setPayMethod("mpesa");
+      setProofImageUrl(null);
+    } finally {
+      setPaying(false);
+    }
   };
 
   const loadTickets = async (registrationId: string) => {
@@ -104,9 +218,14 @@ const MyEventRegistrations = () => {
       const resp = await apiFetch(`/api/event-registrations/registration/${registrationId}/tickets`, {
         headers: authHeaders,
       });
-      if (!resp.ok) throw new Error("Failed to load tickets");
+      if (!resp.ok) {
+        const errorData = await resp.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to load tickets");
+      }
       const tickets = (await resp.json()) as EventTicket[];
       setTicketsByRegistration((prev) => ({ ...prev, [registrationId]: tickets }));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to load tickets");
     } finally {
       setTicketsLoadingId(null);
     }
@@ -115,11 +234,13 @@ const MyEventRegistrations = () => {
   const handlePrintReceipt = async (registration: EventRegistration) => {
     const tickets = ticketsByRegistration[registration.id] || [];
     await printEventReceipt(registration, tickets);
+    toast.success("Receipt opened for printing.");
   };
 
   const handleDownloadReceipt = async (registration: EventRegistration) => {
     const tickets = ticketsByRegistration[registration.id] || [];
     await downloadEventReceipt(registration, tickets);
+    toast.success("Receipt downloaded.");
   };
 
   return (
@@ -166,6 +287,9 @@ const MyEventRegistrations = () => {
                           <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
                             <DialogHeader>
                               <DialogTitle>Tickets for {registration.eventTitle ?? "Event"}</DialogTitle>
+                              <DialogDescription>
+                                Review issued tickets, scan-ready QR codes, and receipt actions for this event registration.
+                              </DialogDescription>
                             </DialogHeader>
                             {ticketsLoadingId === registration.id && (
                               <p className="text-sm text-muted-foreground">Loading tickets...</p>
@@ -225,9 +349,19 @@ const MyEventRegistrations = () => {
                             size="sm"
                             className="w-full"
                             disabled={!registration.contactPhone || registration.status === "cancelled"}
-                            onClick={() => payRegistration(registration)}
+                            onClick={() => setPayTarget(registration)}
+                            >
+                              Pay Now
+                            </Button>
+                        )}
+                        {registration.paymentMethod === "crypto" && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="w-full"
+                            onClick={() => setTrackingRegistration(registration)}
                           >
-                            Pay Now
+                            Track Crypto
                           </Button>
                         )}
                         <Button
@@ -235,7 +369,7 @@ const MyEventRegistrations = () => {
                           size="sm"
                           className="w-full"
                           disabled={registration.status === "cancelled"}
-                          onClick={() => cancelRegistration(registration.id)}
+                          onClick={() => setCancelTarget(registration)}
                         >
                           Cancel
                         </Button>
@@ -278,9 +412,12 @@ const MyEventRegistrations = () => {
                                 View
                               </Button>
                             </DialogTrigger>
-                            <DialogContent>
+                            <DialogContent className="max-h-[90vh] overflow-y-auto" ref={payDialogRef}>
                               <DialogHeader>
                                 <DialogTitle>Tickets for {registration.eventTitle ?? "Event"}</DialogTitle>
+                                <DialogDescription>
+                                  Review issued tickets, scan-ready QR codes, and receipt actions for this event registration.
+                                </DialogDescription>
                               </DialogHeader>
                               {ticketsLoadingId === registration.id && (
                                 <p className="text-sm text-muted-foreground">Loading tickets...</p>
@@ -341,21 +478,30 @@ const MyEventRegistrations = () => {
                         <TableCell className="capitalize">{registration.status}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            {registration.amountCents > 0 && registration.paymentStatus !== "paid" && (
+                          {registration.amountCents > 0 && registration.paymentStatus !== "paid" && (
+                            <Button
+                              variant="hero"
+                              size="sm"
+                              disabled={!registration.contactPhone || registration.status === "cancelled"}
+                              onClick={() => setPayTarget(registration)}
+                            >
+                              Pay Now
+                            </Button>
+                            )}
+                            {registration.paymentMethod === "crypto" && (
                               <Button
-                                variant="hero"
+                                variant="secondary"
                                 size="sm"
-                                disabled={!registration.contactPhone || registration.status === "cancelled"}
-                                onClick={() => payRegistration(registration)}
+                                onClick={() => setTrackingRegistration(registration)}
                               >
-                                Pay Now
+                                Track Crypto
                               </Button>
                             )}
                             <Button
                               variant="destructive"
                               size="sm"
                               disabled={registration.status === "cancelled"}
-                              onClick={() => cancelRegistration(registration.id)}
+                              onClick={() => setCancelTarget(registration)}
                             >
                               Cancel
                             </Button>
@@ -371,6 +517,148 @@ const MyEventRegistrations = () => {
           </div>
         </div>
       </main>
+      <Dialog open={Boolean(trackingRegistration)} onOpenChange={(open) => !open && setTrackingRegistration(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl" ref={trackingDialogRef}>
+          <div className="sticky top-0 z-10 flex justify-end pb-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => trackingDialogRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
+            >
+              <ArrowUp className="mr-2 h-4 w-4" />
+              Back to top
+            </Button>
+          </div>
+          <DialogHeader>
+            <DialogTitle>Track Crypto Payment</DialogTitle>
+            <DialogDescription>
+              Follow the payment review timeline, proof image, and blockchain explorer details for this registration.
+            </DialogDescription>
+          </DialogHeader>
+          <CryptoPaymentTimeline
+            title={trackingRegistration?.eventTitle ? `Crypto payment for ${trackingRegistration.eventTitle}` : "Crypto payment timeline"}
+            resource={cryptoStatusData?.resource || null}
+            transaction={cryptoStatusData?.transaction || null}
+            loading={cryptoStatusLoading}
+            error={cryptoStatusError}
+            onRefresh={refreshCryptoStatus}
+            refreshing={cryptoStatusLoading}
+          />
+          <DialogFooter>
+            <Button variant="hero" onClick={() => setTrackingRegistration(null)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!payTarget} onOpenChange={(open) => !open && setPayTarget(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto" ref={payDialogRef}>
+          <DialogHeader>
+            <DialogTitle>Complete Payment</DialogTitle>
+            <DialogDescription>
+              Choose how you want to pay for this event registration. Crypto payments require a proof image and transfer hash for manual review.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" size="sm" onClick={() => payDialogRef.current?.scrollTo({ top: 0, behavior: "smooth" })}>
+                <ArrowUp className="mr-2 h-4 w-4" />
+                Scroll to top
+              </Button>
+              <Button type="button" variant="secondary" size="sm" onClick={() => payDialogRef.current?.scrollTo({ top: payDialogRef.current?.scrollHeight || 0, behavior: "smooth" })}>
+                <ArrowDown className="mr-2 h-4 w-4" />
+                Scroll to payment
+              </Button>
+            </div>
+            <div className="grid gap-2">
+              <Label>Payment Method</Label>
+              <select
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                value={payMethod}
+                onChange={(e) => setPayMethod(e.target.value as "mpesa" | "crypto")}
+              >
+                <option value="mpesa">M-Pesa</option>
+                <option value="crypto">Crypto</option>
+              </select>
+            </div>
+            {payMethod === "crypto" && (
+              <CryptoPaymentDetails
+                asset={cryptoDetails?.asset}
+                network={cryptoDetails?.network}
+                walletAddress={cryptoDetails?.walletAddress}
+                instructions={cryptoDetails?.instructions}
+                showAdminShortcut={false}
+              />
+            )}
+            {payMethod === "crypto" && (
+              <div className="grid gap-4">
+                <CryptoProofUploader
+                  token={token}
+                  proofImageUrl={proofImageUrl}
+                  onProofImageUrlChange={setProofImageUrl}
+                  label="Payment proof"
+                  description="Upload a clear transfer screenshot or receipt before submitting."
+                />
+                <div className="grid gap-2">
+                  <Label>Transaction Hash</Label>
+                  <Input value={transactionHash} onChange={(e) => setTransactionHash(e.target.value)} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Payer Wallet (optional)</Label>
+                  <Input value={payerWallet} onChange={(e) => setPayerWallet(e.target.value)} />
+                </div>
+              </div>
+            )}
+            {payMethod === "crypto" && trackingRegistration?.id === payTarget?.id && (
+              <CryptoPaymentTimeline
+                resource={cryptoStatusData?.resource || null}
+                transaction={cryptoStatusData?.transaction || null}
+                loading={cryptoStatusLoading}
+                error={cryptoStatusError}
+                onRefresh={refreshCryptoStatus}
+              />
+            )}
+          </div>
+          <div className="sticky bottom-4 z-20 flex justify-end">
+              <Button type="button" variant="secondary" size="sm" onClick={() => payDialogRef.current?.scrollTo({ top: 0, behavior: "smooth" })}>
+                <ArrowUp className="mr-2 h-4 w-4" />
+                Back to top
+              </Button>
+            </div>
+          <div className="sticky bottom-4 z-20 flex justify-end">
+            <Button type="button" variant="secondary" size="sm" onClick={() => payDialogRef.current?.scrollTo({ top: 0, behavior: "smooth" })}>
+              <ArrowUp className="mr-2 h-4 w-4" />
+              Back to top
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button variant="hero" onClick={() => payTarget && void payRegistration(payTarget)} disabled={paying}>
+              {paying ? "Submitting..." : payMethod === "crypto" ? "Submit Crypto Payment" : "Pay with M-Pesa"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <ActionConfirmDialog
+        open={Boolean(cancelTarget)}
+        onOpenChange={(open) => !open && setCancelTarget(null)}
+        title="Cancel registration?"
+        description={`This will cancel your registration${cancelTarget?.eventTitle ? ` for "${cancelTarget.eventTitle}"` : ""}. You can’t undo this from your account.`}
+        cancelLabel="Keep Registration"
+        confirmLabel="Cancel Registration"
+        loading={cancelLoading}
+        loadingLabel="Cancelling..."
+        onConfirm={async () => {
+          if (!cancelTarget) return;
+          try {
+            setCancelLoading(true);
+            await cancelRegistration(cancelTarget.id);
+            setCancelTarget(null);
+          } finally {
+            setCancelLoading(false);
+          }
+        }}
+      />
       <Footer />
     </div>
   );

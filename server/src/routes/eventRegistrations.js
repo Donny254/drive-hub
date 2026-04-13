@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { query } from "../db.js";
 import { requireAuth, requireAdminOrOwner, requireRole } from "../middleware/auth.js";
-import { sendEventTicketEmail } from "../email.js";
+import { sendCryptoPaymentStatusEmail, sendEventTicketEmail } from "../email.js";
 import { sendEventTicketMessage } from "../notifications.js";
 import {
   issueTicketsForRegistration,
@@ -26,6 +26,8 @@ const toApi = (row) => ({
   paymentMethod: row.payment_method || null,
   paymentStatus: row.payment_status || "unpaid",
   paidAt: row.paid_at,
+  cryptoReviewNotes: row.crypto_review_notes || null,
+  cryptoProofImageUrl: row.crypto_proof_image_url || null,
   notes: row.notes,
   status: row.status,
   createdAt: row.created_at,
@@ -58,7 +60,21 @@ router.get("/", requireAuth, async (req, res, next) => {
       }
       const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
       const result = await query(
-        `SELECT er.*, e.title AS event_title, e.location AS event_location, e.start_date AS event_start_date, e.end_date AS event_end_date
+        `SELECT er.*, e.title AS event_title, e.location AS event_location, e.start_date AS event_start_date, e.end_date AS event_end_date,
+                (
+                  SELECT review_notes
+                  FROM crypto_transactions ct
+                  WHERE ct.event_registration_id = er.id
+                  ORDER BY ct.created_at DESC
+                  LIMIT 1
+                ) AS crypto_review_notes,
+                (
+                  SELECT proof_image_url
+                  FROM crypto_transactions ct
+                  WHERE ct.event_registration_id = er.id
+                  ORDER BY ct.created_at DESC
+                  LIMIT 1
+                ) AS crypto_proof_image_url
          FROM event_registrations er
          LEFT JOIN events e ON e.id = er.event_id
          ${whereClause}
@@ -75,7 +91,21 @@ router.get("/", requireAuth, async (req, res, next) => {
       where.push(`er.event_id = $${params.length}`);
     }
     const result = await query(
-      `SELECT er.*, e.title AS event_title, e.location AS event_location, e.start_date AS event_start_date, e.end_date AS event_end_date
+      `SELECT er.*, e.title AS event_title, e.location AS event_location, e.start_date AS event_start_date, e.end_date AS event_end_date,
+              (
+                SELECT review_notes
+                FROM crypto_transactions ct
+                WHERE ct.event_registration_id = er.id
+                ORDER BY ct.created_at DESC
+                LIMIT 1
+              ) AS crypto_review_notes,
+              (
+                SELECT proof_image_url
+                FROM crypto_transactions ct
+                WHERE ct.event_registration_id = er.id
+                ORDER BY ct.created_at DESC
+                LIMIT 1
+              ) AS crypto_proof_image_url
        FROM event_registrations er
        LEFT JOIN events e ON e.id = er.event_id
        WHERE ${where.join(" AND ")}
@@ -190,7 +220,7 @@ router.put(
   requireAdminOrOwner((req) => req.registrationOwnerId),
   async (req, res, next) => {
     try {
-      const { contactName, contactPhone, tickets, notes, status } = req.body;
+      const { contactName, contactPhone, tickets, notes, status, paymentMethod, paymentStatus, cryptoReviewNotes, cryptoProofImageUrl } = req.body;
       const updates = [];
       const values = [];
 
@@ -230,6 +260,27 @@ router.put(
         maybeSet("status", status);
       }
 
+      if (paymentMethod !== undefined) {
+        if (req.user.role !== "admin") {
+          return res.status(403).json({ error: "Only admins can update payment method" });
+        }
+        maybeSet("payment_method", paymentMethod || null);
+      }
+
+      if (paymentStatus !== undefined) {
+        if (req.user.role !== "admin") {
+          return res.status(403).json({ error: "Only admins can update payment status" });
+        }
+        if (!["unpaid", "pending", "paid", "failed"].includes(paymentStatus)) {
+          return res.status(400).json({ error: "Invalid payment status" });
+        }
+        maybeSet("payment_status", paymentStatus);
+        maybeSet("paid_at", paymentStatus === "paid" ? new Date().toISOString() : null);
+        if (paymentStatus === "paid" && current.status !== "cancelled") {
+          maybeSet("status", "confirmed");
+        }
+      }
+
       if (updates.length === 0) {
         return res.status(400).json({ error: "No fields to update" });
       }
@@ -240,6 +291,50 @@ router.put(
         values
       );
       const updated = result.rows[0];
+
+      if (
+        (paymentStatus !== undefined ||
+          paymentMethod !== undefined ||
+          cryptoReviewNotes !== undefined ||
+          cryptoProofImageUrl !== undefined) &&
+        updated.payment_method === "crypto"
+      ) {
+        await query(
+          `UPDATE crypto_transactions
+           SET status = $1,
+               review_notes = COALESCE($3, review_notes),
+               proof_image_url = COALESCE($4, proof_image_url)
+           WHERE event_registration_id = $2
+             AND id = (
+               SELECT id FROM crypto_transactions
+               WHERE event_registration_id = $2
+               ORDER BY created_at DESC
+               LIMIT 1
+             )`,
+          [
+            updated.payment_status === "paid" ? "paid" : updated.payment_status === "failed" ? "failed" : "pending",
+            updated.id,
+            cryptoReviewNotes ?? null,
+            cryptoProofImageUrl ?? null,
+          ]
+        );
+      }
+      if (
+        updated.payment_method === "crypto" &&
+        paymentStatus !== undefined &&
+        ["paid", "failed"].includes(updated.payment_status)
+      ) {
+        const userResult = await query("SELECT email, name FROM users WHERE id = $1", [updated.user_id]);
+        if (userResult.rowCount > 0) {
+          await sendCryptoPaymentStatusEmail({
+            to: userResult.rows[0].email,
+            customerName: updated.contact_name || userResult.rows[0].name,
+            referenceLabel: `event registration ${updated.id.slice(0, 8)}`,
+            paymentStatus: updated.payment_status,
+            reviewNotes: cryptoReviewNotes ?? null,
+          });
+        }
+      }
 
       if (tickets !== undefined && updated.payment_status === "paid" && updated.status !== "cancelled") {
         await syncTicketsForRegistration({
@@ -257,7 +352,72 @@ router.put(
         );
       }
 
-      res.json(toApi(updated));
+      if (paymentStatus === "paid" && updated.status !== "cancelled") {
+        try {
+          const notifyResult = await query(
+            `SELECT u.email, u.name, e.title, e.location, e.start_date, e.end_date
+             FROM event_registrations er
+             LEFT JOIN users u ON u.id = er.user_id
+             LEFT JOIN events e ON e.id = er.event_id
+             WHERE er.id = $1`,
+            [updated.id]
+          );
+          const syncedTickets = await query(
+            `SELECT * FROM event_tickets WHERE registration_id = $1 ORDER BY created_at ASC`,
+            [updated.id]
+          );
+          if (notifyResult.rowCount > 0) {
+            const notify = notifyResult.rows[0];
+            await sendEventTicketEmail({
+              to: notify.email,
+              attendeeName: updated.contact_name || notify.name,
+              registration: {
+                tickets: updated.tickets,
+                paymentMethod: updated.payment_method,
+                paymentStatus: updated.payment_status,
+              },
+              event: {
+                title: notify.title,
+                location: notify.location,
+                startDate: notify.start_date,
+                endDate: notify.end_date,
+              },
+              tickets: syncedTickets.rows.map(toTicketApi),
+            });
+            await sendEventTicketMessage({
+              phone: updated.contact_phone,
+              attendeeName: updated.contact_name || notify.name,
+              eventTitle: notify.title,
+              ticketCodes: syncedTickets.rows.map((ticket) => ticket.ticket_number),
+            });
+          }
+        } catch (mailError) {
+          console.warn("Event ticket email failed:", mailError);
+        }
+      }
+
+      const reload = await query(
+        `SELECT er.*, e.title AS event_title, e.location AS event_location, e.start_date AS event_start_date, e.end_date AS event_end_date,
+                (
+                  SELECT review_notes
+                  FROM crypto_transactions ct
+                  WHERE ct.event_registration_id = er.id
+                  ORDER BY ct.created_at DESC
+                  LIMIT 1
+                ) AS crypto_review_notes,
+                (
+                  SELECT proof_image_url
+                  FROM crypto_transactions ct
+                  WHERE ct.event_registration_id = er.id
+                  ORDER BY ct.created_at DESC
+                  LIMIT 1
+                ) AS crypto_proof_image_url
+         FROM event_registrations er
+         LEFT JOIN events e ON e.id = er.event_id
+         WHERE er.id = $1`,
+        [updated.id]
+      );
+      res.json(toApi(reload.rows[0]));
     } catch (error) {
       next(error);
     }

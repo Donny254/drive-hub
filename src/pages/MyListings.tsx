@@ -7,10 +7,22 @@ import {
   Dialog,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useAuth } from "@/context/AuthContext";
 import { emptyListing, useMyListingsManager, vehicleYears, type Listing } from "@/hooks/useMyListingsManager";
 import { resolveImageUrl } from "@/lib/api";
 import SellerListingDialog from "@/components/listings/SellerListingDialog";
+import { useState } from "react";
+import ActionConfirmDialog from "@/components/shared/ActionConfirmDialog";
 
 const MyListings = () => {
   const { token } = useAuth();
@@ -46,6 +58,8 @@ const MyListings = () => {
     setFormError,
     uploading,
   } = useMyListingsManager({ token });
+  const [deleteTarget, setDeleteTarget] = useState<Listing | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   return (
     <div className="min-h-screen bg-background">
@@ -329,9 +343,7 @@ const MyListings = () => {
                             <Button
                               variant="destructive"
                               size="sm"
-                              onClick={async () => {
-                                await deleteListing(listing.id);
-                              }}
+                              onClick={() => setDeleteTarget(listing)}
                             >
                               Delete
                             </Button>
@@ -347,6 +359,26 @@ const MyListings = () => {
           </div>
         </div>
       </main>
+      <ActionConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete listing?"
+        description={`This will permanently remove ${deleteTarget?.title ? `"${deleteTarget.title}"` : "this listing"}. This action cannot be undone.`}
+        cancelLabel="Keep Listing"
+        confirmLabel="Delete Listing"
+        loading={deleteLoading}
+        loadingLabel="Deleting..."
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          try {
+            setDeleteLoading(true);
+            await deleteListing(deleteTarget.id);
+            setDeleteTarget(null);
+          } finally {
+            setDeleteLoading(false);
+          }
+        }}
+      />
       <Footer />
     </div>
   );

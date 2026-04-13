@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -63,6 +64,9 @@ const SellerListingDialog = ({
       <DialogHeader>
         <div className="border-b border-border px-6 py-4">
           <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>
+            Review the vehicle details, images, and pricing below before saving this listing for moderation.
+          </DialogDescription>
         </div>
       </DialogHeader>
       <div className="grid gap-4 overflow-y-auto px-6 py-4">

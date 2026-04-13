@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -156,6 +157,9 @@ const AdminInquiriesTab = ({
                   <DialogContent>
                     <DialogHeader>
                       <DialogTitle>Edit Inquiry</DialogTitle>
+                      <DialogDescription>
+                        Update the handling status for this inquiry after reviewing the customer’s message.
+                      </DialogDescription>
                     </DialogHeader>
                     {editingInquiry && (
                       <div className="grid gap-4">
@@ -277,6 +281,9 @@ const AdminInquiriesTab = ({
                         <DialogContent>
                           <DialogHeader>
                             <DialogTitle>Edit Inquiry</DialogTitle>
+                            <DialogDescription>
+                              Update the handling status for this inquiry after reviewing the customer’s message.
+                            </DialogDescription>
                           </DialogHeader>
                           {editingInquiry && (
                             <div className="grid gap-4">

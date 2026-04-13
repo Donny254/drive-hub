@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/feedback";
 
 type User = {
   id: string;
@@ -75,8 +76,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
     if (!resp.ok) {
-      const error = await resp.json().catch(() => ({}));
-      throw new Error(error.error || "Login failed");
+      throw new Error(await getApiErrorMessage(resp, "Login failed"));
     }
 
     const data = await resp.json();
@@ -91,8 +91,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
     if (!resp.ok) {
-      const error = await resp.json().catch(() => ({}));
-      throw new Error(error.error || "Registration failed");
+      throw new Error(await getApiErrorMessage(resp, "Registration failed"));
     }
 
     const data = await resp.json();

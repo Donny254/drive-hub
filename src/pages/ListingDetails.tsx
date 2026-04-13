@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar, Car, Fuel, Gauge, MapPin, ShieldCheck, Store } from "lucide-react";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/feedback";
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?w=1200";
@@ -134,8 +135,7 @@ const ListingDetails = () => {
         }),
       });
       if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        throw new Error(errData.error || "Failed to send inquiry");
+        throw new Error(await getApiErrorMessage(resp, "Failed to send inquiry"));
       }
       setSent(true);
       setContactMessage("");

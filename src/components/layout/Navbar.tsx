@@ -98,6 +98,24 @@ const Navbar = () => {
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link
+                      to="/my-payments"
+                      onMouseEnter={prefetchLink("/my-payments")}
+                      onFocus={prefetchLink("/my-payments")}
+                    >
+                      Payments Center
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link
+                      to="/my-payouts"
+                      onMouseEnter={prefetchLink("/my-payouts")}
+                      onFocus={prefetchLink("/my-payouts")}
+                    >
+                      Payouts
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link
                       to="/my-service-bookings"
                       onMouseEnter={prefetchLink("/my-service-bookings")}
                       onFocus={prefetchLink("/my-service-bookings")}
@@ -226,8 +244,34 @@ const Navbar = () => {
                           ? "text-primary"
                           : "text-muted-foreground"
                       }`}
+                      >
+                        Event Registrations
+                      </Link>
+                    <Link
+                      to="/my-payments"
+                      onClick={() => setIsOpen(false)}
+                      onMouseEnter={prefetchLink("/my-payments")}
+                      onFocus={prefetchLink("/my-payments")}
+                      className={`font-medium text-sm uppercase tracking-widest ${
+                        location.pathname === "/my-payments"
+                          ? "text-primary"
+                          : "text-muted-foreground"
+                      }`}
                     >
-                      Event Registrations
+                      Payments Center
+                    </Link>
+                    <Link
+                      to="/my-payouts"
+                      onClick={() => setIsOpen(false)}
+                      onMouseEnter={prefetchLink("/my-payouts")}
+                      onFocus={prefetchLink("/my-payouts")}
+                      className={`font-medium text-sm uppercase tracking-widest ${
+                        location.pathname === "/my-payouts"
+                          ? "text-primary"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      Payouts
                     </Link>
                     <Link
                       to="/my-service-bookings"

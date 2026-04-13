@@ -7,12 +7,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import AdminFormDialog from "@/components/admin/AdminFormDialog";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl, uploadImage } from "@/lib/api";
 import { downloadCsv, parseCsv, toCsv } from "@/lib/csv";
 import { parseTicketQrPayload } from "@/lib/ticketQr";
+import { toast } from "@/components/ui/sonner";
+import { feedbackText, getApiErrorMessage } from "@/lib/feedback";
+import DatePickerField from "@/components/shared/DatePickerField";
+import { getTodayDateValue, isEndBeforeStart, isPastDateValue } from "@/lib/date";
 
 type EventItem = {
   id: string;
@@ -80,10 +84,15 @@ const AdminEvents = () => {
   const rafRef = useRef<number | null>(null);
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+  const todayDate = useMemo(() => getTodayDateValue(), []);
 
   const fetchEvents = useCallback(async () => {
     const resp = await apiFetch("/api/events", { headers: authHeaders });
-    if (resp.ok) setEvents(await resp.json());
+    if (resp.ok) {
+      setEvents(await resp.json());
+      return;
+    }
+    toast.error(await getApiErrorMessage(resp, "Failed to load events"));
   }, [authHeaders]);
 
   useEffect(() => {
@@ -112,6 +121,9 @@ const AdminEvents = () => {
       } else {
         setEditing((prev) => (prev ? { ...prev, imageUrl: result.url } : prev));
       }
+      toast.success(feedbackText.uploaded());
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Image upload failed");
     } finally {
       setUploading(false);
     }
@@ -154,7 +166,7 @@ const AdminEvents = () => {
     const text = await file.text();
     const rows = parseCsv(text);
     for (const row of rows) {
-      await apiFetch("/api/events", {
+      const resp = await apiFetch("/api/events", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -168,12 +180,29 @@ const AdminEvents = () => {
           status: row.status || "upcoming",
         }),
       });
+      if (!resp.ok) {
+        toast.error(await getApiErrorMessage(resp, "Failed to import events"));
+        return;
+      }
     }
-    fetchEvents();
+    await fetchEvents();
+    toast.success(feedbackText.imported("event", rows.length));
   };
 
   const createEvent = async () => {
     if (!creating) return;
+    if (creating.startDate && isPastDateValue(creating.startDate)) {
+      toast.error("Start date cannot be in the past.");
+      return;
+    }
+    if (creating.endDate && isPastDateValue(creating.endDate)) {
+      toast.error("End date cannot be in the past.");
+      return;
+    }
+    if (isEndBeforeStart(creating.startDate, creating.endDate)) {
+      toast.error("End date must be on or after the start date.");
+      return;
+    }
     const resp = await apiFetch("/api/events", {
       method: "POST",
       headers: authHeaders,
@@ -181,12 +210,27 @@ const AdminEvents = () => {
     });
     if (resp.ok) {
       setCreating(null);
-      fetchEvents();
+      await fetchEvents();
+      toast.success(feedbackText.created("event"));
+      return;
     }
+    toast.error(await getApiErrorMessage(resp, "Failed to create event"));
   };
 
   const saveEvent = async () => {
     if (!editing) return;
+    if (editing.startDate && isPastDateValue(editing.startDate)) {
+      toast.error("Start date cannot be in the past.");
+      return;
+    }
+    if (editing.endDate && isPastDateValue(editing.endDate)) {
+      toast.error("End date cannot be in the past.");
+      return;
+    }
+    if (isEndBeforeStart(editing.startDate, editing.endDate)) {
+      toast.error("End date must be on or after the start date.");
+      return;
+    }
     const resp = await apiFetch(`/api/events/${editing.id}`, {
       method: "PUT",
       headers: authHeaders,
@@ -194,13 +238,21 @@ const AdminEvents = () => {
     });
     if (resp.ok) {
       setEditing(null);
-      fetchEvents();
+      await fetchEvents();
+      toast.success(feedbackText.updated("event"));
+      return;
     }
+    toast.error(await getApiErrorMessage(resp, "Failed to update event"));
   };
 
   const deleteEvent = async (id: string) => {
     const resp = await apiFetch(`/api/events/${id}`, { method: "DELETE", headers: authHeaders });
-    if (resp.ok) fetchEvents();
+    if (resp.ok) {
+      await fetchEvents();
+      toast.success(feedbackText.deleted("event"));
+      return;
+    }
+    toast.error(await getApiErrorMessage(resp, "Failed to delete event"));
   };
 
   const checkInTicketNumber = useCallback(async (ticketValue: string) => {
@@ -221,8 +273,10 @@ const AdminEvents = () => {
       const ticket = await resp.json();
       setCheckInResult(`Checked in ${ticket.ticketNumber}`);
       setTicketCode("");
+      toast.success(`Checked in ${ticket.ticketNumber}.`);
     } catch (err) {
       setCheckInError(err instanceof Error ? err.message : "Failed to check in ticket");
+      toast.error(err instanceof Error ? err.message : "Failed to check in ticket");
     } finally {
       setCheckInLoading(false);
     }
@@ -351,7 +405,12 @@ const AdminEvents = () => {
                     New Event
                   </Button>
                 </DialogTrigger>
-                <AdminFormDialog title="Create Event" actionLabel="Create" onAction={createEvent}>
+                <AdminFormDialog
+                  title="Create Event"
+                  description="Add a new event with schedule, location, ticket pricing, and artwork before publishing it to the site."
+                  actionLabel="Create"
+                  onAction={createEvent}
+                >
                   {creating && (
                     <div className="grid gap-4">
                       <div className="grid gap-2">
@@ -378,18 +437,33 @@ const AdminEvents = () => {
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div className="grid gap-2">
                           <Label>Start Date</Label>
-                          <Input
-                            type="date"
+                          <DatePickerField
                             value={creating.startDate ?? ""}
-                            onChange={(e) => setCreating({ ...creating, startDate: e.target.value })}
+                            onChange={(value) =>
+                              setCreating((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      startDate: value,
+                                      endDate:
+                                        prev.endDate && isEndBeforeStart(value, prev.endDate) ? value : prev.endDate,
+                                    }
+                                  : prev,
+                              )
+                            }
+                            minDate={todayDate}
+                            placeholder="Select start date"
                           />
                         </div>
                         <div className="grid gap-2">
                           <Label>End Date</Label>
-                          <Input
-                            type="date"
+                          <DatePickerField
                             value={creating.endDate ?? ""}
-                            onChange={(e) => setCreating({ ...creating, endDate: e.target.value })}
+                            onChange={(value) =>
+                              setCreating((prev) => (prev ? { ...prev, endDate: value } : prev))
+                            }
+                            minDate={creating.startDate || todayDate}
+                            placeholder="Select end date"
                           />
                         </div>
                       </div>
@@ -477,21 +551,24 @@ const AdminEvents = () => {
               <option value="past">Past</option>
               <option value="cancelled">Cancelled</option>
             </select>
-            <Input
-              type="date"
+            <DatePickerField
               value={startAfter}
-              onChange={(e) => {
-                setStartAfter(e.target.value);
+              onChange={(value) => {
+                setStartAfter(value);
+                if (startBefore && isEndBeforeStart(value, startBefore)) setStartBefore(value);
                 setPage(1);
               }}
+              minDate={todayDate}
+              placeholder="Start after"
             />
-            <Input
-              type="date"
+            <DatePickerField
               value={startBefore}
-              onChange={(e) => {
-                setStartBefore(e.target.value);
+              onChange={(value) => {
+                setStartBefore(value);
                 setPage(1);
               }}
+              minDate={startAfter || todayDate}
+              placeholder="Start before"
             />
             <div className="flex items-center gap-2 text-sm text-muted-foreground md:col-span-2 xl:col-span-4">
               Page {page} of {totalPages}
@@ -524,6 +601,9 @@ const AdminEvents = () => {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Scan Ticket QR</DialogTitle>
+                <DialogDescription>
+                  Use your camera to scan an attendee ticket QR code and complete event check-in automatically.
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-3">
                 <video
@@ -576,7 +656,12 @@ const AdminEvents = () => {
                               Edit
                             </Button>
                           </DialogTrigger>
-                          <AdminFormDialog title="Edit Event" actionLabel="Save" onAction={saveEvent}>
+                          <AdminFormDialog
+                            title="Edit Event"
+                            description="Update event details, ticket pricing, artwork, or status for this listing."
+                            actionLabel="Save"
+                            onAction={saveEvent}
+                          >
                             {editing && (
                               <div className="grid gap-4">
                                 <div className="grid gap-2">
@@ -594,11 +679,30 @@ const AdminEvents = () => {
                                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                   <div className="grid gap-2">
                                     <Label>Start Date</Label>
-                                    <Input type="date" value={editing.startDate ?? ""} onChange={(e) => setEditing({ ...editing, startDate: e.target.value })} />
+                                    <DatePickerField
+                                      value={editing.startDate ?? ""}
+                                      onChange={(value) =>
+                                        setEditing({
+                                          ...editing,
+                                          startDate: value,
+                                          endDate:
+                                            editing.endDate && isEndBeforeStart(value, editing.endDate)
+                                              ? value
+                                              : editing.endDate,
+                                        })
+                                      }
+                                      minDate={todayDate}
+                                      placeholder="Select start date"
+                                    />
                                   </div>
                                   <div className="grid gap-2">
                                     <Label>End Date</Label>
-                                    <Input type="date" value={editing.endDate ?? ""} onChange={(e) => setEditing({ ...editing, endDate: e.target.value })} />
+                                    <DatePickerField
+                                      value={editing.endDate ?? ""}
+                                      onChange={(value) => setEditing({ ...editing, endDate: value })}
+                                      minDate={editing.startDate || todayDate}
+                                      placeholder="Select end date"
+                                    />
                                   </div>
                                 </div>
                                 <div className="grid gap-2">

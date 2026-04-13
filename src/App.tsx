@@ -16,11 +16,15 @@ const Store = lazy(() => import("./pages/Store"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Admin = lazy(() => import("./pages/Admin"));
 const MyListings = lazy(() => import("./pages/MyListings"));
 const MyBookings = lazy(() => import("./pages/MyBookings"));
 const MyServiceBookings = lazy(() => import("./pages/MyServiceBookings"));
 const MyEventRegistrations = lazy(() => import("./pages/MyEventRegistrations"));
+const MyCryptoPayments = lazy(() => import("./pages/MyCryptoPayments"));
+const MyPayouts = lazy(() => import("./pages/MyPayouts"));
 const ListingDetails = lazy(() => import("./pages/ListingDetails"));
 const SellerProfile = lazy(() => import("./pages/SellerProfile"));
 const AdminServices = lazy(() => import("./pages/AdminServices"));
@@ -54,6 +58,8 @@ const App = () => (
               <Route path="/store" element={<Store />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/market/:id" element={<ListingDetails />} />
               <Route path="/sellers/:id" element={<SellerProfile />} />
               <Route
@@ -85,6 +91,30 @@ const App = () => (
                 element={
                   <ProtectedRoute roles={["user", "admin"]}>
                     <MyEventRegistrations />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/my-payments"
+                element={
+                  <ProtectedRoute roles={["user", "admin"]}>
+                    <MyCryptoPayments />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/my-crypto-payments"
+                element={
+                  <ProtectedRoute roles={["user", "admin"]}>
+                    <MyCryptoPayments />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/my-payouts"
+                element={
+                  <ProtectedRoute roles={["user", "admin"]}>
+                    <MyPayouts />
                   </ProtectedRoute>
                 }
               />

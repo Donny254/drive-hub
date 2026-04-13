@@ -6,15 +6,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TabsContent } from "@/components/ui/tabs";
 import { resolveImageUrl } from "@/lib/api";
+import CryptoProofUploader from "@/components/shared/CryptoProofUploader";
 
 type AdminBookingsTabProps = {
   bookings: Booking[];
@@ -24,6 +27,7 @@ type AdminBookingsTabProps = {
   setDeleteTarget: Dispatch<SetStateAction<DeleteTarget>>;
   statusVariant: (status?: string | null) => "default" | "secondary" | "destructive" | "outline";
   formatMoney: (cents?: number | null) => string;
+  token?: string | null;
 };
 
 const AdminBookingsTab = ({
@@ -34,6 +38,7 @@ const AdminBookingsTab = ({
   setDeleteTarget,
   statusVariant,
   formatMoney,
+  token,
 }: AdminBookingsTabProps) => {
   return (
     <TabsContent value="bookings" className="mt-6">
@@ -82,7 +87,7 @@ const AdminBookingsTab = ({
                 </div>
                 <div className="mt-4 grid gap-2 text-sm">
                   <div className="flex justify-between gap-3"><span className="text-muted-foreground">Schedule</span><span className="text-right break-words">{booking.startDate ?? "--"} to {booking.endDate ?? "--"}</span></div>
-                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Payment</span><span className="text-right break-words capitalize">{booking.paymentStatus ?? "unpaid"}{booking.amountCents ? ` • ${formatMoney(booking.amountCents)}` : ""}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Payment</span><span className="text-right break-words capitalize">{booking.paymentMethod ?? "manual"} • {booking.paymentStatus ?? "unpaid"}{booking.amountCents ? ` • ${formatMoney(booking.amountCents)}` : ""}</span></div>
                   <div className="flex justify-between gap-3"><span className="text-muted-foreground">Status</span><Badge variant={statusVariant(booking.status)} className="capitalize">{booking.status}</Badge></div>
                 </div>
                 <div className="mt-4 flex flex-col gap-2">
@@ -100,6 +105,9 @@ const AdminBookingsTab = ({
                     <DialogContent>
                       <DialogHeader>
                         <DialogTitle>Update Booking</DialogTitle>
+                        <DialogDescription>
+                          Change the status of this booking request to approve, reject, or cancel it.
+                        </DialogDescription>
                       </DialogHeader>
                       {editingBooking && (
                         <div className="grid gap-4">
@@ -121,6 +129,70 @@ const AdminBookingsTab = ({
                               <option value="cancelled">Cancelled</option>
                             </select>
                           </div>
+                          <div className="grid gap-2">
+                            <Label>Payment Method</Label>
+                            <select
+                              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                              value={editingBooking.paymentMethod ?? ""}
+                              onChange={(e) =>
+                                setEditingBooking({
+                                  ...editingBooking,
+                                  paymentMethod: e.target.value || null,
+                                })
+                              }
+                            >
+                              <option value="">Not set</option>
+                              <option value="mpesa">M-Pesa</option>
+                              <option value="crypto">Crypto</option>
+                              <option value="bank">Bank</option>
+                            </select>
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Payment Status</Label>
+                            <select
+                              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                              value={editingBooking.paymentStatus ?? "unpaid"}
+                              onChange={(e) =>
+                                setEditingBooking({
+                                  ...editingBooking,
+                                  paymentStatus: e.target.value as Booking["paymentStatus"],
+                                })
+                              }
+                            >
+                              <option value="unpaid">Unpaid</option>
+                              <option value="pending">Pending</option>
+                              <option value="paid">Paid</option>
+                              <option value="failed">Failed</option>
+                            </select>
+                          </div>
+                          {editingBooking.paymentMethod === "crypto" && (
+                            <div className="grid gap-4">
+                              <CryptoProofUploader
+                                token={token}
+                                proofImageUrl={editingBooking.cryptoProofImageUrl ?? null}
+                                onProofImageUrlChange={(value) =>
+                                  setEditingBooking({
+                                    ...editingBooking,
+                                    cryptoProofImageUrl: value,
+                                  })
+                                }
+                                label="Crypto Proof Image"
+                                description="Upload or replace the crypto transfer proof linked to this booking."
+                              />
+                              <div className="grid gap-2">
+                                <Label>Crypto Review Notes</Label>
+                                <Textarea
+                                  value={editingBooking.cryptoReviewNotes ?? ""}
+                                  onChange={(e) =>
+                                    setEditingBooking({
+                                      ...editingBooking,
+                                      cryptoReviewNotes: e.target.value || null,
+                                    })
+                                  }
+                                />
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                       <DialogFooter>
@@ -195,6 +267,9 @@ const AdminBookingsTab = ({
                         {booking.amountCents ? (
                           <p className="mt-1 text-xs text-muted-foreground">{formatMoney(booking.amountCents)}</p>
                         ) : null}
+                        <p className="mt-1 text-xs text-muted-foreground capitalize">
+                          {booking.paymentMethod ?? "manual"}
+                        </p>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -218,6 +293,9 @@ const AdminBookingsTab = ({
                           <DialogContent>
                             <DialogHeader>
                               <DialogTitle>Update Booking</DialogTitle>
+                              <DialogDescription>
+                                Change the status of this booking request to approve, reject, or cancel it.
+                              </DialogDescription>
                             </DialogHeader>
                             {editingBooking && (
                               <div className="grid gap-4">
@@ -239,6 +317,56 @@ const AdminBookingsTab = ({
                                     <option value="cancelled">Cancelled</option>
                                   </select>
                                 </div>
+                                <div className="grid gap-2">
+                                  <Label>Payment Method</Label>
+                                  <select
+                                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                                    value={editingBooking.paymentMethod ?? ""}
+                                    onChange={(e) =>
+                                      setEditingBooking({
+                                        ...editingBooking,
+                                        paymentMethod: e.target.value || null,
+                                      })
+                                    }
+                                  >
+                                    <option value="">Not set</option>
+                                    <option value="mpesa">M-Pesa</option>
+                                    <option value="crypto">Crypto</option>
+                                    <option value="bank">Bank</option>
+                                  </select>
+                                </div>
+                                <div className="grid gap-2">
+                                  <Label>Payment Status</Label>
+                                  <select
+                                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                                    value={editingBooking.paymentStatus ?? "unpaid"}
+                                    onChange={(e) =>
+                                      setEditingBooking({
+                                        ...editingBooking,
+                                        paymentStatus: e.target.value as Booking["paymentStatus"],
+                                      })
+                                    }
+                                  >
+                                    <option value="unpaid">Unpaid</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="paid">Paid</option>
+                                    <option value="failed">Failed</option>
+                                  </select>
+                                </div>
+                                {editingBooking.paymentMethod === "crypto" && (
+                                  <div className="grid gap-2">
+                                    <Label>Crypto Review Notes</Label>
+                                    <Textarea
+                                      value={editingBooking.cryptoReviewNotes ?? ""}
+                                      onChange={(e) =>
+                                        setEditingBooking({
+                                          ...editingBooking,
+                                          cryptoReviewNotes: e.target.value || null,
+                                        })
+                                      }
+                                    />
+                                  </div>
+                                )}
                               </div>
                             )}
                             <DialogFooter>

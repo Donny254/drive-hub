@@ -19,6 +19,11 @@ const toApi = (row) => ({
   bankBranch: row.bank_branch || null,
   bankSwift: row.bank_swift || null,
   bankInstructions: row.bank_instructions || null,
+  sellerCommissionRate: row.seller_commission_rate ?? 0,
+  cryptoCurrency: row.crypto_currency || null,
+  cryptoNetwork: row.crypto_network || null,
+  cryptoWalletAddress: row.crypto_wallet_address || null,
+  cryptoInstructions: row.crypto_instructions || null,
   updatedAt: row.updated_at || null,
 });
 
@@ -67,11 +72,19 @@ router.put("/", requireAuth, requireRole("admin"), async (req, res, next) => {
       bank_branch: req.body.bankBranch,
       bank_swift: req.body.bankSwift,
       bank_instructions: req.body.bankInstructions,
+      seller_commission_rate:
+        req.body.sellerCommissionRate !== undefined
+          ? Number.parseInt(req.body.sellerCommissionRate, 10)
+          : undefined,
+      crypto_currency: req.body.cryptoCurrency,
+      crypto_network: req.body.cryptoNetwork,
+      crypto_wallet_address: req.body.cryptoWalletAddress,
+      crypto_instructions: req.body.cryptoInstructions,
     };
 
     Object.entries(fields).forEach(([column, value]) => {
       if (value !== undefined) {
-        values.push(value || null);
+        values.push(column === "seller_commission_rate" ? (Number.isFinite(value) ? value : 0) : value || null);
         updates.push(`${column} = $${values.length}`);
       }
     });

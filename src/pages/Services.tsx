@@ -4,7 +4,7 @@ import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import AdSlider from "@/components/services/AdSlider";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,6 +12,10 @@ import { Wrench, CheckCircle } from "lucide-react";
 import serviceGarage from "@/assets/service-garage.jpg";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { toast } from "@/components/ui/sonner";
+import { getApiErrorMessage } from "@/lib/feedback";
+import DatePickerField from "@/components/shared/DatePickerField";
+import { getTodayDateValue, isPastDateValue } from "@/lib/date";
 
 type Service = {
   id: string;
@@ -50,6 +54,7 @@ const Services = () => {
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quoteSuccess, setQuoteSuccess] = useState<string | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const todayDate = useMemo(() => getTodayDateValue(), []);
 
   const authHeaders = useMemo(() => {
     if (!token) return {};
@@ -62,10 +67,11 @@ const Services = () => {
         setLoading(true);
         setError(null);
         const resp = await apiFetch("/api/services?active=true");
-        if (!resp.ok) throw new Error("Failed to load services");
+        if (!resp.ok) throw new Error(await getApiErrorMessage(resp, "Failed to load services"));
         setServices(await resp.json());
       } catch (err) {
         setError("Unable to load services.");
+        toast.error("Unable to load services.");
       } finally {
         setLoading(false);
       }
@@ -78,7 +84,7 @@ const Services = () => {
     setBookingError(null);
     setBookingSuccess(null);
     setBookingName(user?.name || user?.email || "");
-    setBookingPhone("");
+    setBookingPhone(user?.phone || "");
     setBookingDate("");
     setBookingNotes("");
   }, [bookingOpen, user]);
@@ -88,7 +94,7 @@ const Services = () => {
     setQuoteError(null);
     setQuoteSuccess(null);
     setQuoteName(user?.name || user?.email || "");
-    setQuotePhone("");
+    setQuotePhone(user?.phone || "");
     setQuoteNotes("");
   }, [quoteOpen, user]);
 
@@ -105,6 +111,12 @@ const Services = () => {
     if (!selectedService) return;
     if (!bookingName.trim() || !bookingPhone.trim()) {
       setBookingError("Name and phone are required.");
+      toast.error("Name and phone are required.");
+      return;
+    }
+    if (bookingDate && isPastDateValue(bookingDate)) {
+      setBookingError("Preferred date cannot be in the past.");
+      toast.error("Preferred date cannot be in the past.");
       return;
     }
     setBookingLoading(true);
@@ -123,13 +135,15 @@ const Services = () => {
       });
 
       if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        throw new Error(errData.error || "Failed to book service");
+        throw new Error(await getApiErrorMessage(resp, "Failed to book service"));
       }
 
       setBookingSuccess("Booking submitted. We will contact you shortly.");
+      toast.success("Booking submitted. We will contact you shortly.");
     } catch (err) {
-      setBookingError(err instanceof Error ? err.message : "Failed to book service.");
+      const message = err instanceof Error ? err.message : "Failed to book service.";
+      setBookingError(message);
+      toast.error(message);
     } finally {
       setBookingLoading(false);
     }
@@ -138,6 +152,7 @@ const Services = () => {
   const submitQuote = async () => {
     if (!quoteName.trim() || !quotePhone.trim()) {
       setQuoteError("Name and phone are required.");
+      toast.error("Name and phone are required.");
       return;
     }
     setQuoteLoading(true);
@@ -153,12 +168,14 @@ const Services = () => {
         }),
       });
       if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        throw new Error(errData.error || "Failed to submit quote request");
+        throw new Error(await getApiErrorMessage(resp, "Failed to submit quote request"));
       }
       setQuoteSuccess("Request submitted. We will contact you shortly.");
+      toast.success("Quote request submitted. We will contact you shortly.");
     } catch (err) {
-      setQuoteError(err instanceof Error ? err.message : "Failed to submit request.");
+      const message = err instanceof Error ? err.message : "Failed to submit request.";
+      setQuoteError(message);
+      toast.error(message);
     } finally {
       setQuoteLoading(false);
     }
@@ -280,6 +297,9 @@ const Services = () => {
             <DialogTitle>
               Book Service{selectedService ? `: ${selectedService.title}` : ""}
             </DialogTitle>
+            <DialogDescription>
+              Share your preferred date and contact details so the team can schedule this service booking with you.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             <div className="grid gap-2">
@@ -292,7 +312,12 @@ const Services = () => {
             </div>
             <div className="grid gap-2">
               <Label>Preferred Date</Label>
-              <Input type="date" value={bookingDate} onChange={(e) => setBookingDate(e.target.value)} />
+              <DatePickerField
+                value={bookingDate}
+                onChange={setBookingDate}
+                minDate={todayDate}
+                placeholder="Select preferred date"
+              />
             </div>
             <div className="grid gap-2">
               <Label>Notes (optional)</Label>
@@ -319,6 +344,9 @@ const Services = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Request a Custom Quote</DialogTitle>
+            <DialogDescription>
+              Tell us how to reach you and add any notes about the custom work you need so the team can prepare a quote.
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
             <div className="grid gap-2">

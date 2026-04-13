@@ -96,9 +96,9 @@ const AdminSettingsTab = ({ settings, setSettings, saveSettings }: AdminSettings
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-border bg-background/50 p-5">
-                <h3 className="font-medium">Bank Transfer Details</h3>
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <div className="rounded-2xl border border-border bg-background/50 p-5">
+                  <h3 className="font-medium">Bank Transfer Details</h3>
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <div className="grid gap-2">
                     <Label>Bank Name</Label>
                     <Input
@@ -139,6 +139,71 @@ const AdminSettingsTab = ({ settings, setSettings, saveSettings }: AdminSettings
                     <Textarea
                       value={settings.bankInstructions ?? ""}
                       onChange={(e) => setSettings((prev) => (prev ? { ...prev, bankInstructions: e.target.value } : prev))}
+                    />
+                  </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-border bg-background/50 p-5">
+                  <h3 className="font-medium">Seller Payouts</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Set the commission rate that is held back from booking payouts before seller settlement.
+                  </p>
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <div className="grid gap-2">
+                      <Label>Commission Rate (%)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={settings.sellerCommissionRate ?? 0}
+                        onChange={(e) =>
+                          setSettings((prev) =>
+                            prev ? { ...prev, sellerCommissionRate: Number.parseInt(e.target.value || "0", 10) || 0 } : prev
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+
+              <div className="rounded-2xl border border-border bg-background/50 p-5">
+                <h3 className="font-medium">Crypto Payment Details</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  These details are shown during crypto checkout so customers can submit a transfer hash for review.
+                </p>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label>Crypto Currency</Label>
+                    <Input
+                      value={settings.cryptoCurrency ?? ""}
+                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, cryptoCurrency: e.target.value } : prev))}
+                      placeholder="USDT"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Network</Label>
+                    <Input
+                      value={settings.cryptoNetwork ?? ""}
+                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, cryptoNetwork: e.target.value } : prev))}
+                      placeholder="TRC20"
+                    />
+                  </div>
+                  <div className="grid gap-2 md:col-span-2">
+                    <Label>Wallet Address</Label>
+                    <Input
+                      value={settings.cryptoWalletAddress ?? ""}
+                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, cryptoWalletAddress: e.target.value } : prev))}
+                      placeholder="T..."
+                    />
+                  </div>
+                  <div className="grid gap-2 md:col-span-2">
+                    <Label>Crypto Instructions</Label>
+                    <Textarea
+                      value={settings.cryptoInstructions ?? ""}
+                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, cryptoInstructions: e.target.value } : prev))}
+                      placeholder="Send payment, then paste the transaction hash and payer wallet for manual confirmation."
                     />
                   </div>
                 </div>

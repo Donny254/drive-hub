@@ -11,6 +11,7 @@ import type {
   OrderItem,
   Post,
   Product,
+  Payout,
   Service,
   ServiceBooking,
   SiteSettings,
@@ -49,6 +50,8 @@ type UseAdminActionsParams = {
   setOrderDetailsLoading: (value: boolean) => void;
   editingBooking: Booking | null;
   setEditingBooking: (value: Booking | null) => void;
+  editingPayout: Payout | null;
+  setEditingPayout: (value: Payout | null) => void;
   editingServiceBooking: ServiceBooking | null;
   setEditingServiceBooking: (value: ServiceBooking | null) => void;
   editingEventRegistration: EventRegistration | null;
@@ -110,6 +113,8 @@ export const useAdminActions = ({
   setOrderDetailsLoading,
   editingBooking,
   setEditingBooking,
+  editingPayout,
+  setEditingPayout,
   editingServiceBooking,
   setEditingServiceBooking,
   editingEventRegistration,
@@ -209,7 +214,14 @@ export const useAdminActions = ({
     const resp = await apiFetch(`/api/orders/${editingOrder.id}`, {
       method: "PUT",
       headers: authHeaders,
-      body: JSON.stringify({ status: editingOrder.status, totalCents: editingOrder.totalCents }),
+      body: JSON.stringify({
+        status: editingOrder.status,
+        totalCents: editingOrder.totalCents,
+        paymentMethod: editingOrder.paymentMethod,
+        paymentStatus: editingOrder.paymentStatus,
+        cryptoReviewNotes: editingOrder.cryptoReviewNotes,
+        cryptoProofImageUrl: editingOrder.cryptoProofImageUrl,
+      }),
     });
     if (!resp.ok) throw new Error("Failed to update order");
     setEditingOrder(null);
@@ -239,12 +251,39 @@ export const useAdminActions = ({
     const resp = await apiFetch(`/api/bookings/${editingBooking.id}`, {
       method: "PUT",
       headers: authHeaders,
-      body: JSON.stringify({ status: editingBooking.status }),
+      body: JSON.stringify({
+        status: editingBooking.status,
+        paymentMethod: editingBooking.paymentMethod,
+        paymentStatus: editingBooking.paymentStatus,
+        cryptoReviewNotes: editingBooking.cryptoReviewNotes,
+        cryptoProofImageUrl: editingBooking.cryptoProofImageUrl,
+      }),
     });
     if (!resp.ok) throw new Error("Failed to update booking");
     setEditingBooking(null);
     await fetchAll();
   }, [authHeaders, editingBooking, fetchAll, setEditingBooking]);
+
+  const savePayout = useCallback(async () => {
+    if (!editingPayout) return;
+    try {
+      const resp = await apiFetch(`/api/payouts/${editingPayout.id}`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({
+          payoutStatus: editingPayout.payoutStatus,
+          notes: editingPayout.notes,
+        }),
+      });
+      if (!resp.ok) throw new Error("Failed to update payout");
+      setEditingPayout(null);
+      await fetchAll();
+      notifySuccess("Payout updated", "The payout review has been saved.");
+    } catch (error) {
+      console.error(error);
+      notifyError("Update failed", "The payout could not be updated.");
+    }
+  }, [authHeaders, editingPayout, fetchAll, notifyError, notifySuccess, setEditingPayout]);
 
   const saveServiceBooking = useCallback(async () => {
     if (!editingServiceBooking) return;
@@ -271,6 +310,10 @@ export const useAdminActions = ({
         status: editingEventRegistration.status,
         tickets: editingEventRegistration.tickets,
         notes: editingEventRegistration.notes,
+        paymentMethod: editingEventRegistration.paymentMethod,
+        paymentStatus: editingEventRegistration.paymentStatus,
+        cryptoReviewNotes: editingEventRegistration.cryptoReviewNotes,
+        cryptoProofImageUrl: editingEventRegistration.cryptoProofImageUrl,
       }),
     });
     if (!resp.ok) throw new Error("Failed to update event registration");
@@ -714,6 +757,7 @@ export const useAdminActions = ({
     exportSellerPerformanceReport,
     loadOrderDetails,
     saveBooking,
+    savePayout,
     saveEvent,
     saveEventRegistration,
     saveInquiry,

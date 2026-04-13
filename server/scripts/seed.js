@@ -75,8 +75,8 @@ const demoListings = [
 
 const run = async () => {
   try {
-    const email = "admin@wheelsnationke.local";
-    const password = "admin123";
+    const email = "admin@wheelsnationke.co.ke";
+    const password = "123456";
     const name = "Admin";
 
     const passwordHash = await hashPassword(password);
@@ -84,7 +84,11 @@ const run = async () => {
     const userResult = await query(
       `INSERT INTO users (email, name, role, password_hash)
        VALUES ($1, $2, 'admin', $3)
-       ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash
+       ON CONFLICT (email) DO UPDATE SET
+         name = EXCLUDED.name,
+         role = 'admin',
+         password_hash = EXCLUDED.password_hash,
+         auth_token_version = users.auth_token_version + 1
        RETURNING id`,
       [email, name, passwordHash]
     );

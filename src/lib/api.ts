@@ -1,3 +1,5 @@
+import { getApiErrorMessage } from "@/lib/feedback";
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
 
 export const getApiBaseUrl = () => API_BASE_URL;
@@ -36,8 +38,7 @@ export const uploadImage = async (file: File, token?: string | null) => {
   });
 
   if (!resp.ok) {
-    const error = await resp.json().catch(() => ({}));
-    throw new Error(error.error || "Upload failed");
+    throw new Error(await getApiErrorMessage(resp, "Upload failed"));
   }
 
   return resp.json() as Promise<{ url: string }>;
