@@ -68,6 +68,10 @@ type CryptoDetails = {
   instructions: string | null;
 };
 
+type PublicSettings = {
+  supportEmail?: string | null;
+};
+
 const tabs = [
   { id: "all", label: "All Cars" },
   { id: "buy", label: "Buy" },
@@ -96,6 +100,7 @@ const Market = () => {
   const [shortlist, setShortlist] = useState<Listing[]>([]);
   const [compareOpen, setCompareOpen] = useState(false);
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
+  const [supportEmail, setSupportEmail] = useState("info@wheelsnationke.co.ke");
 
   const [bookingListing, setBookingListing] = useState<Listing | null>(null);
   const [bookingStart, setBookingStart] = useState("");
@@ -227,8 +232,51 @@ const Market = () => {
     window.localStorage.setItem("drive-hub-saved-searches", JSON.stringify(savedSearches));
   }, [savedSearches]);
 
+  useEffect(() => {
+    apiFetch("/api/settings/public")
+      .then((resp) => (resp.ok ? resp.json() : null))
+      .then((data: PublicSettings | null) => {
+        if (data?.supportEmail) setSupportEmail(data.supportEmail);
+      })
+      .catch(() => undefined);
+  }, []);
+
   const filteredListings = useMemo(() => listings, [listings]);
   const shortlistIds = useMemo(() => new Set(shortlist.map((item) => item.id)), [shortlist]);
+
+  const buildSellerEmailLink = useCallback(
+    (listingType: "sell" | "rent" = "sell") => {
+      const subject =
+        listingType === "rent"
+          ? "Vehicle Rental Listing Submission"
+          : "Vehicle Sale Listing Submission";
+      const bodyLines = [
+        "Hello WheelsnationKe team,",
+        "",
+        `I would like to upload a vehicle for ${listingType === "rent" ? "rental" : "sale"} on the marketplace.`,
+        "",
+        "Vehicle details:",
+        "Make and model:",
+        "Year:",
+        "Mileage:",
+        "Price (KES):",
+        "Location:",
+        "Description:",
+        "",
+        "Please advise on the next step.",
+      ];
+
+      return `mailto:${supportEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines.join("\n"))}`;
+    },
+    [supportEmail]
+  );
+
+  const openSellerEmail = useCallback(
+    (listingType: "sell" | "rent" = "sell") => {
+      window.location.href = buildSellerEmailLink(listingType);
+    },
+    [buildSellerEmailLink]
+  );
 
   const openBooking = (listing: Listing) => {
     if (!user) {
@@ -605,6 +653,9 @@ const Market = () => {
                     {tab.label}
                   </Button>
                 ))}
+                <Button variant="hero" size="sm" onClick={() => openSellerEmail("sell")}>
+                  Sell Yours
+                </Button>
               </div>
             </div>
             <div className="mt-4 grid gap-3 lg:grid-cols-[1.4fr_1fr]">
@@ -635,6 +686,20 @@ const Market = () => {
                     Compare
                   </Button>
                 </div>
+              </div>
+            </div>
+            <div className="mt-4 rounded-xl border border-primary/20 bg-card/70 p-4">
+              <p className="text-sm font-medium text-foreground">Seller tools</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Marketplace vehicle onboarding stays separate from service bookings and service media. Clients should contact the admin team for assistance when they want a car listed for sale or rent.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button variant="secondary" size="sm" onClick={() => openSellerEmail("sell")}>
+                  Email Sales Team
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => openSellerEmail("rent")}>
+                  Email Rental Team
+                </Button>
               </div>
             </div>
             <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -872,11 +937,16 @@ const Market = () => {
               WANT TO <span className="text-primary">SELL YOUR CAR?</span>
             </h2>
             <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
-              List your vehicle with us and reach thousands of potential buyers.
+              Reach buyers and renters without mixing your vehicle submission with service requests. Contact the admin team and they will assist with onboarding your car for sale or rent.
             </p>
-            <Button variant="hero" size="xl" className="mt-8">
-              List Your Car
-            </Button>
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+              <Button variant="secondary" size="xl" onClick={() => openSellerEmail("sell")}>
+                Contact Admin for Sale
+              </Button>
+              <Button variant="hero" size="xl" onClick={() => openSellerEmail("rent")}>
+                Contact Admin for Rent
+              </Button>
+            </div>
           </div>
         </section>
       </main>

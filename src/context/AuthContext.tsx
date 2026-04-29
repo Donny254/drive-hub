@@ -33,6 +33,13 @@ const loadStoredAuth = (): AuthState => {
     const token = localStorage.getItem(STORAGE_TOKEN);
     const userRaw = localStorage.getItem(STORAGE_USER);
     const user = userRaw ? (JSON.parse(userRaw) as User) : null;
+
+    // Treat partially persisted auth as signed out so protected routes don't
+    // admit a stale user object without a valid bearer token.
+    if (!token || !user) {
+      return { token: null, user: null };
+    }
+
     return { token, user };
   } catch {
     return { token: null, user: null };
@@ -40,15 +47,11 @@ const loadStoredAuth = (): AuthState => {
 };
 
 const persistAuth = (state: AuthState) => {
-  if (state.token) {
+  if (state.token && state.user) {
     localStorage.setItem(STORAGE_TOKEN, state.token);
-  } else {
-    localStorage.removeItem(STORAGE_TOKEN);
-  }
-
-  if (state.user) {
     localStorage.setItem(STORAGE_USER, JSON.stringify(state.user));
   } else {
+    localStorage.removeItem(STORAGE_TOKEN);
     localStorage.removeItem(STORAGE_USER);
   }
 };

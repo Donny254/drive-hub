@@ -587,6 +587,11 @@ const Admin = () => {
                 <h3 className="mt-3 font-display text-xl tracking-wider">Store Products</h3>
                 <p className="mt-2 text-sm text-muted-foreground">Manage merch products</p>
               </Link>
+              <Link to="/admin/adverts" className="rounded-2xl border border-border bg-card p-5 transition hover:border-primary/60 hover:bg-card/80">
+                <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Market</p>
+                <h3 className="mt-3 font-display text-xl tracking-wider">Slider Adverts</h3>
+                <p className="mt-2 text-sm text-muted-foreground">Edit hero slides, images, copy, and CTA links</p>
+              </Link>
               <Link to="/admin/posts" className="rounded-2xl border border-border bg-card p-5 transition hover:border-primary/60 hover:bg-card/80">
                 <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Content</p>
                 <h3 className="mt-3 font-display text-xl tracking-wider">Blog Posts</h3>

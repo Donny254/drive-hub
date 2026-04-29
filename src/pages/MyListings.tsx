@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
@@ -7,25 +9,15 @@ import {
   Dialog,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { useAuth } from "@/context/AuthContext";
 import { emptyListing, useMyListingsManager, vehicleYears, type Listing } from "@/hooks/useMyListingsManager";
 import { resolveImageUrl } from "@/lib/api";
 import SellerListingDialog from "@/components/listings/SellerListingDialog";
-import { useState } from "react";
 import ActionConfirmDialog from "@/components/shared/ActionConfirmDialog";
 
 const MyListings = () => {
   const { token } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     addCreateImageUrl,
     addEditImageUrl,
@@ -61,6 +53,34 @@ const MyListings = () => {
   const [deleteTarget, setDeleteTarget] = useState<Listing | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  useEffect(() => {
+    const shouldOpenCreate = searchParams.get("new") === "1";
+    if (!shouldOpenCreate || creatingListing) return;
+
+    const requestedType = searchParams.get("type");
+    const listingType: Listing["listingType"] = requestedType === "rent" ? "rent" : "sell";
+
+    setFormError(null);
+    setCreateImages([]);
+    setCreateImageUrl("");
+    setCreatingListing({ ...emptyListing, listingType });
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("new");
+    nextParams.delete("type");
+    setSearchParams(nextParams, { replace: true });
+  }, [
+    creatingListing,
+    searchParams,
+    setCreateImages,
+    setCreateImageUrl,
+    setCreatingListing,
+    setFormError,
+    setSearchParams,
+  ]);
+
+  const fromMarket = searchParams.get("source") === "market";
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -72,6 +92,11 @@ const MyListings = () => {
               <p className="text-muted-foreground mt-1">
                 Create listings, respond to moderation feedback, and resubmit for approval.
               </p>
+              {fromMarket ? (
+                <p className="mt-2 text-sm text-primary">
+                  Vehicle uploads here go only to marketplace sale and rental listings. They do not mix with services, events, or store content.
+                </p>
+              ) : null}
             </div>
             <Dialog
               open={Boolean(creatingListing)}
@@ -105,7 +130,7 @@ const MyListings = () => {
                   formError={formError}
                   imageError={imageError}
                   vehicleYears={vehicleYears}
-                  statusNote="New listings now go through admin review before they appear publicly. Add complete details and at least one strong primary image to reduce approval delays."
+                  statusNote="New vehicle listings now go through admin review before they appear publicly. This uploader is for marketplace sale and rental inventory only. Add complete details and at least one strong primary image to reduce approval delays."
                   imageUrlValue={createImageUrl}
                   setImageUrlValue={setCreateImageUrl}
                   addImageUrl={addCreateImageUrl}

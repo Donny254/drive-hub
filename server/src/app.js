@@ -18,6 +18,7 @@ import eventRegistrationsRouter from "./routes/eventRegistrations.js";
 import inquiriesRouter from "./routes/inquiries.js";
 import settingsRouter from "./routes/settings.js";
 import payoutsRouter from "./routes/payouts.js";
+import advertsRouter from "./routes/adverts.js";
 
 dotenv.config();
 
@@ -90,6 +91,7 @@ export const createApp = () => {
   app.use("/api/inquiries", inquiriesRouter);
   app.use("/api/settings", settingsRouter);
   app.use("/api/payouts", payoutsRouter);
+  app.use("/api/adverts", advertsRouter);
   app.use((req, res) => {
     res.status(404).json({ error: "Not found" });
   });

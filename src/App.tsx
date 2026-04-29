@@ -31,6 +31,7 @@ const AdminServices = lazy(() => import("./pages/AdminServices"));
 const AdminEvents = lazy(() => import("./pages/AdminEvents"));
 const AdminProducts = lazy(() => import("./pages/AdminProducts"));
 const AdminPosts = lazy(() => import("./pages/AdminPosts"));
+const AdminAdverts = lazy(() => import("./pages/AdminAdverts"));
 const BlogPost = lazy(() => import("./pages/BlogPost"));
 const EventDetails = lazy(() => import("./pages/EventDetails"));
 
@@ -65,7 +66,7 @@ const App = () => (
               <Route
                 path="/my-listings"
                 element={
-                  <ProtectedRoute roles={["user", "admin"]}>
+                  <ProtectedRoute roles={["admin"]}>
                     <MyListings />
                   </ProtectedRoute>
                 }
@@ -147,6 +148,14 @@ const App = () => (
                 element={
                   <ProtectedRoute roles={["admin"]}>
                     <AdminProducts />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/adverts"
+                element={
+                  <ProtectedRoute roles={["admin"]}>
+                    <AdminAdverts />
                   </ProtectedRoute>
                 }
               />

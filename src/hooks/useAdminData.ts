@@ -61,83 +61,120 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
   }, []);
 
   const fetchAll = useCallback(async () => {
+    if (!token) {
+      setLoading(false);
+      setError("Missing admin auth token.");
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
 
-      const [
-        listingsRes,
-        ordersRes,
-        usersRes,
-        bookingsRes,
-        serviceBookingsRes,
-        eventRegistrationsRes,
-        inquiriesRes,
-        servicesRes,
-        eventsRes,
-        productsRes,
-        postsRes,
-        settingsRes,
-        analyticsRes,
-        cryptoTransactionsRes,
-        payoutsRes,
-      ] = await Promise.all([
-        apiFetch("/api/listings?limit=200", { headers: authHeaders }),
-        apiFetch("/api/orders", { headers: authHeaders }),
-        apiFetch("/api/users", { headers: authHeaders }),
-        apiFetch("/api/bookings", { headers: authHeaders }),
-        apiFetch("/api/service-bookings", { headers: authHeaders }),
-        apiFetch("/api/event-registrations", { headers: authHeaders }),
-        apiFetch("/api/inquiries", { headers: authHeaders }),
-        apiFetch("/api/services", { headers: authHeaders }),
-        apiFetch("/api/events", { headers: authHeaders }),
-        apiFetch("/api/products", { headers: authHeaders }),
-        apiFetch("/api/posts", { headers: authHeaders }),
-        apiFetch("/api/settings", { headers: authHeaders }),
-        apiFetch("/api/listings/analytics/admin", { headers: authHeaders }),
-        apiFetch("/api/payments/crypto-transactions?status=all", { headers: authHeaders }),
-        apiFetch("/api/payouts", { headers: authHeaders }),
-      ]);
+      const requests = [
+        { key: "listings", label: "listings", path: "/api/listings?limit=200" },
+        { key: "orders", label: "orders", path: "/api/orders" },
+        { key: "users", label: "users", path: "/api/users" },
+        { key: "bookings", label: "bookings", path: "/api/bookings" },
+        { key: "serviceBookings", label: "service bookings", path: "/api/service-bookings" },
+        { key: "eventRegistrations", label: "event registrations", path: "/api/event-registrations" },
+        { key: "inquiries", label: "inquiries", path: "/api/inquiries" },
+        { key: "services", label: "services", path: "/api/services" },
+        { key: "events", label: "events", path: "/api/events" },
+        { key: "products", label: "products", path: "/api/products" },
+        { key: "posts", label: "posts", path: "/api/posts" },
+        { key: "settings", label: "settings", path: "/api/settings" },
+        { key: "analytics", label: "analytics", path: "/api/listings/analytics/admin" },
+        {
+          key: "cryptoTransactions",
+          label: "crypto transactions",
+          path: "/api/payments/crypto-transactions?status=all",
+        },
+        { key: "payouts", label: "payouts", path: "/api/payouts" },
+        { key: "systemHealth", label: "system health", path: "/api/health" },
+      ] as const;
 
-      if (!listingsRes.ok) throw new Error("Failed to load listings");
-      if (!ordersRes.ok) throw new Error("Failed to load orders");
-      if (!usersRes.ok) throw new Error("Failed to load users");
-      if (!bookingsRes.ok) throw new Error("Failed to load bookings");
-      if (!serviceBookingsRes.ok) throw new Error("Failed to load service bookings");
-      if (!eventRegistrationsRes.ok) throw new Error("Failed to load event registrations");
-      if (!inquiriesRes.ok) throw new Error("Failed to load inquiries");
-      if (!servicesRes.ok) throw new Error("Failed to load services");
-      if (!eventsRes.ok) throw new Error("Failed to load events");
-      if (!productsRes.ok) throw new Error("Failed to load products");
-      if (!postsRes.ok) throw new Error("Failed to load posts");
-      if (!settingsRes.ok) throw new Error("Failed to load settings");
-      if (!analyticsRes.ok) throw new Error("Failed to load analytics");
-      if (!cryptoTransactionsRes.ok) throw new Error("Failed to load crypto transactions");
-      if (!payoutsRes.ok) throw new Error("Failed to load payouts");
+      const results = await Promise.allSettled(
+        requests.map(async ({ key, label, path }) => {
+          const response = await apiFetch(path, { headers: authHeaders });
+          if (!response.ok) {
+            throw new Error(`Failed to load ${label}`);
+          }
 
-      setListings(await listingsRes.json());
-      setOrders(await ordersRes.json());
-      setUsers(await usersRes.json());
-      setBookings(await bookingsRes.json());
-      setServiceBookings(await serviceBookingsRes.json());
-      setEventRegistrations(await eventRegistrationsRes.json());
-      setInquiries(await inquiriesRes.json());
-      setServices(await servicesRes.json());
-      setEvents(await eventsRes.json());
-      setProducts(await productsRes.json());
-      setPosts(await postsRes.json());
-      setSettings(await settingsRes.json());
-      setAnalytics(await analyticsRes.json());
-      setCryptoTransactions(await cryptoTransactionsRes.json());
-      setPayouts(await payoutsRes.json());
-      await fetchSystemHealth();
+          return { key, data: await response.json() };
+        })
+      );
+
+      const failedLabels: string[] = [];
+
+      results.forEach((result, index) => {
+        if (result.status === "rejected") {
+          failedLabels.push(requests[index].label);
+          return;
+        }
+
+        switch (result.value.key) {
+          case "listings":
+            setListings(result.value.data as Listing[]);
+            break;
+          case "orders":
+            setOrders(result.value.data as Order[]);
+            break;
+          case "users":
+            setUsers(result.value.data as User[]);
+            break;
+          case "bookings":
+            setBookings(result.value.data as Booking[]);
+            break;
+          case "serviceBookings":
+            setServiceBookings(result.value.data as ServiceBooking[]);
+            break;
+          case "eventRegistrations":
+            setEventRegistrations(result.value.data as EventRegistration[]);
+            break;
+          case "inquiries":
+            setInquiries(result.value.data as Inquiry[]);
+            break;
+          case "services":
+            setServices(result.value.data as Service[]);
+            break;
+          case "events":
+            setEvents(result.value.data as EventItem[]);
+            break;
+          case "products":
+            setProducts(result.value.data as Product[]);
+            break;
+          case "posts":
+            setPosts(result.value.data as Post[]);
+            break;
+          case "settings":
+            setSettings(result.value.data as SiteSettings);
+            break;
+          case "analytics":
+            setAnalytics(result.value.data as AdminAnalytics);
+            break;
+          case "cryptoTransactions":
+            setCryptoTransactions(result.value.data as CryptoTransaction[]);
+            break;
+          case "payouts":
+            setPayouts(result.value.data as Payout[]);
+            break;
+          case "systemHealth":
+            setSystemHealth(result.value.data as SystemHealth);
+            break;
+        }
+      });
+
+      if (failedLabels.length > 0) {
+        setError(`Some admin sections failed to load: ${failedLabels.join(", ")}.`);
+      }
     } catch (err) {
       console.error(err);
       setError("Failed to load admin data.");
     } finally {
       setLoading(false);
     }
-  }, [authHeaders, fetchSystemHealth]);
+  }, [authHeaders, token]);
 
   useEffect(() => {
     fetchAll();

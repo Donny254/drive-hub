@@ -8,6 +8,7 @@ const routePrefetchers: Record<string, Prefetcher> = {
   "/login": () => import("@/pages/Login"),
   "/register": () => import("@/pages/Register"),
   "/admin": () => import("@/pages/Admin"),
+  "/admin/adverts": () => import("@/pages/AdminAdverts"),
   "/my-listings": () => import("@/pages/MyListings"),
   "/my-bookings": () => import("@/pages/MyBookings"),
   "/my-event-registrations": () => import("@/pages/MyEventRegistrations"),

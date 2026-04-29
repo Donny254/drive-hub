@@ -69,15 +69,17 @@ const Navbar = () => {
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>My Account</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link
-                      to="/my-listings"
-                      onMouseEnter={prefetchLink("/my-listings")}
-                      onFocus={prefetchLink("/my-listings")}
-                    >
-                      My Listings
-                    </Link>
-                  </DropdownMenuItem>
+                  {user.role === "admin" ? (
+                    <DropdownMenuItem asChild>
+                      <Link
+                        to="/my-listings"
+                        onMouseEnter={prefetchLink("/my-listings")}
+                        onFocus={prefetchLink("/my-listings")}
+                      >
+                        My Listings
+                      </Link>
+                    </DropdownMenuItem>
+                  ) : null}
                   <DropdownMenuItem asChild>
                     <Link
                       to="/my-bookings"
@@ -208,19 +210,21 @@ const Navbar = () => {
                 <div className="rounded-lg border border-border bg-card/60 p-3">
                   <p className="text-xs uppercase tracking-widest text-muted-foreground">My Account</p>
                   <div className="mt-3 flex flex-col gap-2">
-                    <Link
-                      to="/my-listings"
-                      onClick={() => setIsOpen(false)}
-                      onMouseEnter={prefetchLink("/my-listings")}
-                      onFocus={prefetchLink("/my-listings")}
-                      className={`font-medium text-sm uppercase tracking-widest ${
-                        location.pathname === "/my-listings"
-                          ? "text-primary"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      My Listings
-                    </Link>
+                    {user.role === "admin" ? (
+                      <Link
+                        to="/my-listings"
+                        onClick={() => setIsOpen(false)}
+                        onMouseEnter={prefetchLink("/my-listings")}
+                        onFocus={prefetchLink("/my-listings")}
+                        className={`font-medium text-sm uppercase tracking-widest ${
+                          location.pathname === "/my-listings"
+                            ? "text-primary"
+                            : "text-muted-foreground"
+                        }`}
+                      >
+                        My Listings
+                      </Link>
+                    ) : null}
                     <Link
                       to="/my-bookings"
                       onClick={() => setIsOpen(false)}
