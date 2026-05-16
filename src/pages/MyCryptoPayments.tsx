@@ -11,8 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { toDateInputValue } from "@/lib/date";
 import { dataUrlToFormat, fetchBrandLogoDataUrl } from "@/lib/pdfBranding";
@@ -146,7 +146,8 @@ const MyCryptoPayments = () => {
         if (!resp.ok) {
           throw new Error(`Failed to load ${kind.replaceAll("_", " ")} payments`);
         }
-        const data = (await resp.json()) as Record<string, unknown>[];
+        const json = await resp.json();
+        const data = (Array.isArray(json) ? json : (json.data ?? [])) as Record<string, unknown>[];
         return data.map((record) => parse(kind, record)).filter(Boolean) as CryptoPaymentItem[];
       })
     );

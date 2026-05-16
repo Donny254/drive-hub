@@ -39,7 +39,8 @@ const MyServiceBookings = () => {
       setError(null);
       const resp = await apiFetch("/api/service-bookings", { headers: authHeaders });
       if (!resp.ok) throw new Error("Failed to load service bookings");
-      setBookings(await resp.json());
+      const json = await resp.json();
+      setBookings(Array.isArray(json) ? json : (json.data ?? []));
     } catch (err) {
       console.error(err);
       setError("Failed to load your service bookings.");
