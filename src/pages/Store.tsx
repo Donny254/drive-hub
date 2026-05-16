@@ -213,9 +213,14 @@ const Store = () => {
 
   const submitOrder = async () => {
     if (cart.length === 0) return;
-    if (!customerName.trim() || !customerPhone.trim()) {
-      setCheckoutError("Name and phone are required.");
-      toast.error("Name and phone are required.");
+    if (!customerName.trim()) {
+      setCheckoutError("Name is required.");
+      toast.error("Name is required.");
+      return;
+    }
+    if (paymentMethod === "mpesa" && !customerPhone.trim()) {
+      setCheckoutError("Phone number is required for M-Pesa payment.");
+      toast.error("Phone number is required for M-Pesa payment.");
       return;
     }
     if (paymentMethod === "crypto" && !transactionHash.trim()) {
@@ -345,6 +350,7 @@ const Store = () => {
                       <img
                         src={resolveImageUrl(product.imageUrl) || "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600"}
                         alt={product.name}
+                        loading="lazy"
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                       />
                       {product.category && (
@@ -487,10 +493,12 @@ const Store = () => {
               <Label>Name</Label>
               <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
             </div>
-            <div className="grid gap-2">
-              <Label>Phone</Label>
-              <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
-            </div>
+            {paymentMethod === "mpesa" && (
+              <div className="grid gap-2">
+                <Label>Phone</Label>
+                <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+              </div>
+            )}
             <div className="grid gap-2">
               <Label>Payment Method</Label>
               <select

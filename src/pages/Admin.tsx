@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import ErrorBoundary from "@/components/shared/ErrorBoundary";
 import { Link, useSearchParams } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
@@ -839,4 +840,10 @@ const Admin = () => {
   );
 };
 
-export default Admin;
+const AdminWithBoundary = () => (
+  <ErrorBoundary>
+    <Admin />
+  </ErrorBoundary>
+);
+
+export default AdminWithBoundary;

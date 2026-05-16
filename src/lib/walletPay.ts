@@ -37,8 +37,8 @@ export const getTronStatus = (): WalletStatus => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const w = window as any;
   if (!w.tronLink && !w.tronWeb) return "not_installed";
-  if (!w.tronWeb?.ready) return "locked";
-  return "ready";
+  if (w.tronWeb?.ready && w.tronWeb?.defaultAddress?.base58) return "ready";
+  return "locked";
 };
 
 export const getEvmStatus = (): WalletStatus => {
@@ -48,14 +48,32 @@ export const getEvmStatus = (): WalletStatus => {
 
 export const connectTronLink = async (): Promise<string> => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tronLink = (window as any).tronLink;
+  const w = window as any;
+  const tronLink = w.tronLink;
   if (!tronLink) throw new Error("TronLink is not installed.");
-  // requestAccounts opens TronLink popup — works whether locked or just disconnected
-  const result = await tronLink.request({ method: "tron_requestAccounts" });
-  if (result.code !== 200) throw new Error("TronLink connection was rejected.");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const address: string = (window as any).tronWeb?.defaultAddress?.base58 ?? "";
-  if (!address) throw new Error("No TronLink account found after connecting.");
+
+  // If already unlocked, no popup needed
+  if (w.tronWeb?.ready && w.tronWeb?.defaultAddress?.base58) {
+    return w.tronWeb.defaultAddress.base58 as string;
+  }
+
+  // Request accounts — opens TronLink popup to unlock/connect
+  // TronLink versions differ: some use .request(), some fire an event after
+  if (typeof tronLink.request === "function") {
+    try {
+      await tronLink.request({ method: "tron_requestAccounts" });
+    } catch {
+      // Some versions throw on user cancel — fall through to address check
+    }
+  }
+
+  // Give TronLink a moment to update tronWeb state
+  await new Promise((r) => setTimeout(r, 300));
+
+  const address: string = w.tronWeb?.defaultAddress?.base58 ?? "";
+  if (!address || !w.tronWeb?.ready) {
+    throw new Error("TronLink is not connected. Please unlock TronLink and approve the connection.");
+  }
   return address;
 };
 

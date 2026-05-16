@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Loader2, ChevronDown, ChevronUp, Download, CheckCircle2, Wallet } from "lucide-react";
+import { Loader2, ChevronDown, ChevronUp, Download, CheckCircle2, Wallet, ChevronLeft } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import {
   getTronStatus,
@@ -29,10 +29,12 @@ type WalletPayButtonProps = {
   onToggleManual?: () => void;
 };
 
-type WalletSlot = {
-  id: "tron" | "evm";
+type WalletId = "tron" | "evm";
+
+type WalletOption = {
+  id: WalletId;
   label: string;
-  icon: string;
+  description: string;
   installUrl: string;
   config: WalletConfig;
 };
@@ -41,11 +43,6 @@ type SlotState = {
   status: WalletStatus;
   address: string | null;
   loading: boolean;
-};
-
-const INSTALL_LINKS = {
-  tron: { label: "Install TronLink", url: "https://www.tronlink.org/" },
-  evm: { label: "Install MetaMask", url: "https://metamask.io/download/" },
 };
 
 const WalletPayButton = ({
@@ -58,33 +55,33 @@ const WalletPayButton = ({
   showManual = false,
   onToggleManual,
 }: WalletPayButtonProps) => {
-  const slots: WalletSlot[] = [
+  const options: WalletOption[] = [
     ...(trc20
-      ? [{ id: "tron" as const, label: "TronLink", icon: "🔗", installUrl: INSTALL_LINKS.tron.url, config: trc20 }]
+      ? [{ id: "tron" as const, label: "TronLink", description: `USDT · ${trc20.network.toUpperCase()}`, installUrl: "https://www.tronlink.org/", config: trc20 }]
       : []),
     ...(evm
-      ? [{ id: "evm" as const, label: "MetaMask", icon: "🦊", installUrl: INSTALL_LINKS.evm.url, config: evm }]
+      ? [{ id: "evm" as const, label: "MetaMask", description: `USDT · ${evm.network.toUpperCase()}`, installUrl: "https://metamask.io/download/", config: evm }]
       : []),
   ];
 
+  const [selected, setSelected] = useState<WalletId | null>(null);
   const [slotStates, setSlotStates] = useState<Record<string, SlotState>>(() =>
-    Object.fromEntries(slots.map((s) => [s.id, { status: "checking" as WalletStatus, address: null, loading: false }]))
+    Object.fromEntries(options.map((o) => [o.id, { status: "checking" as WalletStatus, address: null, loading: false }]))
   );
-  const [paying, setPaying] = useState<"tron" | "evm" | null>(null);
+  const [paying, setPaying] = useState(false);
 
   const updateSlot = useCallback((id: string, patch: Partial<SlotState>) => {
     setSlotStates((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
   }, []);
 
   const detectAll = useCallback(() => {
-    slots.forEach((s) => {
-      updateSlot(s.id, { status: "checking" });
+    options.forEach((o) => {
+      updateSlot(o.id, { status: "checking" });
       setTimeout(() => {
-        const status = s.id === "tron" ? getTronStatus() : getEvmStatus();
-        updateSlot(s.id, { status });
+        const status = o.id === "tron" ? getTronStatus() : getEvmStatus();
+        updateSlot(o.id, { status });
       }, 500);
     });
-  // slots changes when trc20/evm props change; only re-detect on mount/prop change
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trc20, evm, updateSlot]);
 
@@ -92,52 +89,45 @@ const WalletPayButton = ({
     detectAll();
   }, [detectAll]);
 
-  const handleConnect = async (slot: WalletSlot) => {
-    updateSlot(slot.id, { loading: true });
+  const handleConnect = async (opt: WalletOption) => {
+    updateSlot(opt.id, { loading: true });
     try {
-      const address =
-        slot.id === "tron" ? await connectTronLink() : await connectMetaMask();
-      updateSlot(slot.id, { address, status: "ready", loading: false });
+      const address = opt.id === "tron" ? await connectTronLink() : await connectMetaMask();
+      updateSlot(opt.id, { address, status: "ready", loading: false });
     } catch (err) {
-      updateSlot(slot.id, { loading: false });
       const msg = err instanceof Error ? err.message : "Connection failed.";
-      // Re-check in case state changed (e.g. user unlocked)
-      const status = slot.id === "tron" ? getTronStatus() : getEvmStatus();
-      updateSlot(slot.id, { status });
+      const status = opt.id === "tron" ? getTronStatus() : getEvmStatus();
+      updateSlot(opt.id, { loading: false, status });
       toast.error(msg);
     }
   };
 
-  const handlePay = async (slot: WalletSlot) => {
-    if (!slot.config.toAddress) {
+  const handlePay = async (opt: WalletOption) => {
+    if (!opt.config.toAddress) {
       toast.error("Wallet address not configured. Contact support.");
       return;
     }
-    setPaying(slot.id);
+    setPaying(true);
     try {
       toast.loading("Fetching exchange rate…", { id: "wallet-pay" });
       const usdtAmount = await fetchUsdtFromKes(amountCents);
+      toast.loading(`Confirm ${usdtAmount.toFixed(4)} ${asset} in ${opt.label}…`, { id: "wallet-pay" });
 
-      toast.loading(`Confirm ${usdtAmount.toFixed(4)} ${asset} in ${slot.label}…`, { id: "wallet-pay" });
-
-      let result;
-      if (slot.id === "tron") {
-        result = await payWithTronLink(slot.config.toAddress, usdtAmount);
-      } else {
-        result = await payWithMetaMask(slot.config.toAddress, usdtAmount, slot.config.network);
-      }
+      const result =
+        opt.id === "tron"
+          ? await payWithTronLink(opt.config.toAddress, usdtAmount)
+          : await payWithMetaMask(opt.config.toAddress, usdtAmount, opt.config.network);
 
       toast.success("Transaction sent! Submitting payment…", { id: "wallet-pay" });
       onSuccess(result.txHash, result.payerAddress);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Payment failed.";
-      toast.error(message, { id: "wallet-pay" });
+      toast.error(err instanceof Error ? err.message : "Payment failed.", { id: "wallet-pay" });
     } finally {
-      setPaying(null);
+      setPaying(false);
     }
   };
 
-  if (slots.length === 0) return null;
+  if (options.length === 0) return null;
 
   const manualToggle = onToggleManual && (
     <button
@@ -150,62 +140,110 @@ const WalletPayButton = ({
     </button>
   );
 
+  // Step 1: wallet picker
+  if (!selected) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm font-medium text-foreground">Choose a wallet to pay with</p>
+        <div className="grid gap-2">
+          {options.map((opt) => {
+            const state = slotStates[opt.id] ?? { status: "checking", address: null, loading: false };
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                disabled={disabled}
+                onClick={() => setSelected(opt.id)}
+                className="flex items-center justify-between rounded-lg border border-border bg-secondary/20 px-4 py-3 text-left transition-colors hover:bg-secondary/50 disabled:opacity-50"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">{opt.id === "tron" ? "🔗" : "🦊"}</span>
+                  <div>
+                    <p className="text-sm font-medium">{opt.label}</p>
+                    <p className="text-xs text-muted-foreground">{opt.description}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {state.status === "checking" && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+                  {state.status === "ready" && state.address && <CheckCircle2 className="h-4 w-4 text-green-500" />}
+                  {state.status === "not_installed" && <span className="text-xs text-muted-foreground">Not installed</span>}
+                  {state.status === "locked" && <span className="text-xs text-amber-500">Locked</span>}
+                  <ChevronDown className="h-4 w-4 text-muted-foreground rotate-[-90deg]" />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        {manualToggle}
+      </div>
+    );
+  }
+
+  // Step 2: selected wallet flow
+  const opt = options.find((o) => o.id === selected)!;
+  const state = slotStates[opt.id] ?? { status: "checking", address: null, loading: false };
+
   return (
     <div className="space-y-3">
-      {slots.map((slot) => {
-        const state = slotStates[slot.id] ?? { status: "checking", address: null, loading: false };
-        const isPayingThis = paying === slot.id;
-        const isPayingOther = paying !== null && paying !== slot.id;
+      <button
+        type="button"
+        onClick={() => setSelected(null)}
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+      >
+        <ChevronLeft className="h-3 w-3" />
+        Choose a different wallet
+      </button>
 
-        return (
-          <WalletCard
-            key={slot.id}
-            slot={slot}
-            state={state}
-            isPaying={isPayingThis}
-            isDisabled={disabled || isPayingOther}
-            asset={asset}
-            onConnect={() => void handleConnect(slot)}
-            onPay={() => void handlePay(slot)}
-            onRetry={detectAll}
-          />
-        );
-      })}
+      <WalletFlow
+        opt={opt}
+        state={state}
+        paying={paying}
+        disabled={disabled}
+        asset={asset}
+        onConnect={() => void handleConnect(opt)}
+        onPay={() => void handlePay(opt)}
+        onRetry={detectAll}
+      />
 
       {manualToggle}
     </div>
   );
 };
 
-type WalletCardProps = {
-  slot: WalletSlot;
+type WalletFlowProps = {
+  opt: WalletOption;
   state: SlotState;
-  isPaying: boolean;
-  isDisabled: boolean;
+  paying: boolean;
+  disabled: boolean;
   asset: string;
   onConnect: () => void;
   onPay: () => void;
   onRetry: () => void;
 };
 
-const WalletCard = ({ slot, state, isPaying, isDisabled, asset, onConnect, onPay, onRetry }: WalletCardProps) => {
-  const networkLabel = slot.config.network.toUpperCase();
+const WalletFlow = ({ opt, state, paying, disabled, asset, onConnect, onPay, onRetry }: WalletFlowProps) => {
+  if (state.status === "checking") {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/20 px-4 py-3 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Checking {opt.label}…
+      </div>
+    );
+  }
 
   if (state.status === "not_installed") {
     return (
-      <div className="rounded-lg border border-border bg-secondary/30 p-4 text-sm">
+      <div className="rounded-lg border border-border bg-secondary/30 p-4 text-sm space-y-3">
         <div className="flex items-center gap-2">
-          <span className="text-base">{slot.icon}</span>
-          <p className="font-medium">{slot.label} — {networkLabel}</p>
+          <span className="text-base">{opt.id === "tron" ? "🔗" : "🦊"}</span>
+          <p className="font-medium">{opt.label} is not installed</p>
         </div>
-        <p className="mt-1 text-muted-foreground">
-          {slot.label} is not installed. Install the browser extension to pay directly.
-        </p>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <p className="text-muted-foreground">Install the browser extension to pay directly.</p>
+        <div className="flex flex-wrap gap-2">
           <Button type="button" variant="secondary" size="sm" asChild>
-            <a href={slot.installUrl} target="_blank" rel="noreferrer" className="gap-2">
+            <a href={opt.installUrl} target="_blank" rel="noreferrer" className="gap-2">
               <Download className="h-4 w-4" />
-              Install {slot.label}
+              Install {opt.label}
             </a>
           </Button>
           <Button type="button" variant="ghost" size="sm" onClick={onRetry}>
@@ -218,51 +256,38 @@ const WalletCard = ({ slot, state, isPaying, isDisabled, asset, onConnect, onPay
 
   if (state.status === "locked") {
     return (
-      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm space-y-3">
         <div className="flex items-center gap-2">
-          <span className="text-base">{slot.icon}</span>
-          <p className="font-medium">{slot.label} is locked — {networkLabel}</p>
+          <span className="text-base">{opt.id === "tron" ? "🔗" : "🦊"}</span>
+          <p className="font-medium">{opt.label} is locked</p>
         </div>
-        <p className="mt-1 text-muted-foreground">
-          Open the {slot.label} extension and enter your password, then connect below.
+        <p className="text-muted-foreground">
+          Open {opt.label}, enter your password to unlock it, then click below.
         </p>
-        <div className="mt-3">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={onConnect}
-            disabled={state.loading}
-            className="gap-2"
-          >
-            {state.loading && <Loader2 className="h-3 w-3 animate-spin" />}
-            Unlock & Connect
-          </Button>
-        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={onConnect}
+          disabled={state.loading}
+          className="gap-2"
+        >
+          {state.loading && <Loader2 className="h-3 w-3 animate-spin" />}
+          Unlock & Connect
+        </Button>
       </div>
     );
   }
 
-  if (state.status === "checking") {
-    return (
-      <div className="rounded-lg border border-border bg-secondary/20 p-4 text-sm">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span>Checking {slot.label}…</span>
-        </div>
-      </div>
-    );
-  }
-
-  // ready
+  // ready — not yet connected
   if (!state.address) {
     return (
       <div className="rounded-lg border border-border bg-secondary/20 p-4 text-sm space-y-3">
         <div className="flex items-center gap-2">
-          <span className="text-base">{slot.icon}</span>
+          <span className="text-xl">{opt.id === "tron" ? "🔗" : "🦊"}</span>
           <div>
-            <p className="font-medium">{slot.label} — {networkLabel}</p>
-            <p className="text-xs text-muted-foreground">Not connected</p>
+            <p className="font-medium">{opt.label}</p>
+            <p className="text-xs text-muted-foreground">{opt.description} · Not connected</p>
           </div>
         </div>
         <Button
@@ -270,10 +295,10 @@ const WalletCard = ({ slot, state, isPaying, isDisabled, asset, onConnect, onPay
           variant="secondary"
           className="w-full gap-2"
           onClick={onConnect}
-          disabled={isDisabled || state.loading}
+          disabled={disabled || state.loading}
         >
           {state.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
-          {state.loading ? "Connecting…" : `Connect ${slot.label}`}
+          {state.loading ? "Connecting…" : `Connect ${opt.label}`}
         </Button>
       </div>
     );
@@ -284,9 +309,9 @@ const WalletCard = ({ slot, state, isPaying, isDisabled, asset, onConnect, onPay
     <div className="rounded-lg border border-border bg-secondary/20 p-4 text-sm space-y-3">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-base">{slot.icon}</span>
+          <span className="text-xl">{opt.id === "tron" ? "🔗" : "🦊"}</span>
           <div>
-            <p className="font-medium">{slot.label} — {networkLabel}</p>
+            <p className="font-medium">{opt.label}</p>
             <p className="font-mono text-xs text-muted-foreground truncate max-w-[200px]">{state.address}</p>
           </div>
         </div>
@@ -297,10 +322,10 @@ const WalletCard = ({ slot, state, isPaying, isDisabled, asset, onConnect, onPay
         variant="hero"
         className="w-full gap-2"
         onClick={onPay}
-        disabled={isDisabled || isPaying}
+        disabled={disabled || paying}
       >
-        {isPaying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
-        {isPaying ? `Sending ${asset}…` : `Pay with ${slot.label}`}
+        {paying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
+        {paying ? `Sending ${asset}…` : `Pay with ${opt.label}`}
       </Button>
     </div>
   );

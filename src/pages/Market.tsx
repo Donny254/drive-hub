@@ -341,9 +341,9 @@ const Market = () => {
       toast.error("End date must be on or after the start date.");
       return;
     }
-    if (!bookingPhone.trim()) {
-      setBookingError("Phone number is required.");
-      toast.error("Phone number is required.");
+    if (paymentMethod === "mpesa" && !bookingPhone.trim()) {
+      setBookingError("Phone number is required for M-Pesa payment.");
+      toast.error("Phone number is required for M-Pesa payment.");
       return;
     }
     if (bookingListing.listingType === "rent" && paymentMethod === "crypto" && !transactionHash.trim()) {
@@ -823,6 +823,7 @@ const Market = () => {
                       <img
                         src={resolveImageUrl(listing.imageUrl) || FALLBACK_IMAGE}
                         alt={listing.title}
+                        loading="lazy"
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                       />
                       {listing.featured && (
@@ -1002,6 +1003,7 @@ const Market = () => {
                 <img
                   src={resolveImageUrl(item.imageUrl) || FALLBACK_IMAGE}
                   alt={item.title}
+                  loading="lazy"
                   className="h-40 w-full rounded-lg object-cover"
                 />
                 <h3 className="mt-4 font-display text-2xl tracking-wider break-words">{item.title}</h3>
@@ -1119,14 +1121,16 @@ const Market = () => {
                 )}
               </>
             )}
-            <div className="grid gap-2">
-              <Label>Phone</Label>
-              <Input
-                placeholder="07xx xxx xxx"
-                value={bookingPhone}
-                onChange={(e) => setBookingPhone(e.target.value)}
-              />
-            </div>
+            {paymentMethod === "mpesa" && (
+              <div className="grid gap-2">
+                <Label>Phone</Label>
+                <Input
+                  placeholder="07xx xxx xxx"
+                  value={bookingPhone}
+                  onChange={(e) => setBookingPhone(e.target.value)}
+                />
+              </div>
+            )}
             <div className="rounded-md border border-border bg-card p-4 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-muted-foreground">Base price</span>

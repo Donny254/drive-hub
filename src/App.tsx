@@ -34,6 +34,8 @@ const AdminPosts = lazy(() => import("./pages/AdminPosts"));
 const AdminAdverts = lazy(() => import("./pages/AdminAdverts"));
 const BlogPost = lazy(() => import("./pages/BlogPost"));
 const EventDetails = lazy(() => import("./pages/EventDetails"));
+const MyOrders = lazy(() => import("./pages/MyOrders"));
+const MyProfile = lazy(() => import("./pages/MyProfile"));
 
 const RouteFallback = () => (
   <div className="min-h-[40vh] flex items-center justify-center text-sm text-muted-foreground">
@@ -116,6 +118,22 @@ const App = () => (
                 element={
                   <ProtectedRoute roles={["user", "admin"]}>
                     <MyPayouts />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/my-orders"
+                element={
+                  <ProtectedRoute roles={["user", "admin"]}>
+                    <MyOrders />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/my-profile"
+                element={
+                  <ProtectedRoute roles={["user", "admin"]}>
+                    <MyProfile />
                   </ProtectedRoute>
                 }
               />

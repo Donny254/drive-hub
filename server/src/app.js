@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import morgan from "morgan";
+import rateLimit from "express-rate-limit";
 import healthRouter from "./routes/health.js";
 import listingsRouter from "./routes/listings.js";
 import authRouter from "./routes/auth.js";
@@ -61,8 +63,9 @@ export const createApp = () => {
       },
     })
   );
+  app.use(morgan(isProduction ? "combined" : "dev"));
   app.use(express.json({ limit: "1mb" }));
-  app.use("/uploads", express.static("uploads"));
+  app.use("/uploads", express.static("uploads", { maxAge: "1d", etag: true }));
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
@@ -73,6 +76,18 @@ export const createApp = () => {
   app.get("/", (req, res) => {
     res.json({ name: "drive-hub-api", status: "ok" });
   });
+
+  // Rate limiters
+  const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false });
+  const paymentLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, message: { error: "Too many payment requests. Please try again later." } });
+  const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false, message: { error: "Too many attempts. Please try again later." } });
+
+  app.use("/api", apiLimiter);
+  app.use("/api/auth", authLimiter);
+  app.use("/api/payments", paymentLimiter);
+  app.use("/api/orders", paymentLimiter);
+  app.use("/api/bookings", paymentLimiter);
+  app.use("/api/event-registrations", paymentLimiter);
 
   app.use("/api/health", healthRouter);
   app.use("/api/auth", authRouter);

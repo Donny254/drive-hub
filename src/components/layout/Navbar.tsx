@@ -69,6 +69,12 @@ const Navbar = () => {
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>My Account</DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to="/my-profile" onMouseEnter={prefetchLink("/my-profile")} onFocus={prefetchLink("/my-profile")}>
+                      My Profile
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   {user.role === "admin" ? (
                     <DropdownMenuItem asChild>
                       <Link
@@ -80,6 +86,11 @@ const Navbar = () => {
                       </Link>
                     </DropdownMenuItem>
                   ) : null}
+                  <DropdownMenuItem asChild>
+                    <Link to="/my-orders" onMouseEnter={prefetchLink("/my-orders")} onFocus={prefetchLink("/my-orders")}>
+                      My Orders
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link
                       to="/my-bookings"

@@ -3,6 +3,7 @@ import { query } from "../db.js";
 import { optionalAuth, requireAuth, requireAdminOrOwner } from "../middleware/auth.js";
 import { sendListingModerationEmail } from "../email.js";
 import { sendListingModerationMessage } from "../notifications.js";
+import { sanitizeText } from "../utils.js";
 
 const router = Router();
 
@@ -235,6 +236,9 @@ router.get("/", optionalAuth, async (req, res, next) => {
       where.push(`price_cents <= $${params.length}`);
     }
 
+    // Always exclude soft-deleted listings
+    where.push("l.deleted_at IS NULL");
+
     if (req.query.status) {
       if (!allowedStatuses.has(req.query.status)) {
         return res.status(400).json({ error: "Invalid status" });
@@ -243,10 +247,10 @@ router.get("/", optionalAuth, async (req, res, next) => {
         return res.status(403).json({ error: "Forbidden" });
       }
       params.push(req.query.status);
-      where.push(`status = $${params.length}`);
+      where.push(`l.status = $${params.length}`);
     } else if (!isAdmin) {
       params.push("active");
-      where.push(`status = $${params.length}`);
+      where.push(`l.status = $${params.length}`);
     }
 
     if (req.query.featured !== undefined) {
@@ -311,7 +315,7 @@ router.get("/me", requireAuth, async (req, res, next) => {
               ), 0) AS seller_active_listings_count
        FROM listings l
        LEFT JOIN users u ON u.id = l.user_id
-       WHERE l.user_id = $1
+       WHERE l.user_id = $1 AND l.deleted_at IS NULL
        ORDER BY l.created_at DESC`,
       [req.user.id]
     );
@@ -661,11 +665,11 @@ router.post("/", requireAuth, async (req, res, next) => {
       moderationNotes,
     } = req.body;
     const qualityError = validateListingQuality({
-      title,
+      title: sanitizeText(title),
       priceCents,
       year,
       imageUrl,
-      description,
+      description: sanitizeText(description),
       location,
     });
     if (qualityError) {
@@ -969,7 +973,7 @@ router.delete(
         },
       });
 
-      const result = await query("DELETE FROM listings WHERE id = $1", [req.params.id]);
+      await query("UPDATE listings SET deleted_at = now(), status = 'inactive' WHERE id = $1", [req.params.id]);
       res.status(204).send();
     } catch (error) {
       next(error);

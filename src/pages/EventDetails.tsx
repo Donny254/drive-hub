@@ -197,9 +197,14 @@ const EventDetails = () => {
 
   const submitRegistration = async () => {
     if (!event) return;
-    if (!contactName.trim() || !contactPhone.trim()) {
-      setRegisterError("Name and phone are required.");
-      toast.error("Name and phone are required.");
+    if (!contactName.trim()) {
+      setRegisterError("Name is required.");
+      toast.error("Name is required.");
+      return;
+    }
+    if (paymentMethod === "mpesa" && !contactPhone.trim()) {
+      setRegisterError("Phone number is required for M-Pesa payment.");
+      toast.error("Phone number is required for M-Pesa payment.");
       return;
     }
     if (isPaidEvent && paymentMethod === "crypto" && !transactionHash.trim()) {
@@ -455,10 +460,12 @@ const EventDetails = () => {
               <Label>Name</Label>
               <Input value={contactName} onChange={(e) => setContactName(e.target.value)} />
             </div>
-            <div className="grid gap-2">
-              <Label>Phone</Label>
-              <Input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
-            </div>
+            {paymentMethod === "mpesa" && (
+              <div className="grid gap-2">
+                <Label>Phone</Label>
+                <Input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
+              </div>
+            )}
             {isPaidEvent && (
               <div className="grid gap-2">
                 <Label>Payment Method</Label>
