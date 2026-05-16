@@ -534,7 +534,7 @@ const Store = () => {
               </div>
               <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
                 <span className="font-medium">Total</span>
-                <span className="font-semibold text-primary">KES {(checkoutSuccess ? submittedOrderTotalCents : cartTotalCents).toLocaleString()}</span>
+                <span className="font-semibold text-primary">KES {(checkoutSuccess ? submittedOrderTotalCents / 100 : cartTotal).toLocaleString()}</span>
               </div>
             </div>
             {paymentMethod === "crypto" && (

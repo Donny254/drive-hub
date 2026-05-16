@@ -322,7 +322,7 @@ const MyPayouts = () => {
             <CardTitle className="text-lg">Payout History</CardTitle>
           </CardHeader>
           <CardContent className="pt-6">
-            <div className="mb-6 grid gap-4 md:grid-cols-[1fr_220px]">
+            <div className="mb-6 grid gap-4 md:grid-cols-[1fr_180px_180px_180px]">
               <div className="grid gap-2">
                 <label className="text-sm font-medium">Search</label>
                 <input

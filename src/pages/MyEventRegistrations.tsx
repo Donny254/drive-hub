@@ -100,7 +100,8 @@ const MyEventRegistrations = () => {
       setError(null);
       const resp = await apiFetch("/api/event-registrations", { headers: authHeaders });
       if (!resp.ok) throw new Error("Failed to load registrations");
-      setRegistrations(await resp.json());
+      const json = await resp.json();
+      setRegistrations(Array.isArray(json) ? json : (json.data ?? []));
     } catch (err) {
       console.error(err);
       setError("Failed to load your event registrations.");
@@ -620,12 +621,6 @@ const MyEventRegistrations = () => {
               />
             )}
           </div>
-          <div className="sticky bottom-4 z-20 flex justify-end">
-              <Button type="button" variant="secondary" size="sm" onClick={() => payDialogRef.current?.scrollTo({ top: 0, behavior: "smooth" })}>
-                <ArrowUp className="mr-2 h-4 w-4" />
-                Back to top
-              </Button>
-            </div>
           <div className="sticky bottom-4 z-20 flex justify-end">
             <Button type="button" variant="secondary" size="sm" onClick={() => payDialogRef.current?.scrollTo({ top: 0, behavior: "smooth" })}>
               <ArrowUp className="mr-2 h-4 w-4" />

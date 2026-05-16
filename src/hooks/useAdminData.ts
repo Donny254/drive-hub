@@ -130,7 +130,7 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
             setServiceBookings((result.value.data?.data ?? result.value.data) as ServiceBooking[]);
             break;
           case "eventRegistrations":
-            setEventRegistrations(result.value.data as EventRegistration[]);
+            setEventRegistrations((result.value.data?.data ?? result.value.data) as EventRegistration[]);
             break;
           case "inquiries":
             setInquiries(result.value.data as Inquiry[]);
