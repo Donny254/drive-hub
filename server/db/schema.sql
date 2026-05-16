@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS site_settings (
   crypto_network text,
   crypto_wallet_address text,
   crypto_instructions text,
+  crypto_network_evm text,
+  crypto_wallet_address_evm text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -368,6 +370,12 @@ ALTER TABLE site_settings
 
 ALTER TABLE site_settings
   ADD COLUMN IF NOT EXISTS crypto_instructions text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS crypto_network_evm text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS crypto_wallet_address_evm text;
 
 ALTER TABLE site_settings
   ADD COLUMN IF NOT EXISTS seller_commission_rate integer NOT NULL DEFAULT 0 CHECK (seller_commission_rate >= 0 AND seller_commission_rate <= 100);

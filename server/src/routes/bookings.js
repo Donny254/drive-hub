@@ -252,6 +252,9 @@ router.put(
           cryptoProofImageUrl !== undefined) &&
         updated.payment_method === "crypto"
       ) {
+        const resolvedStatus =
+          updated.payment_status === "paid" ? "paid" :
+          updated.payment_status === "failed" ? "failed" : "pending";
         await query(
           `UPDATE crypto_transactions
            SET status = $1,
@@ -264,13 +267,23 @@ router.put(
                ORDER BY created_at DESC
                LIMIT 1
              )`,
-          [
-            updated.payment_status === "paid" ? "paid" : updated.payment_status === "failed" ? "failed" : "pending",
-            updated.id,
-            cryptoReviewNotes ?? null,
-            cryptoProofImageUrl ?? null,
-          ]
+          [resolvedStatus, updated.id, cryptoReviewNotes ?? null, cryptoProofImageUrl ?? null]
         );
+        if (resolvedStatus === "paid" || resolvedStatus === "failed") {
+          await query(
+            `UPDATE crypto_transactions
+             SET status = 'cancelled'
+             WHERE booking_id = $1
+               AND status = 'pending'
+               AND id <> (
+                 SELECT id FROM crypto_transactions
+                 WHERE booking_id = $1
+                 ORDER BY created_at DESC
+                 LIMIT 1
+               )`,
+            [updated.id]
+          );
+        }
       }
       if (
         updated.payment_method === "crypto" &&

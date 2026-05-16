@@ -15,6 +15,7 @@ import { feedbackText, getApiErrorMessage } from "@/lib/feedback";
 import CryptoProofUploader from "@/components/shared/CryptoProofUploader";
 import CryptoPaymentTimeline from "@/components/shared/CryptoPaymentTimeline";
 import CryptoPaymentDetails from "@/components/shared/CryptoPaymentDetails";
+import WalletPayButton from "@/components/shared/WalletPayButton";
 import useCryptoPaymentStatus from "@/hooks/useCryptoPaymentStatus";
 
 interface Product {
@@ -36,6 +37,8 @@ type CryptoDetails = {
   asset: string;
   network: string | null;
   walletAddress: string | null;
+  networkEvm: string | null;
+  walletAddressEvm: string | null;
   instructions: string | null;
 };
 
@@ -70,6 +73,8 @@ const Store = () => {
   const [transactionHash, setTransactionHash] = useState("");
   const [payerWallet, setPayerWallet] = useState("");
   const [proofImageUrl, setProofImageUrl] = useState<string | null>(null);
+  const [walletPaid, setWalletPaid] = useState(false);
+  const [showManualCrypto, setShowManualCrypto] = useState(false);
   const [submittedOrderTotalCents, setSubmittedOrderTotalCents] = useState(0);
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
@@ -167,6 +172,8 @@ const Store = () => {
     setTransactionHash("");
     setPayerWallet("");
     setProofImageUrl(null);
+    setWalletPaid(false);
+    setShowManualCrypto(false);
     setSubmittedOrderTotalCents(cartTotalCents);
     setCheckoutOpen(true);
   };
@@ -216,9 +223,9 @@ const Store = () => {
       toast.error("Transaction hash is required for crypto payment.");
       return;
     }
-    if (paymentMethod === "crypto" && !proofImageUrl) {
-      setCheckoutError("Payment proof image is required for crypto payment.");
-      toast.error("Payment proof image is required for crypto payment.");
+    if (paymentMethod === "crypto" && !walletPaid && !proofImageUrl) {
+      setCheckoutError("Payment proof image is required for manual crypto payment.");
+      toast.error("Payment proof image is required for manual crypto payment.");
       return;
     }
     setSubmittedOrderTotalCents(cartTotalCents);
@@ -496,7 +503,7 @@ const Store = () => {
               </select>
               <p className="text-xs text-muted-foreground">
                 {paymentMethod === "crypto"
-                  ? "Crypto orders are reviewed manually after you submit proof and a transaction hash."
+                  ? "Connect your wallet to pay directly — no screenshot needed."
                   : "M-Pesa sends a payment prompt to your phone for instant confirmation."}
               </p>
             </div>
@@ -531,23 +538,43 @@ const Store = () => {
                 showAdminShortcut={isAdmin}
               />
             )}
-            {paymentMethod === "crypto" && (
+            {paymentMethod === "crypto" && !checkoutSuccess && (
               <div className="grid gap-4">
-                <CryptoProofUploader
-                  token={token}
-                  proofImageUrl={proofImageUrl}
-                  onProofImageUrlChange={setProofImageUrl}
-                  label="Payment proof"
-                  description="Upload a clear transfer screenshot or receipt before submitting."
+                <WalletPayButton
+                  trc20={cryptoDetails?.network && cryptoDetails?.walletAddress ? { network: cryptoDetails.network, toAddress: cryptoDetails.walletAddress } : null}
+                  evm={cryptoDetails?.networkEvm && cryptoDetails?.walletAddressEvm ? { network: cryptoDetails.networkEvm, toAddress: cryptoDetails.walletAddressEvm } : null}
+                  asset={cryptoDetails?.asset}
+                  amountCents={cartTotalCents}
+                  disabled={checkoutLoading}
+                  showManual={showManualCrypto}
+                  onToggleManual={() => setShowManualCrypto((v) => !v)}
+                  onSuccess={(txHash, payerAddr) => {
+                    setTransactionHash(txHash);
+                    setPayerWallet(payerAddr);
+                    setWalletPaid(true);
+                    setShowManualCrypto(false);
+                    void submitOrder();
+                  }}
                 />
-                <div className="grid gap-2">
-                  <Label>Transaction Hash</Label>
-                  <Input value={transactionHash} onChange={(e) => setTransactionHash(e.target.value)} />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Payer Wallet (optional)</Label>
-                  <Input value={payerWallet} onChange={(e) => setPayerWallet(e.target.value)} />
-                </div>
+                {showManualCrypto && (
+                  <div className="grid gap-4 rounded-lg border border-border p-4">
+                    <CryptoProofUploader
+                      token={token}
+                      proofImageUrl={proofImageUrl}
+                      onProofImageUrlChange={setProofImageUrl}
+                      label="Payment proof"
+                      description="Upload a clear transfer screenshot or receipt before submitting."
+                    />
+                    <div className="grid gap-2">
+                      <Label>Transaction Hash</Label>
+                      <Input value={transactionHash} onChange={(e) => setTransactionHash(e.target.value)} />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Payer Wallet (optional)</Label>
+                      <Input value={payerWallet} onChange={(e) => setPayerWallet(e.target.value)} />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             {checkoutError && <p className="text-sm text-destructive">{checkoutError}</p>}

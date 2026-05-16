@@ -17,6 +17,7 @@ import { toast } from "@/components/ui/sonner";
 import { getApiErrorMessage } from "@/lib/feedback";
 import { isEndBeforeStart, isPastDateValue } from "@/lib/date";
 import CryptoProofUploader from "@/components/shared/CryptoProofUploader";
+import WalletPayButton from "@/components/shared/WalletPayButton";
 import CryptoPaymentTimeline from "@/components/shared/CryptoPaymentTimeline";
 import CryptoPaymentDetails from "@/components/shared/CryptoPaymentDetails";
 import useCryptoPaymentStatus from "@/hooks/useCryptoPaymentStatus";
@@ -65,6 +66,8 @@ type CryptoDetails = {
   asset: string;
   network: string | null;
   walletAddress: string | null;
+  networkEvm: string | null;
+  walletAddressEvm: string | null;
   instructions: string | null;
 };
 
@@ -116,6 +119,8 @@ const Market = () => {
   const [transactionHash, setTransactionHash] = useState("");
   const [payerWallet, setPayerWallet] = useState("");
   const [proofImageUrl, setProofImageUrl] = useState<string | null>(null);
+  const [walletPaid, setWalletPaid] = useState(false);
+  const [showManualCrypto, setShowManualCrypto] = useState(false);
   const [bookingAvailability, setBookingAvailability] = useState<
     Array<{ startDate: string | null; endDate: string | null }>
   >([]);
@@ -295,6 +300,8 @@ const Market = () => {
     setTransactionHash("");
     setPayerWallet("");
     setProofImageUrl(null);
+    setWalletPaid(false);
+    setShowManualCrypto(false);
     setBookingAvailability([]);
     setPurchaseSuccess(null);
     setPurchaseError(null);
@@ -344,9 +351,9 @@ const Market = () => {
       toast.error("Transaction hash is required for crypto payment.");
       return;
     }
-    if (bookingListing.listingType === "rent" && paymentMethod === "crypto" && !proofImageUrl) {
-      setBookingError("Payment proof image is required for crypto payment.");
-      toast.error("Payment proof image is required for crypto payment.");
+    if (bookingListing.listingType === "rent" && paymentMethod === "crypto" && !walletPaid && !proofImageUrl) {
+      setBookingError("Payment proof image is required for manual crypto payment.");
+      toast.error("Payment proof image is required for manual crypto payment.");
       return;
     }
     if (bookingListing.listingType === "rent") {
@@ -1154,7 +1161,7 @@ const Market = () => {
               </select>
               <p className="text-xs text-muted-foreground">
                 {paymentMethod === "crypto"
-                  ? "Crypto payments are reviewed manually after proof and transaction details are submitted."
+                  ? "Connect your wallet to pay directly — no screenshot needed."
                   : "M-Pesa sends a payment prompt to your phone for instant confirmation."}
               </p>
             </div>
@@ -1167,23 +1174,43 @@ const Market = () => {
                 showAdminShortcut={isAdmin}
               />
             )}
-            {paymentMethod === "crypto" && (
+            {paymentMethod === "crypto" && !bookingSuccess && (
               <div className="grid gap-4">
-                <CryptoProofUploader
-                  token={token}
-                  proofImageUrl={proofImageUrl}
-                  onProofImageUrlChange={setProofImageUrl}
-                  label="Payment proof"
-                  description="Upload a clear transfer screenshot or receipt before submitting."
+                <WalletPayButton
+                  trc20={cryptoDetails?.network && cryptoDetails?.walletAddress ? { network: cryptoDetails.network, toAddress: cryptoDetails.walletAddress } : null}
+                  evm={cryptoDetails?.networkEvm && cryptoDetails?.walletAddressEvm ? { network: cryptoDetails.networkEvm, toAddress: cryptoDetails.walletAddressEvm } : null}
+                  asset={cryptoDetails?.asset}
+                  amountCents={bookingListing ? bookingListing.priceCents * (bookingListing.listingType === "rent" ? Math.max(1, Math.ceil((new Date(bookingEnd || bookingStart || "").getTime() - new Date(bookingStart || "").getTime()) / 86400000) + 1) : 1) : 0}
+                  disabled={bookingLoading}
+                  showManual={showManualCrypto}
+                  onToggleManual={() => setShowManualCrypto((v) => !v)}
+                  onSuccess={(txHash, payerAddr) => {
+                    setTransactionHash(txHash);
+                    setPayerWallet(payerAddr);
+                    setWalletPaid(true);
+                    setShowManualCrypto(false);
+                    void submitBooking();
+                  }}
                 />
-                <div className="grid gap-2">
-                  <Label>Transaction Hash</Label>
-                  <Input value={transactionHash} onChange={(e) => setTransactionHash(e.target.value)} />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Payer Wallet (optional)</Label>
-                  <Input value={payerWallet} onChange={(e) => setPayerWallet(e.target.value)} />
-                </div>
+                {showManualCrypto && (
+                  <div className="grid gap-4 rounded-lg border border-border p-4">
+                    <CryptoProofUploader
+                      token={token}
+                      proofImageUrl={proofImageUrl}
+                      onProofImageUrlChange={setProofImageUrl}
+                      label="Payment proof"
+                      description="Upload a clear transfer screenshot or receipt before submitting."
+                    />
+                    <div className="grid gap-2">
+                      <Label>Transaction Hash</Label>
+                      <Input value={transactionHash} onChange={(e) => setTransactionHash(e.target.value)} />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Payer Wallet (optional)</Label>
+                      <Input value={payerWallet} onChange={(e) => setPayerWallet(e.target.value)} />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             {bookingListing?.listingType !== "rent" && isHighValue && (

@@ -24,6 +24,8 @@ const toApi = (row) => ({
   cryptoNetwork: row.crypto_network || null,
   cryptoWalletAddress: row.crypto_wallet_address || null,
   cryptoInstructions: row.crypto_instructions || null,
+  cryptoNetworkEvm: row.crypto_network_evm || null,
+  cryptoWalletAddressEvm: row.crypto_wallet_address_evm || null,
   updatedAt: row.updated_at || null,
 });
 
@@ -80,6 +82,8 @@ router.put("/", requireAuth, requireRole("admin"), async (req, res, next) => {
       crypto_network: req.body.cryptoNetwork,
       crypto_wallet_address: req.body.cryptoWalletAddress,
       crypto_instructions: req.body.cryptoInstructions,
+      crypto_network_evm: req.body.cryptoNetworkEvm,
+      crypto_wallet_address_evm: req.body.cryptoWalletAddressEvm,
     };
 
     Object.entries(fields).forEach(([column, value]) => {

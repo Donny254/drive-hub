@@ -16,6 +16,7 @@ import { useAuth } from "@/context/AuthContext";
 import { toast } from "@/components/ui/sonner";
 import { getApiErrorMessage } from "@/lib/feedback";
 import CryptoProofUploader from "@/components/shared/CryptoProofUploader";
+import WalletPayButton from "@/components/shared/WalletPayButton";
 import CryptoPaymentTimeline from "@/components/shared/CryptoPaymentTimeline";
 import CryptoPaymentDetails from "@/components/shared/CryptoPaymentDetails";
 import useCryptoPaymentStatus from "@/hooks/useCryptoPaymentStatus";
@@ -84,10 +85,14 @@ const EventDetails = () => {
   const [transactionHash, setTransactionHash] = useState("");
   const [payerWallet, setPayerWallet] = useState("");
   const [proofImageUrl, setProofImageUrl] = useState<string | null>(null);
+  const [walletPaid, setWalletPaid] = useState(false);
+  const [showManualCrypto, setShowManualCrypto] = useState(false);
   const [cryptoDetails, setCryptoDetails] = useState<{
     asset: string;
     network: string | null;
     walletAddress: string | null;
+    networkEvm: string | null;
+    walletAddressEvm: string | null;
     instructions: string | null;
   } | null>(null);
   const registerDialogRef = useRef<HTMLDivElement | null>(null);
@@ -178,6 +183,8 @@ const EventDetails = () => {
     setTransactionHash("");
     setPayerWallet("");
     setProofImageUrl(null);
+    setWalletPaid(false);
+    setShowManualCrypto(false);
   }, [registerOpen, user]);
 
   const openRegister = () => {
@@ -200,9 +207,9 @@ const EventDetails = () => {
       toast.error("Transaction hash is required for crypto payment.");
       return;
     }
-    if (isPaidEvent && paymentMethod === "crypto" && !proofImageUrl) {
-      setRegisterError("Payment proof image is required for crypto payment.");
-      toast.error("Payment proof image is required for crypto payment.");
+    if (isPaidEvent && paymentMethod === "crypto" && !walletPaid && !proofImageUrl) {
+      setRegisterError("Payment proof image is required for manual crypto payment.");
+      toast.error("Payment proof image is required for manual crypto payment.");
       return;
     }
     setRegisterLoading(true);
@@ -518,23 +525,43 @@ const EventDetails = () => {
                 ) : null}
               </div>
             )}
-            {isPaidEvent && paymentMethod === "crypto" && (
+            {isPaidEvent && paymentMethod === "crypto" && !registerSuccess && (
               <div className="grid gap-4">
-                <CryptoProofUploader
-                  token={token}
-                  proofImageUrl={proofImageUrl}
-                  onProofImageUrlChange={setProofImageUrl}
-                  label="Payment proof"
-                  description="Upload a clear transfer screenshot or receipt before submitting."
+                <WalletPayButton
+                  trc20={cryptoDetails?.network && cryptoDetails?.walletAddress ? { network: cryptoDetails.network, toAddress: cryptoDetails.walletAddress } : null}
+                  evm={cryptoDetails?.networkEvm && cryptoDetails?.walletAddressEvm ? { network: cryptoDetails.networkEvm, toAddress: cryptoDetails.walletAddressEvm } : null}
+                  asset={cryptoDetails?.asset}
+                  amountCents={event ? Number(event.priceCents ?? 0) * tickets : 0}
+                  disabled={registerLoading}
+                  showManual={showManualCrypto}
+                  onToggleManual={() => setShowManualCrypto((v) => !v)}
+                  onSuccess={(txHash, payerAddr) => {
+                    setTransactionHash(txHash);
+                    setPayerWallet(payerAddr);
+                    setWalletPaid(true);
+                    setShowManualCrypto(false);
+                    void submitRegistration();
+                  }}
                 />
-                <div className="grid gap-2">
-                  <Label>Transaction Hash</Label>
-                  <Input value={transactionHash} onChange={(e) => setTransactionHash(e.target.value)} />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Payer Wallet (optional)</Label>
-                  <Input value={payerWallet} onChange={(e) => setPayerWallet(e.target.value)} />
-                </div>
+                {showManualCrypto && (
+                  <div className="grid gap-4 rounded-lg border border-border p-4">
+                    <CryptoProofUploader
+                      token={token}
+                      proofImageUrl={proofImageUrl}
+                      onProofImageUrlChange={setProofImageUrl}
+                      label="Payment proof"
+                      description="Upload a clear transfer screenshot or receipt before submitting."
+                    />
+                    <div className="grid gap-2">
+                      <Label>Transaction Hash</Label>
+                      <Input value={transactionHash} onChange={(e) => setTransactionHash(e.target.value)} />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Payer Wallet (optional)</Label>
+                      <Input value={payerWallet} onChange={(e) => setPayerWallet(e.target.value)} />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <div className="sticky bottom-4 z-20 flex justify-end">
