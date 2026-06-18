@@ -250,7 +250,7 @@ const MyEventRegistrations = () => {
       <main className="pt-28 pb-16">
         <div className="container mx-auto px-4">
           <div>
-            <h1 className="font-display text-3xl tracking-wider">My Event Registrations</h1>
+            <h1 className="font-display text-3xl">My Event Registrations</h1>
             <p className="text-muted-foreground mt-1">View and manage your event registrations.</p>
           </div>
 

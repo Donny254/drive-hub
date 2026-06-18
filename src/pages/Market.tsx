@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowDown, ArrowUp, BookmarkPlus, Calendar, Car, DollarSign, Fuel, Gauge, MapPin, Scale, ShieldCheck, X } from "lucide-react";
+import { ArrowDown, ArrowUp, BookmarkPlus, Calendar, Car, DollarSign, Fuel, Gauge, MapPin, Scale, X } from "lucide-react";
 import MarketSlider from "@/components/market/MarketSlider";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
@@ -21,6 +21,8 @@ import WalletPayButton from "@/components/shared/WalletPayButton";
 import CryptoPaymentTimeline from "@/components/shared/CryptoPaymentTimeline";
 import CryptoPaymentDetails from "@/components/shared/CryptoPaymentDetails";
 import useCryptoPaymentStatus from "@/hooks/useCryptoPaymentStatus";
+import { usePagination } from "@/hooks/usePagination";
+import PagerBar from "@/components/shared/PagerBar";
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?w=600";
@@ -247,6 +249,7 @@ const Market = () => {
   }, []);
 
   const filteredListings = useMemo(() => listings, [listings]);
+  const { pageItems: pagedListings, page: listingsPage, totalPages: listingsTotalPages, goTo: goToListingsPage, reset: resetListingsPage } = usePagination(filteredListings, 12);
   const shortlistIds = useMemo(() => new Set(shortlist.map((item) => item.id)), [shortlist]);
 
   const buildSellerEmailLink = useCallback(
@@ -581,6 +584,7 @@ const Market = () => {
     setMaxPrice("");
     setSort("newest");
     setActiveTab("all");
+    resetListingsPage();
   };
 
   const toggleShortlist = (listing: Listing) => {
@@ -637,161 +641,124 @@ const Market = () => {
         {/* Ad Slider Banner */}
         <MarketSlider />
 
-        {/* Filter Tabs */}
-        <section className="py-8 bg-secondary/50 border-b border-border">
-          <div className="container mx-auto px-4">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-              <div>
-                <h2 className="font-display text-2xl tracking-wider">
+        {/* Filter Bar */}
+        <section className="py-5 bg-secondary/50 border-b border-border sticky top-20 z-30 backdrop-blur-md">
+          <div className="container mx-auto px-4 space-y-3">
+            {/* Row 1: title + tabs + compare + sell */}
+            <div className="flex flex-wrap items-center gap-2 justify-between">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h2 className="font-display text-xl text-foreground">
                   EXPLORE OUR <span className="text-primary">COLLECTION</span>
                 </h2>
-                <p className="text-muted-foreground text-sm mt-1">
-                  Premium vehicles for Kenya's most discerning clients
-                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {tabs.map((tab) => (
+                    <Button
+                      key={tab.id}
+                      variant={activeTab === tab.id ? "hero" : "secondary"}
+                      size="sm"
+                      onClick={() => setActiveTab(tab.id)}
+                    >
+                      {tab.label}
+                    </Button>
+                  ))}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {tabs.map((tab) => (
-                  <Button
-                    key={tab.id}
-                    variant={activeTab === tab.id ? "hero" : "secondary"}
-                    size="sm"
-                    onClick={() => setActiveTab(tab.id)}
-                  >
-                    {tab.label}
-                  </Button>
-                ))}
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Compare shortlist — compact inline */}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setCompareOpen(true)}
+                  disabled={shortlist.length < 2}
+                  className="gap-1.5"
+                >
+                  <Scale className="h-3.5 w-3.5" />
+                  Compare
+                  {shortlist.length > 0 && (
+                    <span className="ml-1 bg-primary text-primary-foreground text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                      {shortlist.length}
+                    </span>
+                  )}
+                </Button>
                 <Button variant="hero" size="sm" onClick={() => openSellerEmail("sell")}>
                   Sell Yours
                 </Button>
               </div>
             </div>
-            <div className="mt-4 grid gap-3 lg:grid-cols-[1.4fr_1fr]">
-              <div className="rounded-xl border border-border bg-card/70 p-4">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <ShieldCheck className="h-4 w-4 text-primary" />
-                  Buy with more confidence
-                </div>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Shortlist up to three cars, compare specs side by side, and use M-Pesa or bank transfer flow based on ticket size. This follows the trust-first pattern used by leading auto marketplaces.
-                </p>
-              </div>
-              <div className="rounded-xl border border-border bg-card/70 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">Compare shortlist</p>
-                    <p className="text-xs text-muted-foreground">
-                      {shortlist.length}/3 vehicles selected
-                    </p>
-                  </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setCompareOpen(true)}
-                    disabled={shortlist.length < 2}
-                  >
-                    <Scale className="mr-2 h-4 w-4" />
-                    Compare
+
+            {/* Row 2: filters in one line */}
+            <div className="flex flex-wrap gap-2 items-end">
+              <Input
+                placeholder="Search by name, brand…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-9 w-48 md:w-56 text-sm"
+              />
+              <Input
+                type="number"
+                placeholder="Year"
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+                className="h-9 w-24 text-sm"
+              />
+              <Input
+                type="number"
+                placeholder="Min KES"
+                value={minPrice}
+                onChange={(e) => setMinPrice(e.target.value)}
+                className="h-9 w-28 text-sm"
+              />
+              <Input
+                type="number"
+                placeholder="Max KES"
+                value={maxPrice}
+                onChange={(e) => setMaxPrice(e.target.value)}
+                className="h-9 w-28 text-sm"
+              />
+              <select
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+              >
+                <option value="newest">Newest</option>
+                <option value="price_asc">Price ↑</option>
+                <option value="price_desc">Price ↓</option>
+                <option value="year_desc">Year ↓</option>
+              </select>
+              <div className="flex items-center gap-1 ml-auto">
+                <Badge variant="secondary" className="text-xs">{filteredListings.length} results</Badge>
+                <Button variant="ghost" size="sm" className="h-9 text-xs" onClick={saveCurrentSearch}>
+                  Save
+                </Button>
+                {(search || year || minPrice || maxPrice || activeTab !== "all" || sort !== "newest") && (
+                  <Button variant="ghost" size="sm" className="h-9 text-xs" onClick={clearFilters}>
+                    Clear
                   </Button>
-                </div>
+                )}
               </div>
             </div>
-            <div className="mt-4 rounded-xl border border-primary/20 bg-card/70 p-4">
-              <p className="text-sm font-medium text-foreground">Seller tools</p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Marketplace vehicle onboarding stays separate from service bookings and service media. Clients should contact the admin team for assistance when they want a car listed for sale or rent.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Button variant="secondary" size="sm" onClick={() => openSellerEmail("sell")}>
-                  Email Sales Team
-                </Button>
-                <Button variant="secondary" size="sm" onClick={() => openSellerEmail("rent")}>
-                  Email Rental Team
-                </Button>
-              </div>
-            </div>
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-              <div className="lg:col-span-2">
-                <Label>Search</Label>
-                <Input
-                  placeholder="Search by name, brand, type..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>Year</Label>
-                <Input
-                  type="number"
-                  placeholder="2024"
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>Min Price</Label>
-                <Input
-                  type="number"
-                  placeholder="10000"
-                  value={minPrice}
-                  onChange={(e) => setMinPrice(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>Max Price</Label>
-                <Input
-                  type="number"
-                  placeholder="200000"
-                  value={maxPrice}
-                  onChange={(e) => setMaxPrice(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>Sort</Label>
-                <select
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value)}
-                >
-                  <option value="newest">Newest</option>
-                  <option value="price_asc">Price: Low to High</option>
-                  <option value="price_desc">Price: High to Low</option>
-                  <option value="year_desc">Year: Newest</option>
-                </select>
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <Badge variant="secondary">{filteredListings.length} results</Badge>
-              <Button variant="ghost" size="sm" onClick={saveCurrentSearch}>
-                Save search
-              </Button>
-              {(search || year || minPrice || maxPrice || activeTab !== "all" || sort !== "newest") && (
-                <Button variant="ghost" size="sm" onClick={clearFilters}>
-                  Clear filters
-                </Button>
-              )}
-            </div>
+
+            {/* Saved searches — only if any */}
             {savedSearches.length > 0 && (
-              <div className="mt-4 rounded-xl border border-border bg-card/60 p-4">
-                <p className="text-sm font-medium text-foreground">Saved searches</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {savedSearches.map((savedSearch) => (
-                    <div key={savedSearch.id} className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-sm">
-                      <button type="button" onClick={() => applySavedSearch(savedSearch)} className="hover:text-primary">
-                        {savedSearch.name}
-                      </button>
-                      <button type="button" onClick={() => removeSavedSearch(savedSearch.id)} aria-label={`Remove ${savedSearch.name}`}>
-                        <X className="h-3 w-3 text-muted-foreground" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-xs text-muted-foreground">Saved:</span>
+                {savedSearches.map((savedSearch) => (
+                  <div key={savedSearch.id} className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-xs">
+                    <button type="button" onClick={() => applySavedSearch(savedSearch)} className="hover:text-primary">
+                      {savedSearch.name}
+                    </button>
+                    <button type="button" onClick={() => removeSavedSearch(savedSearch.id)} aria-label={`Remove ${savedSearch.name}`}>
+                      <X className="h-3 w-3 text-muted-foreground" />
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
         </section>
 
         {/* Car Grid */}
-        <section className="py-16">
+        <section className="py-10">
           <div className="container mx-auto px-4">
             {loading && (
               <div className="text-center text-muted-foreground">Loading listings...</div>
@@ -812,7 +779,7 @@ const Market = () => {
 
             {!loading && !error && filteredListings.length > 0 && (
               <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-                {filteredListings.map((listing, index) => (
+                {pagedListings.map((listing, index) => (
                   <div
                     key={listing.id}
                     className="group flex h-full flex-col rounded-lg border border-border bg-card transition-all duration-500 hover:border-primary/50 animate-fade-in"
@@ -855,7 +822,7 @@ const Market = () => {
 
                     {/* Content */}
                     <div className="flex flex-1 flex-col p-6">
-                      <h3 className="font-display text-2xl tracking-wider break-words">{listing.title}</h3>
+                      <h3 className="font-display text-2xl break-words">{listing.title}</h3>
 
                       <div className="grid grid-cols-2 gap-4 mt-4">
                         <div className="flex items-center gap-2 text-muted-foreground text-sm">
@@ -935,13 +902,16 @@ const Market = () => {
                 ))}
               </div>
             )}
+            {!loading && !error && (
+              <PagerBar page={listingsPage} totalPages={listingsTotalPages} onPageChange={goToListingsPage} />
+            )}
           </div>
         </section>
 
         {/* Sell CTA */}
-        <section className="py-16 bg-secondary">
+        <section className="py-10 bg-secondary">
           <div className="container mx-auto px-4 text-center">
-            <h2 className="font-display text-4xl tracking-wider">
+            <h2 className="font-display text-4xl">
               WANT TO <span className="text-primary">SELL YOUR CAR?</span>
             </h2>
             <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
@@ -1006,7 +976,7 @@ const Market = () => {
                   loading="lazy"
                   className="h-40 w-full rounded-lg object-cover"
                 />
-                <h3 className="mt-4 font-display text-2xl tracking-wider break-words">{item.title}</h3>
+                <h3 className="mt-4 font-display text-2xl break-words">{item.title}</h3>
                 <div className="mt-4 space-y-3 text-sm">
                   <div className="flex justify-between gap-3"><span className="text-muted-foreground">Price</span><span className="text-right break-words">KES {(item.priceCents / 100).toLocaleString()}</span></div>
                   <div className="flex justify-between gap-3"><span className="text-muted-foreground">Type</span><span className="capitalize text-right break-words">{item.listingType}</span></div>

@@ -72,6 +72,11 @@ import { useAdminData } from "@/hooks/useAdminData";
 import { useAdminListingEditor } from "@/hooks/useAdminListingEditor";
 import { useAdminViewState } from "@/hooks/useAdminViewState";
 import { useToast } from "@/hooks/use-toast";
+import {
+  LayoutDashboard, Car, CalendarCheck, Coins, Banknote, Wrench,
+  Ticket, MessageSquare, Settings2, CalendarDays, Package, FileText,
+  ShoppingBag, Users, Settings, Megaphone, Clock, AlertTriangle,
+} from "lucide-react";
 
 const formatMoney = (cents?: number | null) => {
   if (cents === null || cents === undefined) return "--";
@@ -548,56 +553,55 @@ const Admin = () => {
             <section className="overflow-hidden rounded-3xl border border-border bg-card">
               <div className="bg-[radial-gradient(circle_at_top_left,rgba(0,229,184,0.18),transparent_42%),linear-gradient(135deg,rgba(255,167,38,0.1),transparent_48%)] px-6 py-8 md:px-8">
                 <p className="text-xs uppercase tracking-[0.35em] text-primary/80">Control Center</p>
-                <h1 className="mt-3 font-display text-4xl tracking-wider md:text-5xl">Admin Dashboard</h1>
+                <h1 className="mt-3 font-display text-3xl md:text-4xl">Admin Dashboard</h1>
                 <p className="mt-3 max-w-2xl text-sm text-muted-foreground md:text-base">
                   Run moderation, seller operations, orders, and marketplace health from one surface.
                 </p>
-                <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-border/70 bg-background/60 p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Live</p>
-                    <p className="mt-2 text-3xl font-semibold">{analytics?.summary.activeListings ?? "--"}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Active listings</p>
+                <div className="mt-5 grid gap-2 sm:grid-cols-3">
+                  <div className="rounded-xl border border-border/70 bg-background/60 p-3">
+                    <div className="flex items-center gap-1.5 text-xs uppercase tracking-[0.2em] text-primary/80">
+                      <Car className="h-3 w-3" /> Live
+                    </div>
+                    <p className="mt-1.5 text-2xl font-semibold tabular-nums">{analytics?.summary.activeListings ?? "--"}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">Active listings</p>
                   </div>
-                  <div className="rounded-2xl border border-border/70 bg-background/60 p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Queue</p>
-                    <p className="mt-2 text-3xl font-semibold">{analytics?.summary.pendingListings ?? "--"}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Pending approvals</p>
+                  <div className="rounded-xl border border-border/70 bg-background/60 p-3">
+                    <div className="flex items-center gap-1.5 text-xs uppercase tracking-[0.2em] text-amber-400/90">
+                      <Clock className="h-3 w-3" /> Queue
+                    </div>
+                    <p className="mt-1.5 text-2xl font-semibold tabular-nums">{analytics?.summary.pendingListings ?? "--"}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">Pending approvals</p>
                   </div>
-                  <div className="rounded-2xl border border-border/70 bg-background/60 p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Risk</p>
-                    <p className="mt-2 text-3xl font-semibold">{analytics?.summary.highRiskListings ?? "--"}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">High-risk listings</p>
+                  <div className="rounded-xl border border-border/70 bg-background/60 p-3">
+                    <div className="flex items-center gap-1.5 text-xs uppercase tracking-[0.2em] text-red-400/90">
+                      <AlertTriangle className="h-3 w-3" /> Risk
+                    </div>
+                    <p className="mt-1.5 text-2xl font-semibold tabular-nums">{analytics?.summary.highRiskListings ?? "--"}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">High-risk listings</p>
                   </div>
                 </div>
               </div>
             </section>
 
-            <section className="grid gap-4 sm:grid-cols-2">
-              <Link to="/admin/services" className="rounded-2xl border border-border bg-card p-5 transition hover:border-primary/60 hover:bg-card/80">
-                <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Operations</p>
-                <h3 className="mt-3 font-display text-xl tracking-wider">Services</h3>
-                <p className="mt-2 text-sm text-muted-foreground">Manage service offerings</p>
-              </Link>
-              <Link to="/admin/events" className="rounded-2xl border border-border bg-card p-5 transition hover:border-primary/60 hover:bg-card/80">
-                <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Community</p>
-                <h3 className="mt-3 font-display text-xl tracking-wider">Events</h3>
-                <p className="mt-2 text-sm text-muted-foreground">Manage event listings</p>
-              </Link>
-              <Link to="/admin/products" className="rounded-2xl border border-border bg-card p-5 transition hover:border-primary/60 hover:bg-card/80">
-                <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Commerce</p>
-                <h3 className="mt-3 font-display text-xl tracking-wider">Store Products</h3>
-                <p className="mt-2 text-sm text-muted-foreground">Manage merch products</p>
-              </Link>
-              <Link to="/admin/adverts" className="rounded-2xl border border-border bg-card p-5 transition hover:border-primary/60 hover:bg-card/80">
-                <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Market</p>
-                <h3 className="mt-3 font-display text-xl tracking-wider">Slider Adverts</h3>
-                <p className="mt-2 text-sm text-muted-foreground">Edit hero slides, images, copy, and CTA links</p>
-              </Link>
-              <Link to="/admin/posts" className="rounded-2xl border border-border bg-card p-5 transition hover:border-primary/60 hover:bg-card/80">
-                <p className="text-xs uppercase tracking-[0.25em] text-muted-foreground">Content</p>
-                <h3 className="mt-3 font-display text-xl tracking-wider">Blog Posts</h3>
-                <p className="mt-2 text-sm text-muted-foreground">Manage blog content</p>
-              </Link>
+            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-2">
+              {([
+                { to: "/admin/services", icon: Wrench,      tag: "Operations", label: "Services",       desc: "Manage service offerings" },
+                { to: "/admin/events",   icon: CalendarDays, tag: "Community",  label: "Events",         desc: "Manage event listings" },
+                { to: "/admin/products", icon: Package,      tag: "Commerce",   label: "Store Products", desc: "Manage merch products" },
+                { to: "/admin/adverts",  icon: Megaphone,    tag: "Market",     label: "Adverts",        desc: "Edit hero slides & CTAs" },
+                { to: "/admin/posts",    icon: FileText,     tag: "Content",    label: "Blog Posts",     desc: "Manage blog content" },
+              ] as const).map(({ to, icon: Icon, tag, label, desc }) => (
+                <Link key={to} to={to} className="group flex items-start gap-3 rounded-2xl border border-border bg-card p-4 transition-all duration-200 hover:border-primary/60 hover:bg-primary/5 cursor-pointer">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">{tag}</p>
+                    <h3 className="mt-0.5 font-display text-base">{label}</h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{desc}</p>
+                  </div>
+                </Link>
+              ))}
             </section>
           </div>
 
@@ -608,23 +612,36 @@ const Admin = () => {
             {!loading && !error && (
               <>
                 <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as (typeof ADMIN_TABS)[number])}>
-                <TabsList className="h-auto w-full flex-wrap justify-start gap-2 rounded-2xl border border-border bg-card p-2">
-                  <TabsTrigger className="rounded-xl px-4 py-2" value="overview">Overview</TabsTrigger>
-                  <TabsTrigger className="rounded-xl px-4 py-2" value="listings">Listings</TabsTrigger>
-                  <TabsTrigger className="rounded-xl px-4 py-2" value="bookings">Bookings</TabsTrigger>
-                  <TabsTrigger className="rounded-xl px-4 py-2" value="crypto-payments">Crypto Payments</TabsTrigger>
-                  <TabsTrigger className="rounded-xl px-4 py-2" value="payouts">Payouts</TabsTrigger>
-                  <TabsTrigger className="rounded-xl px-4 py-2" value="service-bookings">Service Bookings</TabsTrigger>
-                  <TabsTrigger className="rounded-xl px-4 py-2" value="event-registrations">Event Registrations</TabsTrigger>
-                  <TabsTrigger className="rounded-xl px-4 py-2" value="inquiries">Inquiries</TabsTrigger>
-                  <TabsTrigger className="rounded-xl px-4 py-2" value="services">Services</TabsTrigger>
-                  <TabsTrigger className="rounded-xl px-4 py-2" value="events">Events</TabsTrigger>
-                  <TabsTrigger className="rounded-xl px-4 py-2" value="products">Products</TabsTrigger>
-                  <TabsTrigger className="rounded-xl px-4 py-2" value="posts">Blog</TabsTrigger>
-                  <TabsTrigger className="rounded-xl px-4 py-2" value="orders">Orders</TabsTrigger>
-                  <TabsTrigger className="rounded-xl px-4 py-2" value="users">Users</TabsTrigger>
-                  <TabsTrigger className="rounded-xl px-4 py-2" value="settings">Settings</TabsTrigger>
+                <div className="overflow-x-auto pb-1">
+                <TabsList className="inline-flex h-auto min-w-full gap-1 rounded-2xl border border-border bg-card p-1.5">
+                  {([
+                    { value: "overview",             label: "Overview",            icon: LayoutDashboard },
+                    { value: "listings",             label: "Listings",            icon: Car },
+                    { value: "bookings",             label: "Bookings",            icon: CalendarCheck },
+                    { value: "orders",               label: "Orders",              icon: ShoppingBag },
+                    { value: "crypto-payments",      label: "Crypto",              icon: Coins },
+                    { value: "payouts",              label: "Payouts",             icon: Banknote },
+                    { value: "service-bookings",     label: "Svc Bookings",        icon: Wrench },
+                    { value: "event-registrations",  label: "Event Regs",          icon: Ticket },
+                    { value: "inquiries",            label: "Inquiries",           icon: MessageSquare },
+                    { value: "services",             label: "Services",            icon: Settings2 },
+                    { value: "events",               label: "Events",              icon: CalendarDays },
+                    { value: "products",             label: "Products",            icon: Package },
+                    { value: "posts",                label: "Blog",                icon: FileText },
+                    { value: "users",                label: "Users",               icon: Users },
+                    { value: "settings",             label: "Settings",            icon: Settings },
+                  ] as const).map(({ value, label, icon: Icon }) => (
+                    <TabsTrigger
+                      key={value}
+                      value={value}
+                      className="flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-xs"
+                    >
+                      <Icon className="h-3.5 w-3.5 shrink-0" />
+                      {label}
+                    </TabsTrigger>
+                  ))}
                 </TabsList>
+                </div>
 
                 <AdminOverviewTab
                   analytics={analytics}

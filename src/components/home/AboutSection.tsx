@@ -9,9 +9,9 @@ const stats = [
 
 const AboutSection = () => {
   return (
-    <section className="py-24">
+    <section className="py-16">
       <div className="container mx-auto px-4">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
           {/* Image */}
           <div className="relative animate-fade-in pb-10">
             <div className="relative rounded-lg overflow-hidden">
@@ -33,7 +33,7 @@ const AboutSection = () => {
 
           {/* Content */}
           <div className="animate-fade-in" style={{ animationDelay: "0.2s" }}>
-            <h2 className="font-display text-4xl md:text-5xl tracking-wider">
+            <h2 className="font-display text-3xl md:text-4xl">
               BUILT FOR <span className="text-primary">CAR LOVERS</span>
             </h2>
             <p className="mt-6 text-muted-foreground leading-relaxed">

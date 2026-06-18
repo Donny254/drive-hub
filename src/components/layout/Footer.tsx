@@ -37,7 +37,7 @@ const Footer = () => {
       id="contact"
       className="border-t border-border bg-[radial-gradient(circle_at_top_left,rgba(15,211,179,0.1),transparent_24%),linear-gradient(180deg,hsl(var(--secondary)),hsl(var(--background)))]"
     >
-      <div className="container mx-auto px-4 py-16">
+      <div className="container mx-auto px-4 py-10">
         <div className="grid grid-cols-1 gap-12 md:grid-cols-2 xl:grid-cols-4">
           {/* Brand */}
           <div className="md:col-span-1">
@@ -82,7 +82,7 @@ const Footer = () => {
 
           {/* Quick Links */}
           <div className="min-w-0">
-            <h4 className="font-display text-lg tracking-wider mb-4">QUICK LINKS</h4>
+            <h4 className="font-display text-base mb-4">QUICK LINKS</h4>
             <ul className="space-y-3">
               <li><Link to="/market" className="text-muted-foreground hover:text-primary text-sm transition-colors">Car Market</Link></li>
               <li><Link to="/services" className="text-muted-foreground hover:text-primary text-sm transition-colors">Our Services</Link></li>
@@ -93,7 +93,7 @@ const Footer = () => {
 
           {/* Services */}
           <div className="min-w-0">
-            <h4 className="font-display text-lg tracking-wider mb-4">SERVICES</h4>
+            <h4 className="font-display text-base mb-4">SERVICES</h4>
             <ul className="space-y-3">
               <li><span className="text-muted-foreground text-sm">Performance Tuning</span></li>
               <li><span className="text-muted-foreground text-sm">Detailing & Wrap</span></li>
@@ -104,7 +104,7 @@ const Footer = () => {
 
           {/* Contact */}
           <div className="min-w-0">
-            <h4 className="font-display text-lg tracking-wider mb-4">CONTACT US</h4>
+            <h4 className="font-display text-base mb-4">CONTACT US</h4>
             <ul className="space-y-4 text-muted-foreground text-sm">
               <li className="flex items-center gap-3">
                 <MapPin size={16} className="text-primary flex-shrink-0" />
@@ -126,7 +126,7 @@ const Footer = () => {
           </div>
         </div>
 
-        <div className="mt-12 border-t border-border pt-8 text-center text-sm text-muted-foreground">
+        <div className="mt-8 border-t border-border pt-6 text-center text-sm text-muted-foreground">
           <p className="break-words">© {new Date().getFullYear()} {settings?.companyName || "WheelsnationKe"}. All rights reserved. | Serving Kenya & East Africa</p>
         </div>
       </div>

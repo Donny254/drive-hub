@@ -327,7 +327,7 @@ const EventDetails = () => {
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-4">
-                  <h1 className="font-display text-4xl tracking-wider">{event.title}</h1>
+                  <h1 className="font-display text-4xl">{event.title}</h1>
                   <p className="text-muted-foreground text-lg">
                     {event.description ?? "Details coming soon."}
                   </p>
@@ -374,7 +374,7 @@ const EventDetails = () => {
 
               {user?.role === "admin" && (
                 <div className="rounded-xl border border-border bg-card p-6">
-                  <h2 className="font-display text-2xl tracking-wider">Registrations</h2>
+                  <h2 className="font-display text-2xl">Registrations</h2>
                   {registrationsLoading && (
                     <p className="text-muted-foreground mt-2">Loading registrations...</p>
                   )}

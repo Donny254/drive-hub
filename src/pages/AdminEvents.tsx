@@ -376,7 +376,7 @@ const AdminEvents = () => {
         <div className="container mx-auto px-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h1 className="font-display text-3xl tracking-wider">Admin Events</h1>
+              <h1 className="font-display text-3xl">Admin Events</h1>
               <p className="text-muted-foreground mt-1">Create and manage events.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">

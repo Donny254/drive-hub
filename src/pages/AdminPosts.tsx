@@ -213,7 +213,7 @@ const AdminPosts = () => {
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h1 className="font-display text-3xl tracking-wider">Admin Blog</h1>
+              <h1 className="font-display text-3xl">Admin Blog</h1>
               <p className="text-muted-foreground mt-1">Create and manage blog posts.</p>
             </div>
             <div className="flex items-center gap-2">

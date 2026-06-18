@@ -15,6 +15,51 @@ import { downloadCsv, parseCsv, toCsv } from "@/lib/csv";
 import { toast } from "@/components/ui/sonner";
 import { feedbackText, getApiErrorMessage } from "@/lib/feedback";
 
+interface CategorySelectProps {
+  value: string | null;
+  categories: string[];
+  onChange: (value: string) => void;
+}
+
+function CategorySelect({ value, categories, onChange }: CategorySelectProps) {
+  const isNew = value !== null && value !== "" && !categories.includes(value);
+  const [adding, setAdding] = useState(isNew);
+
+  const handleSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (e.target.value === "__add__") {
+      setAdding(true);
+      onChange("");
+    } else {
+      setAdding(false);
+      onChange(e.target.value);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <select
+        className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+        value={adding ? "__add__" : (value ?? "")}
+        onChange={handleSelect}
+      >
+        <option value="">-- Select category --</option>
+        {categories.map((cat) => (
+          <option key={cat} value={cat}>{cat}</option>
+        ))}
+        <option value="__add__">+ Add new category…</option>
+      </select>
+      {adding && (
+        <Input
+          autoFocus
+          placeholder="Type new category name"
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+    </div>
+  );
+}
+
 type Product = {
   id: string;
   name: string;
@@ -59,6 +104,11 @@ const AdminProducts = () => {
   const [maxPrice, setMaxPrice] = useState("");
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+
+  const existingCategories = useMemo(
+    () => Array.from(new Set(products.map((p) => p.category).filter(Boolean) as string[])).sort(),
+    [products],
+  );
 
   const fetchProducts = useCallback(async () => {
     const resp = await apiFetch("/api/products", { headers: authHeaders });
@@ -214,7 +264,7 @@ const AdminProducts = () => {
         <div className="container mx-auto px-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h1 className="font-display text-3xl tracking-wider">Admin Products</h1>
+              <h1 className="font-display text-3xl">Admin Products</h1>
               <p className="text-muted-foreground mt-1">Create and manage store products.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -280,9 +330,10 @@ const AdminProducts = () => {
                       </div>
                       <div className="grid gap-2">
                         <Label>Category</Label>
-                        <Input
-                          value={creating.category ?? ""}
-                          onChange={(e) => setCreating({ ...creating, category: e.target.value })}
+                        <CategorySelect
+                          value={creating.category}
+                          categories={existingCategories}
+                          onChange={(v) => setCreating({ ...creating, category: v || null })}
                         />
                       </div>
                       <div className="grid gap-2">
@@ -460,7 +511,11 @@ const AdminProducts = () => {
                                 </div>
                                 <div className="grid gap-2">
                                   <Label>Category</Label>
-                                  <Input value={editing.category ?? ""} onChange={(e) => setEditing({ ...editing, category: e.target.value })} />
+                                  <CategorySelect
+                                    value={editing.category}
+                                    categories={existingCategories}
+                                    onChange={(v) => setEditing({ ...editing, category: v || null })}
+                                  />
                                 </div>
                                 <div className="grid gap-2">
                                   <Label>Sizes (comma separated)</Label>

@@ -17,6 +17,8 @@ import CryptoPaymentTimeline from "@/components/shared/CryptoPaymentTimeline";
 import CryptoPaymentDetails from "@/components/shared/CryptoPaymentDetails";
 import WalletPayButton from "@/components/shared/WalletPayButton";
 import useCryptoPaymentStatus from "@/hooks/useCryptoPaymentStatus";
+import { usePagination } from "@/hooks/usePagination";
+import PagerBar from "@/components/shared/PagerBar";
 
 interface Product {
   id: string;
@@ -123,6 +125,8 @@ const Store = () => {
   const filteredProducts = activeCategory === "All"
     ? products
     : products.filter((p) => p.category === activeCategory);
+
+  const { pageItems: pagedProducts, page: productsPage, totalPages: productsTotalPages, goTo: goToProductsPage, reset: resetProductsPage } = usePagination(filteredProducts, 12);
 
   const addToCart = (product: Product) => {
     setCart((prev) => {
@@ -308,9 +312,9 @@ const Store = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="pt-20">
-        <section className="py-16 bg-secondary">
+        <section className="py-10 bg-secondary">
           <div className="container mx-auto px-4 text-center">
-            <h1 className="font-display text-5xl md:text-6xl tracking-wider animate-fade-in">
+            <h1 className="font-display text-3xl md:text-5xl animate-fade-in">
               MERCH <span className="text-primary">STORE</span>
             </h1>
             <p className="text-muted-foreground mt-4 max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: "0.1s" }}>
@@ -323,7 +327,7 @@ const Store = () => {
                   key={cat}
                   variant={activeCategory === cat ? "hero" : "secondary"}
                   size="default"
-                  onClick={() => setActiveCategory(cat)}
+                  onClick={() => { setActiveCategory(cat); resetProductsPage(); }}
                 >
                   {cat}
                 </Button>
@@ -332,7 +336,7 @@ const Store = () => {
           </div>
         </section>
 
-        <section className="py-16">
+        <section className="py-10">
           <div className="container mx-auto px-4">
             {filteredProducts.length === 0 ? (
               <div className="text-center text-muted-foreground py-12">
@@ -340,7 +344,7 @@ const Store = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                {filteredProducts.map((product, index) => (
+                {pagedProducts.map((product, index) => (
                   <div
                     key={product.id}
                     className="group flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card transition-all duration-500 hover:border-primary/50 animate-fade-in"
@@ -360,7 +364,7 @@ const Store = () => {
                       )}
                     </div>
                     <div className="flex flex-1 flex-col p-5">
-                      <h3 className="font-display text-xl tracking-wider break-words">{product.name}</h3>
+                      <h3 className="font-display text-xl break-words">{product.name}</h3>
                       <div className="mt-auto flex flex-col gap-4 pt-4">
                         <span className="font-display text-2xl text-primary break-words">
                           KES {(product.priceCents / 100).toLocaleString()}
@@ -373,6 +377,9 @@ const Store = () => {
                   </div>
                 ))}
               </div>
+            )}
+            {filteredProducts.length > 0 && (
+              <PagerBar page={productsPage} totalPages={productsTotalPages} onPageChange={goToProductsPage} />
             )}
           </div>
         </section>
@@ -400,7 +407,7 @@ const Store = () => {
           <div className="fixed right-0 top-0 h-full w-full max-w-md bg-card border-l border-border z-50 animate-slide-in-left overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-8">
-                <h2 className="font-display text-2xl tracking-wider">YOUR CART</h2>
+                <h2 className="font-display text-2xl">YOUR CART</h2>
                 <button
                   onClick={() => setIsCartOpen(false)}
                   className="text-muted-foreground hover:text-foreground"

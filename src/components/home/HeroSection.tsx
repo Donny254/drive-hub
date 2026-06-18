@@ -31,7 +31,7 @@ const HeroSection = () => {
           <p className="text-primary/90 uppercase tracking-[0.3em] text-sm mb-4 animate-fade-in font-medium">
             Kenya's Premier Automotive Destination
           </p>
-          <h1 className="font-display animate-fade-in text-5xl leading-none tracking-wider min-[380px]:text-6xl md:text-8xl lg:text-9xl text-white">
+          <h1 className="font-display animate-fade-in text-5xl min-[380px]:text-6xl md:text-7xl lg:text-8xl text-white">
             DRIVE YOUR
             <span
               className="block text-primary"
@@ -68,7 +68,7 @@ const HeroSection = () => {
 
           {/* Stats bar */}
           <div
-            className="mt-16 grid grid-cols-1 gap-6 animate-fade-in sm:grid-cols-3 sm:gap-8"
+            className="mt-8 grid grid-cols-1 gap-6 animate-fade-in sm:grid-cols-3 sm:gap-8"
             style={{ animationDelay: "0.6s" }}
           >
             <div className="text-center sm:text-left">

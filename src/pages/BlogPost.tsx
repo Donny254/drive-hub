@@ -72,7 +72,7 @@ const BlogPost = () => {
                   </Button>
                 </Link>
               </div>
-              <h1 className="font-display text-4xl tracking-wider">{post.title}</h1>
+              <h1 className="font-display text-4xl">{post.title}</h1>
               <img
                 src={resolveImageUrl(post.imageUrl) || "https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=1400"}
                 alt={post.title}

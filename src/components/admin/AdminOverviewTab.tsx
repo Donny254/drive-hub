@@ -9,6 +9,7 @@ import { TabsContent } from "@/components/ui/tabs";
 import { resolveImageUrl } from "@/lib/api";
 import { getCryptoExplorerUrl } from "@/lib/crypto";
 import { toast } from "@/components/ui/sonner";
+import { Activity, Car, Clock, Eye, MessageSquare, AlertTriangle, BadgeCheck, Coins, Download } from "lucide-react";
 
 type AdminOverviewTabProps = {
   analytics: AdminAnalytics | null;
@@ -83,9 +84,9 @@ const AdminOverviewTab = ({
   };
 
   return (
-    <TabsContent value="overview" className="mt-6">
+    <TabsContent value="overview" className="mt-4">
       {analytics && (
-        <div className="grid gap-8">
+        <div className="grid gap-4">
           {systemHealth?.mail === "not_configured" && (
             <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-100">
               <AlertTitle>Email is not configured</AlertTitle>
@@ -95,150 +96,94 @@ const AdminOverviewTab = ({
             </Alert>
           )}
 
+          {/* Reporting */}
           <div className="rounded-2xl border border-border bg-card p-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="font-display text-xl tracking-wider">Reporting</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Export operational snapshots without digging through raw tables.
-                </p>
+                <h2 className="font-display text-base">Reporting</h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">Export operational snapshots.</p>
               </div>
-              <div className="flex flex-wrap gap-3">
-                <Button variant="secondary" onClick={exportFinanceReport}>
-                  Export Finance CSV
+              <div className="flex flex-wrap gap-2">
+                <Button variant="secondary" size="sm" onClick={exportFinanceReport}>
+                  <Download className="mr-1.5 h-3.5 w-3.5" /> Finance
                 </Button>
-                <Button variant="secondary" onClick={exportFraudReport}>
-                  Export Fraud CSV
+                <Button variant="secondary" size="sm" onClick={exportFraudReport}>
+                  <Download className="mr-1.5 h-3.5 w-3.5" /> Fraud
                 </Button>
-                <Button variant="secondary" onClick={exportSellerPerformanceReport}>
-                  Export Seller Performance CSV
+                <Button variant="secondary" size="sm" onClick={exportSellerPerformanceReport}>
+                  <Download className="mr-1.5 h-3.5 w-3.5" /> Seller Performance
                 </Button>
               </div>
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <Card className="rounded-2xl">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between gap-3">
-                  <CardTitle className="text-base">System Status</CardTitle>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void refreshSystemHealth()}
-                    disabled={refreshingSystemHealth}
-                  >
-                    {refreshingSystemHealth ? "Refreshing..." : "Refresh"}
+          {/* Stat Cards */}
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {/* System Status — full width on its own */}
+            <Card className="col-span-full rounded-2xl sm:col-span-2 xl:col-span-1">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Activity className="h-4 w-4" />
+                    </div>
+                    <CardTitle className="text-sm">System Status</CardTitle>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => void refreshSystemHealth()} disabled={refreshingSystemHealth}>
+                    {refreshingSystemHealth ? "…" : "Refresh"}
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-muted-foreground">Database</span>
-                  <Badge variant={systemHealth?.db === "ok" ? "default" : "destructive"}>
-                    {systemHealth?.db === "ok" ? "Connected" : "Down"}
+              <CardContent className="space-y-2 pt-0">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Database</span>
+                  <Badge variant={systemHealth?.db === "ok" ? "default" : "destructive"} className="text-xs">
+                    {systemHealth?.db === "ok" ? "OK" : "Down"}
                   </Badge>
                 </div>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-muted-foreground">Email</span>
-                  <Badge variant={systemHealth?.mail === "configured" ? "default" : "secondary"}>
-                    {systemHealth?.mail === "configured" ? "Configured" : "Not configured"}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Email</span>
+                  <Badge variant={systemHealth?.mail === "configured" ? "default" : "secondary"} className="text-xs">
+                    {systemHealth?.mail === "configured" ? "Configured" : "Not set"}
                   </Badge>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {healthFreshnessLabel}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {systemHealth?.time ? new Date(systemHealth.time).toLocaleString() : ""}
-                </p>
+                <p className="text-xs text-muted-foreground">{healthFreshnessLabel}</p>
               </CardContent>
             </Card>
-            <Card className="rounded-2xl">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Live Listings</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-semibold">{analytics.summary.activeListings}</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {analytics.summary.totalListings} total marketplace listings
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="rounded-2xl">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Review Queue</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-semibold">{analytics.summary.pendingListings}</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {analytics.summary.rejectedListings} rejected
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="rounded-2xl">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Marketplace Views</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-semibold">{analytics.summary.totalViews}</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {analytics.summary.viewToInquiryRate}% view-to-inquiry
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="rounded-2xl">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Inquiries</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-semibold">{analytics.summary.totalInquiries}</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {analytics.summary.inquiryToBookingRate}% inquiry-to-booking
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="rounded-2xl">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Fraud Pressure</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-semibold">{analytics.summary.highRiskListings}</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Avg risk {analytics.summary.averageRiskScore}
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="rounded-2xl">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Verified Sellers</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-semibold">{analytics.summary.verifiedSellers}</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {analytics.summary.confirmedBookings} confirmed bookings
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="rounded-2xl">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Pending Crypto Payments</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-semibold">{pendingCryptoTransactions.length}</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Waiting for manual review and approval
-                </p>
-              </CardContent>
-            </Card>
+
+            {([
+              { icon: Car,         color: "text-primary bg-primary/10",         label: "Live Listings",      value: analytics.summary.activeListings,         sub: `${analytics.summary.totalListings} total` },
+              { icon: Clock,       color: "text-amber-400 bg-amber-400/10",     label: "Review Queue",       value: analytics.summary.pendingListings,        sub: `${analytics.summary.rejectedListings} rejected` },
+              { icon: Eye,         color: "text-blue-400 bg-blue-400/10",       label: "Total Views",        value: analytics.summary.totalViews,             sub: `${analytics.summary.viewToInquiryRate}% to inquiry` },
+              { icon: MessageSquare, color: "text-violet-400 bg-violet-400/10", label: "Inquiries",          value: analytics.summary.totalInquiries,         sub: `${analytics.summary.inquiryToBookingRate}% to booking` },
+              { icon: AlertTriangle, color: "text-red-400 bg-red-400/10",       label: "Fraud Pressure",     value: analytics.summary.highRiskListings,       sub: `Avg risk ${analytics.summary.averageRiskScore}` },
+              { icon: BadgeCheck,  color: "text-emerald-400 bg-emerald-400/10", label: "Verified Sellers",   value: analytics.summary.verifiedSellers,        sub: `${analytics.summary.confirmedBookings} confirmed bookings` },
+              { icon: Coins,       color: "text-yellow-400 bg-yellow-400/10",   label: "Pending Crypto",     value: pendingCryptoTransactions.length,         sub: "Awaiting manual review" },
+            ] as const).map(({ icon: Icon, color, label, value, sub }) => (
+              <Card key={label} className="rounded-2xl">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${color}`}>
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <p className="text-2xl font-semibold tabular-nums">{value ?? "--"}</p>
+                  </div>
+                  <p className="mt-2 text-sm font-medium">{label}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>
+                </CardContent>
+              </Card>
+            ))}
           </div>
 
           <div className="rounded-xl border border-border bg-card">
-            <div className="border-b border-border px-6 py-4">
-              <h2 className="font-display text-xl tracking-wider">Crypto Review Queue</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Review submitted transfer hashes and open the related admin editor to approve or reject payment.
-              </p>
+            <div className="flex items-center gap-3 border-b border-border px-5 py-3">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-yellow-400/10 text-yellow-400">
+                <Coins className="h-3.5 w-3.5" />
+              </div>
+              <div>
+                <h2 className="font-display text-base">Crypto Review Queue</h2>
+                <p className="text-xs text-muted-foreground">Review submitted transfer hashes and approve or reject.</p>
+              </div>
             </div>
             {pendingCryptoTransactions.length === 0 ? (
               <div className="px-6 py-8 text-sm text-muted-foreground">
@@ -340,11 +285,14 @@ const AdminOverviewTab = ({
 
           <div className="grid gap-6 xl:grid-cols-2">
             <div className="rounded-xl border border-border bg-card">
-              <div className="border-b border-border px-6 py-4">
-                <h2 className="font-display text-xl tracking-wider">Top Risk Listings</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Highest-risk submissions to review first.
-                </p>
+              <div className="flex items-center gap-3 border-b border-border px-5 py-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-400/10 text-red-400">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                </div>
+                <div>
+                  <h2 className="font-display text-base">Top Risk Listings</h2>
+                  <p className="text-xs text-muted-foreground">Highest-risk submissions to review first.</p>
+                </div>
               </div>
               <Table>
                 <TableHeader>
@@ -378,11 +326,14 @@ const AdminOverviewTab = ({
             </div>
 
             <div className="rounded-xl border border-border bg-card">
-              <div className="border-b border-border px-6 py-4">
-                <h2 className="font-display text-xl tracking-wider">Top Viewed Listings</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Highest traffic listings and associated inquiry load.
-                </p>
+              <div className="flex items-center gap-3 border-b border-border px-5 py-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-400/10 text-blue-400">
+                  <Eye className="h-3.5 w-3.5" />
+                </div>
+                <div>
+                  <h2 className="font-display text-base">Top Viewed Listings</h2>
+                  <p className="text-xs text-muted-foreground">Highest traffic and associated inquiry load.</p>
+                </div>
               </div>
               <Table>
                 <TableHeader>
@@ -408,11 +359,14 @@ const AdminOverviewTab = ({
           </div>
 
           <div className="rounded-xl border border-border bg-card">
-            <div className="border-b border-border px-6 py-4">
-              <h2 className="font-display text-xl tracking-wider">Media Review Queue</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Listings needing image-quality or fraud review first.
-              </p>
+            <div className="flex items-center gap-3 border-b border-border px-5 py-3">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Car className="h-3.5 w-3.5" />
+              </div>
+              <div>
+                <h2 className="font-display text-base">Media Review Queue</h2>
+                <p className="text-xs text-muted-foreground">Listings needing image-quality or fraud review.</p>
+              </div>
             </div>
             {flaggedMediaListings.length === 0 ? (
               <div className="px-6 py-8 text-sm text-muted-foreground">

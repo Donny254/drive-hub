@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -111,11 +111,39 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1 {
     font-family: var(--font-display);
-    letter-spacing: 0.08em;
+    letter-spacing: 0.07em;
+    line-height: 1.05;
+  }
+
+  h2 {
+    font-family: var(--font-display);
+    letter-spacing: 0.06em;
+    line-height: 1.1;
+  }
+
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: 0.03em;
+    line-height: 1.25;
+  }
+
+  h4, h5, h6 {
+    font-family: var(--font-display);
+    letter-spacing: 0.015em;
+    line-height: 1.35;
+  }
+
+  p {
+    line-height: 1.75;
   }
 }
 

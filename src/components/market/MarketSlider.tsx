@@ -90,7 +90,7 @@ const MarketSlider = () => {
   return (
     <div className="relative w-full bg-card border-b border-border overflow-hidden">
       {/* Main slider container */}
-      <div className="relative h-[400px] md:h-[500px]">
+      <div className="relative h-[260px] md:h-[340px]">
         {activeSlides.map((slide, index) => (
           <div
             key={slide.id}
@@ -116,21 +116,21 @@ const MarketSlider = () => {
                 <p className="text-primary uppercase tracking-[0.3em] text-sm mb-2 animate-fade-in">
                   {slide.subtitle}
                 </p>
-                <h2 className="font-display text-6xl md:text-8xl tracking-wider mb-4">
+                <h2 className="font-display text-3xl md:text-5xl mb-3">
                   {renderTitle(slide.title)}
                 </h2>
-                <p className="text-muted-foreground text-lg max-w-lg mb-8">
+                <p className="text-muted-foreground text-sm max-w-lg mb-5">
                   {slide.description}
                 </p>
                 {slide.ctaLink?.startsWith("/") ? (
                   <Link to={slide.ctaLink}>
-                    <Button variant="hero" size="xl" className="shadow-[0_0_30px_hsl(var(--primary)/0.3)]">
+                    <Button variant="hero" size="default" className="shadow-[0_0_30px_hsl(var(--primary)/0.3)]">
                       {slide.ctaLabel || "Learn More"}
                     </Button>
                   </Link>
                 ) : (
                   <a href={slide.ctaLink || "#"} target="_blank" rel="noreferrer">
-                    <Button variant="hero" size="xl" className="shadow-[0_0_30px_hsl(var(--primary)/0.3)]">
+                    <Button variant="hero" size="default" className="shadow-[0_0_30px_hsl(var(--primary)/0.3)]">
                       {slide.ctaLabel || "Learn More"}
                     </Button>
                   </a>
