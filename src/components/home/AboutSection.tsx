@@ -13,7 +13,7 @@ const AboutSection = () => {
       <div className="container mx-auto px-4">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
           {/* Image */}
-          <div className="relative animate-fade-in">
+          <div className="relative animate-fade-in pb-10">
             <div className="relative rounded-lg overflow-hidden">
               <img
                 src={carInterior}
@@ -23,7 +23,7 @@ const AboutSection = () => {
               <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
             </div>
             {/* Floating Stats Card */}
-            <div className="absolute -bottom-8 -right-4 md:right-8 bg-card border border-border rounded-lg p-6 shadow-[0_10px_40px_hsl(0_0%_0%_/_0.5)] animate-float">
+            <div className="absolute -bottom-8 right-4 md:right-8 bg-card border border-border rounded-lg p-6 shadow-[0_10px_40px_hsl(0_0%_0%_/_0.5)] animate-float">
               <div className="text-center">
                 <span className="font-display text-4xl text-primary">15+</span>
                 <p className="text-sm text-muted-foreground mt-1">Years of Excellence</p>

@@ -221,6 +221,32 @@ const Navbar = () => {
                 <div className="rounded-lg border border-border bg-card/60 p-3">
                   <p className="text-xs uppercase tracking-widest text-muted-foreground">My Account</p>
                   <div className="mt-3 flex flex-col gap-2">
+                    <Link
+                      to="/my-profile"
+                      onClick={() => setIsOpen(false)}
+                      onMouseEnter={prefetchLink("/my-profile")}
+                      onFocus={prefetchLink("/my-profile")}
+                      className={`font-medium text-sm uppercase tracking-widest ${
+                        location.pathname === "/my-profile"
+                          ? "text-primary"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      My Profile
+                    </Link>
+                    <Link
+                      to="/my-orders"
+                      onClick={() => setIsOpen(false)}
+                      onMouseEnter={prefetchLink("/my-orders")}
+                      onFocus={prefetchLink("/my-orders")}
+                      className={`font-medium text-sm uppercase tracking-widest ${
+                        location.pathname === "/my-orders"
+                          ? "text-primary"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      My Orders
+                    </Link>
                     {user.role === "admin" ? (
                       <Link
                         to="/my-listings"

@@ -50,7 +50,7 @@ const FeaturesSection = () => {
             <Link
               key={feature.title}
               to={feature.link}
-              className="group relative p-8 rounded-lg bg-card border border-border hover:border-primary/50 transition-all duration-500 animate-fade-in"
+              className="group relative p-8 rounded-lg bg-card border border-border hover:border-primary/50 hover:-translate-y-1 hover:shadow-card cursor-pointer transition-all duration-300 animate-fade-in"
               style={{ animationDelay: `${index * 0.1}s` }}
             >
               <div className={`w-14 h-14 rounded-lg bg-gradient-to-br ${feature.color} flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300`}>

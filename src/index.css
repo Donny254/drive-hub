@@ -185,10 +185,24 @@
   .animate-float {
     animation: float 6s ease-in-out infinite;
   }
-  
+
   @keyframes float {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-10px); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-float,
+    .animate-pulse-glow,
+    .animate-slow-zoom,
+    .animate-ticker,
+    .animate-price-up,
+    .animate-price-down,
+    .animate-fade-in {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
   }
   
   .animate-pulse-glow {
@@ -260,18 +274,18 @@
     100% { transform: scale(1.1); }
   }
 
-  /* Float animation for particles */
-  .animate-float {
-    animation: float 4s ease-in-out infinite;
+  /* Particle drift animation (distinct from card float) */
+  .animate-particle-float {
+    animation: particleFloat 4s ease-in-out infinite;
   }
 
-  @keyframes float {
-    0%, 100% { 
-      transform: translateY(0) translateX(0); 
+  @keyframes particleFloat {
+    0%, 100% {
+      transform: translateY(0) translateX(0);
       opacity: 0.4;
     }
-    50% { 
-      transform: translateY(-30px) translateX(10px); 
+    50% {
+      transform: translateY(-30px) translateX(10px);
       opacity: 0.8;
     }
   }
