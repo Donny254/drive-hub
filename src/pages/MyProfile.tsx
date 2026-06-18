@@ -33,7 +33,8 @@ const MyProfile = () => {
 
   useEffect(() => {
     if (!token) return;
-    apiFetch("/api/users/me", { headers: authHeaders })
+    const controller = new AbortController();
+    apiFetch("/api/users/me", { headers: authHeaders, signal: controller.signal })
       .then(async (resp) => {
         if (!resp.ok) throw new Error("Failed to load profile");
         const data: Profile = await resp.json();
@@ -41,8 +42,12 @@ const MyProfile = () => {
         setName(data.name ?? "");
         setPhone(data.phone ?? "");
       })
-      .catch(() => toast.error("Failed to load profile."))
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        toast.error("Failed to load profile.");
+      })
       .finally(() => setLoading(false));
+    return () => controller.abort();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 

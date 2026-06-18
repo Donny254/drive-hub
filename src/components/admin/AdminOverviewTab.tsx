@@ -17,6 +17,7 @@ type AdminOverviewTabProps = {
   systemHealth: SystemHealth | null;
   cryptoTransactions: CryptoTransaction[];
   refreshingSystemHealth?: boolean;
+  systemHealthRefreshedAt?: Date | null;
   exportFinanceReport: () => void;
   exportFraudReport: () => void;
   exportSellerPerformanceReport: () => void;
@@ -33,6 +34,7 @@ const AdminOverviewTab = ({
   systemHealth,
   cryptoTransactions,
   refreshingSystemHealth = false,
+  systemHealthRefreshedAt,
   exportFinanceReport,
   exportFraudReport,
   exportSellerPerformanceReport,
@@ -148,6 +150,11 @@ const AdminOverviewTab = ({
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground">{healthFreshnessLabel}</p>
+                {systemHealthRefreshedAt && (
+                  <p className="text-xs text-muted-foreground/60">
+                    Manually refreshed at {systemHealthRefreshedAt.toLocaleTimeString()}
+                  </p>
+                )}
               </CardContent>
             </Card>
 

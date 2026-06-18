@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import AccountLayout from "@/components/shared/AccountLayout";
+import EmptyState from "@/components/shared/EmptyState";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ShoppingBag } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
@@ -30,22 +32,31 @@ const MyOrders = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+
+  const fetchOrders = useCallback(async (signal?: AbortSignal) => {
     if (!token) return;
-    const authHeaders = { Authorization: `Bearer ${token}` };
     setLoading(true);
-    apiFetch("/api/orders", { headers: authHeaders })
-      .then(async (resp) => {
-        if (!resp.ok) throw new Error("Failed to load orders");
-        const json = await resp.json();
-        setOrders(Array.isArray(json) ? json : (json.data ?? []));
-      })
-      .catch(() => {
-        setError("Failed to load your orders.");
-        toast.error("Failed to load your orders.");
-      })
-      .finally(() => setLoading(false));
-  }, [token]);
+    setError(null);
+    try {
+      const resp = await apiFetch("/api/orders", { headers: authHeaders, signal });
+      if (!resp.ok) throw new Error("Failed to load orders");
+      const json = await resp.json();
+      setOrders(Array.isArray(json) ? json : (json.data ?? []));
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setError("Failed to load your orders.");
+      toast.error("Failed to load your orders.");
+    } finally {
+      setLoading(false);
+    }
+  }, [authHeaders, token]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchOrders(controller.signal);
+    return () => controller.abort();
+  }, [fetchOrders]);
 
   return (
     <AccountLayout title="My Orders">
@@ -53,18 +64,20 @@ const MyOrders = () => {
         <p className="mb-6 text-sm text-muted-foreground">Your store purchase history.</p>
 
         {loading && <p className="text-sm text-muted-foreground">Loading orders…</p>}
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {!loading && error && (
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-destructive">{error}</p>
+            <Button variant="outline" size="sm" onClick={() => void fetchOrders()}>Retry</Button>
+          </div>
+        )}
 
         {!loading && !error && orders.length === 0 && (
-          <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border py-16 text-center">
-            <p className="text-sm text-muted-foreground">You haven't placed any orders yet.</p>
-            <Link
-              to="/store"
-              className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-            >
-              Browse the store
-            </Link>
-          </div>
+          <EmptyState
+            icon={ShoppingBag}
+            title="No orders yet"
+            description="Your store purchases will appear here once you check out."
+            action={{ label: "Browse Store", to: "/store" }}
+          />
         )}
 
         {!loading && orders.length > 0 && (

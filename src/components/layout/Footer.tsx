@@ -19,10 +19,14 @@ const Footer = () => {
   const [settings, setSettings] = useState<Settings | null>(null);
 
   useEffect(() => {
-    apiFetch("/api/settings/public")
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    apiFetch("/api/settings/public", { signal: controller.signal })
       .then((resp) => (resp.ok ? resp.json() : null))
       .then((data) => setSettings(data))
-      .catch(() => setSettings(null));
+      .catch(() => setSettings(null))
+      .finally(() => clearTimeout(timeout));
+    return () => { controller.abort(); clearTimeout(timeout); };
   }, []);
 
   const socialPlatforms = [

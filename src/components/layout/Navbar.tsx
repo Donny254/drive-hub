@@ -6,6 +6,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import BrandLogo from "@/components/branding/BrandLogo";
 import { useAuth } from "@/context/AuthContext";
 import { prefetchRoute } from "@/lib/routePrefetch";
+import ActionConfirmDialog from "@/components/shared/ActionConfirmDialog";
 
 const navLinks = [
   { name: "Home", path: "/" },
@@ -17,6 +18,7 @@ const navLinks = [
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [logoutOpen, setLogoutOpen] = useState(false);
   const location = useLocation();
   const { user, logout } = useAuth();
   const prefetchLink = (path: string) => () => prefetchRoute(path);
@@ -79,7 +81,7 @@ const Navbar = () => {
               </Link>
             )}
             {user ? (
-              <Button variant="hero" size="default" onClick={logout}>
+              <Button variant="hero" size="default" onClick={() => setLogoutOpen(true)}>
                 Sign Out
               </Button>
             ) : (
@@ -169,10 +171,7 @@ const Navbar = () => {
                   variant="hero"
                   size="default"
                   className="w-full"
-                  onClick={() => {
-                    logout();
-                    setIsOpen(false);
-                  }}
+                  onClick={() => setLogoutOpen(true)}
                 >
                   Sign Out
                 </Button>
@@ -204,6 +203,15 @@ const Navbar = () => {
           </div>
         )}
       </div>
+      <ActionConfirmDialog
+        open={logoutOpen}
+        onOpenChange={setLogoutOpen}
+        title="Sign out?"
+        description="You will be signed out of your account."
+        cancelLabel="Stay"
+        confirmLabel="Sign Out"
+        onConfirm={() => { logout(); setIsOpen(false); }}
+      />
     </nav>
   );
 };

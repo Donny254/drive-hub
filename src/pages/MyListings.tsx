@@ -186,7 +186,7 @@ const MyListings = () => {
                       <CardContent>
                         <p className="text-3xl font-semibold">{analytics.summary.totalViews}</p>
                         <p className="mt-2 text-sm text-muted-foreground">
-                          {analytics.summary.viewToInquiryRate}% view-to-inquiry rate
+                          {isFinite(analytics.summary.viewToInquiryRate) ? analytics.summary.viewToInquiryRate : 0}% view-to-inquiry rate
                         </p>
                       </CardContent>
                     </Card>

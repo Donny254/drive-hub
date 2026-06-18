@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AccountLayout from "@/components/shared/AccountLayout";
+import EmptyState from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -58,7 +59,7 @@ const formatCurrency = (amountCents?: number) =>
   }).format((amountCents || 0) / 100);
 
 const isEventPast = (reg: EventRegistration): boolean => {
-  const date = reg.eventStartDate ?? reg.eventEndDate;
+  const date = reg.eventEndDate ?? reg.eventStartDate;
   if (!date) return false;
   return new Date(date) < new Date();
 };
@@ -106,15 +107,16 @@ const MyEventRegistrations = () => {
     authHeaders
   );
 
-  const fetchRegistrations = useCallback(async () => {
+  const fetchRegistrations = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoading(true);
       setError(null);
-      const resp = await apiFetch("/api/event-registrations", { headers: authHeaders });
+      const resp = await apiFetch("/api/event-registrations", { headers: authHeaders, signal });
       if (!resp.ok) throw new Error("Failed to load registrations");
       const json = await resp.json();
       setRegistrations(Array.isArray(json) ? json : (json.data ?? []));
     } catch (err) {
+      if (err instanceof DOMException && (err as DOMException).name === "AbortError") return;
       console.error(err);
       setError("Failed to load your event registrations.");
       toast.error("Failed to load your event registrations.");
@@ -124,7 +126,9 @@ const MyEventRegistrations = () => {
   }, [authHeaders]);
 
   useEffect(() => {
-    fetchRegistrations();
+    const controller = new AbortController();
+    fetchRegistrations(controller.signal);
+    return () => controller.abort();
   }, [fetchRegistrations]);
 
   // Auto-refresh every 60 s so statuses stay current
@@ -267,9 +271,23 @@ const MyEventRegistrations = () => {
       <div>
           <div className="mt-0">
             {loading && <p className="text-muted-foreground">Loading registrations...</p>}
-            {!loading && error && <p className="text-destructive">{error}</p>}
+            {!loading && error && (
+              <div className="flex items-center gap-3">
+                <p className="text-sm text-destructive">{error}</p>
+                <Button variant="outline" size="sm" onClick={() => void fetchRegistrations()}>Retry</Button>
+              </div>
+            )}
 
-            {!loading && !error && (
+            {!loading && !error && registrations.length === 0 && (
+              <EmptyState
+                icon={ArrowDown}
+                title="No event registrations yet"
+                description="When you register for an event it will appear here."
+                action={{ label: "Browse Events", to: "/events" }}
+              />
+            )}
+
+            {!loading && !error && registrations.length > 0 && (
               <>
                 <div className="grid gap-4 md:hidden">
                   {registrations.map((registration) => (

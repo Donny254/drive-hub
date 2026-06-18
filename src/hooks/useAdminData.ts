@@ -72,7 +72,7 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
       setError(null);
 
       const requests = [
-        { key: "listings", label: "listings", path: "/api/listings?limit=200" },
+        { key: "listings", label: "listings", path: "/api/listings?limit=1000" },
         { key: "orders", label: "orders", path: "/api/orders" },
         { key: "users", label: "users", path: "/api/users" },
         { key: "bookings", label: "bookings", path: "/api/bookings" },

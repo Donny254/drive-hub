@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AccountLayout from "@/components/shared/AccountLayout";
+import EmptyState from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
 import ActionConfirmDialog from "@/components/shared/ActionConfirmDialog";
+import { CalendarCheck } from "lucide-react";
 
 type Booking = {
   id: string;
@@ -33,15 +35,16 @@ const MyBookings = () => {
     return { Authorization: `Bearer ${token}` };
   }, [token]);
 
-  const fetchBookings = useCallback(async () => {
+  const fetchBookings = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoading(true);
       setError(null);
-      const resp = await apiFetch("/api/bookings", { headers: authHeaders });
+      const resp = await apiFetch("/api/bookings", { headers: authHeaders, signal });
       if (!resp.ok) throw new Error("Failed to load bookings");
       const json = await resp.json();
       setBookings(Array.isArray(json) ? json : (json.data ?? []));
     } catch (err) {
+      if (err instanceof DOMException && (err as DOMException).name === "AbortError") return;
       console.error(err);
       setError("Failed to load your bookings.");
       toast.error("Failed to load your bookings.");
@@ -51,7 +54,9 @@ const MyBookings = () => {
   }, [authHeaders]);
 
   useEffect(() => {
-    fetchBookings();
+    const controller = new AbortController();
+    fetchBookings(controller.signal);
+    return () => controller.abort();
   }, [fetchBookings]);
 
   const cancelBooking = async (id: string) => {
@@ -74,9 +79,23 @@ const MyBookings = () => {
       <div>
           <div className="mt-8">
             {loading && <p className="text-muted-foreground">Loading bookings...</p>}
-            {!loading && error && <p className="text-destructive">{error}</p>}
+            {!loading && error && (
+              <div className="flex items-center gap-3">
+                <p className="text-sm text-destructive">{error}</p>
+                <Button variant="outline" size="sm" onClick={() => void fetchBookings()}>Retry</Button>
+              </div>
+            )}
 
-            {!loading && !error && (
+            {!loading && !error && bookings.length === 0 && (
+              <EmptyState
+                icon={CalendarCheck}
+                title="No bookings yet"
+                description="When you book a vehicle listing it will appear here."
+                action={{ label: "Browse Market", to: "/market" }}
+              />
+            )}
+
+            {!loading && !error && bookings.length > 0 && (
               <>
                 <div className="grid gap-4 md:hidden">
                   {bookings.map((booking) => (

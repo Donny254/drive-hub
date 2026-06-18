@@ -31,6 +31,11 @@ const Register = () => {
       setLoading(false);
       return;
     }
+    if (phone && !/^\+?[\d\s\-()]{7,15}$/.test(phone.trim())) {
+      setError("Enter a valid phone number (7–15 digits).");
+      setLoading(false);
+      return;
+    }
     try {
       await register(name, email, phone, password);
       navigate("/");

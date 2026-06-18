@@ -178,6 +178,7 @@ const Admin = () => {
     users,
   } = useAdminData({ token });
   const [refreshingSystemHealth, setRefreshingSystemHealth] = useState(false);
+  const [systemHealthRefreshedAt, setSystemHealthRefreshedAt] = useState<Date | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const initialTab = searchParams.get("tab");
   const [activeTab, setActiveTab] = useState<(typeof ADMIN_TABS)[number]>(
@@ -325,15 +326,17 @@ const Admin = () => {
   };
 
   const refreshSystemHealth = async () => {
+    let mounted = true;
     try {
       setRefreshingSystemHealth(true);
       await fetchSystemHealth();
-      notifySuccess("System status refreshed.");
+      if (mounted) { notifySuccess("System status refreshed."); setSystemHealthRefreshedAt(new Date()); }
     } catch (error) {
-      notifyError("Unable to refresh system status.", error instanceof Error ? error.message : undefined);
+      if (mounted) notifyError("Unable to refresh system status.", error instanceof Error ? error.message : undefined);
     } finally {
-      setRefreshingSystemHealth(false);
+      if (mounted) setRefreshingSystemHealth(false);
     }
+    return () => { mounted = false; };
   };
 
   const openCryptoReview = (transaction: CryptoTransaction) => {
@@ -727,6 +730,7 @@ const Admin = () => {
                   systemHealth={systemHealth}
                   cryptoTransactions={cryptoTransactions}
                   refreshingSystemHealth={refreshingSystemHealth}
+                  systemHealthRefreshedAt={systemHealthRefreshedAt}
                   exportFinanceReport={() => exportFinanceReport(orders)}
                   exportFraudReport={() => exportFraudReport(listings)}
                   exportSellerPerformanceReport={exportSellerPerformanceReport}

@@ -16,6 +16,8 @@ import { downloadCsv, toCsv } from "@/lib/csv";
 import { toDateInputValue } from "@/lib/date";
 import { dataUrlToFormat, fetchBrandLogoDataUrl } from "@/lib/pdfBranding";
 import { jsPDF } from "jspdf";
+import EmptyState from "@/components/shared/EmptyState";
+import { Coins } from "lucide-react";
 
 type CryptoSourceKind = "order" | "booking" | "event_registration";
 
@@ -71,9 +73,15 @@ const MyCryptoPayments = () => {
   const selectedDialogRef = useRef<HTMLDivElement | null>(null);
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [createdFrom, setCreatedFrom] = useState<string | null>(null);
   const [createdTo, setCreatedTo] = useState<string | null>(null);
+
+  useEffect(() => {
+    const id = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(id);
+  }, [searchInput]);
 
   const selectedStatusPath = useMemo(() => {
     if (!selectedItem) return null;
@@ -96,15 +104,14 @@ const MyCryptoPayments = () => {
     refresh: refreshCryptoStatus,
   } = useCryptoPaymentStatus(selectedStatusPath, Boolean(selectedItem), 5000, authHeaders);
 
-  const loadItems = useCallback(async () => {
+  const loadItems = useCallback(async (signal?: AbortSignal) => {
     if (!token) return;
     setLoading(true);
     setError(null);
 
     const parse = (kind: CryptoSourceKind, record: Record<string, unknown>) => {
-      const paymentMethod = String(record.paymentMethod || record.payment_method || "").trim() || null;
+      const paymentMethod = String(record.paymentMethod || record.payment_method || "").trim() || "manual";
       const paymentStatus = String(record.paymentStatus || record.payment_status || "unpaid") as CryptoPaymentItem["paymentStatus"];
-      if (!paymentMethod) return null;
 
       const title =
         kind === "order"
@@ -141,7 +148,7 @@ const MyCryptoPayments = () => {
 
     const results = await Promise.allSettled(
       endpoints.map(async ([kind, endpoint]) => {
-        const resp = await apiFetch(endpoint, { headers: authHeaders });
+        const resp = await apiFetch(endpoint, { headers: authHeaders, signal });
         if (!resp.ok) {
           throw new Error(`Failed to load ${kind.replaceAll("_", " ")} payments`);
         }
@@ -160,11 +167,14 @@ const MyCryptoPayments = () => {
       setError(message || "Some crypto payments could not be loaded.");
       toast.error(message || "Some crypto payments could not be loaded.");
     }
+    if (signal?.aborted) return;
     setLoading(false);
   }, [authHeaders, token]);
 
   useEffect(() => {
-    void loadItems();
+    const controller = new AbortController();
+    void loadItems(controller.signal);
+    return () => controller.abort();
   }, [loadItems]);
 
   const pendingCount = items.filter((item) => item.paymentStatus === "pending").length;
@@ -176,8 +186,10 @@ const MyCryptoPayments = () => {
     const matchesPayment = paymentFilter === "all" ? true : item.paymentMethod === paymentFilter;
     const matchesStatus = statusFilter === "all" ? true : item.paymentStatus === statusFilter;
     const createdDate = toDateInputValue(new Date(item.createdAt));
-    const matchesCreatedFrom = createdFrom ? createdDate >= createdFrom : true;
-    const matchesCreatedTo = createdTo ? createdDate <= createdTo : true;
+    const effectiveFrom = createdFrom && createdTo && createdFrom > createdTo ? null : createdFrom;
+    const effectiveTo   = createdFrom && createdTo && createdFrom > createdTo ? null : createdTo;
+    const matchesCreatedFrom = effectiveFrom ? createdDate >= effectiveFrom : true;
+    const matchesCreatedTo   = effectiveTo   ? createdDate <= effectiveTo   : true;
     const query = search.trim().toLowerCase();
     const matchesSearch = !query
       ? true
@@ -466,8 +478,8 @@ const MyCryptoPayments = () => {
                 <div className="grid gap-2">
                   <label className="text-sm font-medium">Search</label>
                   <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
                     placeholder="Search by title, notes, status, or method"
                   />
                 </div>
@@ -524,8 +536,9 @@ const MyCryptoPayments = () => {
         </div>
 
         {error ? (
-          <div className="mb-6 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
-            {error}
+          <div className="mb-6 flex items-center gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+            <span>{error}</span>
+            <Button variant="outline" size="sm" onClick={() => void loadItems()}>Retry</Button>
           </div>
         ) : null}
 
@@ -537,11 +550,13 @@ const MyCryptoPayments = () => {
           ) : null}
 
           {!loading && items.length === 0 ? (
-            <Card className="rounded-2xl md:col-span-2 xl:col-span-3">
-              <CardContent className="p-6 text-sm text-muted-foreground">
-                No crypto payments yet. Once you submit a crypto-backed order, booking, or event registration, it will appear here.
-              </CardContent>
-            </Card>
+            <div className="md:col-span-2 xl:col-span-3">
+              <EmptyState
+                icon={Coins}
+                title="No crypto payments yet"
+                description="Once you submit a crypto-backed order, booking, or event registration, it will appear here."
+              />
+            </div>
           ) : null}
 
           {filteredItems.map((item) => (

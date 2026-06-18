@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AccountLayout from "@/components/shared/AccountLayout";
+import EmptyState from "@/components/shared/EmptyState";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
@@ -12,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { toDateInputValue } from "@/lib/date";
 import { jsPDF } from "jspdf";
+import { Banknote } from "lucide-react";
 
 type Payout = {
   id: string;
@@ -63,15 +65,16 @@ const MyPayouts = () => {
   const [fromDate, setFromDate] = useState<string | null>(null);
   const [toDate, setToDate] = useState<string | null>(null);
 
-  const loadPayouts = useCallback(async () => {
+  const loadPayouts = useCallback(async (signal?: AbortSignal) => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      const resp = await apiFetch("/api/payouts/mine", { headers: authHeaders });
+      const resp = await apiFetch("/api/payouts/mine", { headers: authHeaders, signal });
       if (!resp.ok) throw new Error("Failed to load payouts");
       setPayouts((await resp.json()) as Payout[]);
     } catch (err) {
+      if (err instanceof DOMException && (err as DOMException).name === "AbortError") return;
       console.error(err);
       setError("Failed to load your payout history.");
       toast.error("Failed to load your payout history.");
@@ -81,7 +84,9 @@ const MyPayouts = () => {
   }, [authHeaders, token]);
 
   useEffect(() => {
-    void loadPayouts();
+    const controller = new AbortController();
+    void loadPayouts(controller.signal);
+    return () => controller.abort();
   }, [loadPayouts]);
 
   const summary = useMemo(
@@ -104,8 +109,10 @@ const MyPayouts = () => {
             .filter(Boolean)
             .some((value) => String(value).toLowerCase().includes(query));
       const comparedDate = toDateInputValue(new Date(item.payoutAt || item.createdAt));
-      const matchesFrom = fromDate ? comparedDate >= fromDate : true;
-      const matchesTo = toDate ? comparedDate <= toDate : true;
+      const effectiveFrom = fromDate && toDate && fromDate > toDate ? null : fromDate;
+      const effectiveTo   = fromDate && toDate && fromDate > toDate ? null : toDate;
+      const matchesFrom = effectiveFrom ? comparedDate >= effectiveFrom : true;
+      const matchesTo   = effectiveTo   ? comparedDate <= effectiveTo   : true;
       return matchesStatus && matchesSearch && matchesFrom && matchesTo;
     });
   }, [fromDate, payouts, search, statusFilter, toDate]);
@@ -306,7 +313,10 @@ const MyPayouts = () => {
         </div>
 
         {error ? (
-          <div className="mb-6 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">{error}</div>
+          <div className="mb-6 flex items-center gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+            <span>{error}</span>
+            <Button variant="outline" size="sm" onClick={() => void loadPayouts()}>Retry</Button>
+          </div>
         ) : null}
 
         <Card className="rounded-2xl">
@@ -351,7 +361,12 @@ const MyPayouts = () => {
               <p className="text-sm text-muted-foreground">Loading payouts...</p>
             ) : null}
             {!loading && payouts.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No payout records yet.</p>
+              <EmptyState
+                icon={Banknote}
+                title="No payouts yet"
+                description="Payouts for your vehicle bookings will appear here once processed."
+                action={{ label: "View My Listings", to: "/my-listings" }}
+              />
             ) : null}
 
             {!loading && filteredPayouts.length > 0 ? (
