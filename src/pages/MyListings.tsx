@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
+import AccountLayout from "@/components/shared/AccountLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -82,10 +81,8 @@ const MyListings = () => {
   const fromMarket = searchParams.get("source") === "market";
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="pt-28 pb-16">
-        <div className="container mx-auto px-4">
+    <AccountLayout title="My Listings">
+      <div>
           <div className="flex items-center justify-between gap-4">
             <div>
               <h1 className="font-display text-3xl">My Listings</h1>
@@ -382,8 +379,6 @@ const MyListings = () => {
               </>
             )}
           </div>
-        </div>
-      </main>
       <ActionConfirmDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
@@ -404,8 +399,8 @@ const MyListings = () => {
           }
         }}
       />
-      <Footer />
-    </div>
+      </div>
+    </AccountLayout>
   );
 };
 

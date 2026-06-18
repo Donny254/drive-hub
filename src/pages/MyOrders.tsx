@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
+import AccountLayout from "@/components/shared/AccountLayout";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/context/AuthContext";
@@ -49,13 +48,9 @@ const MyOrders = () => {
   }, [token]);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <Navbar />
-      <main className="flex-1 container mx-auto px-4 py-10 max-w-4xl">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold">My Orders</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Your store purchase history.</p>
-        </div>
+    <AccountLayout title="My Orders">
+      <div className="max-w-4xl">
+        <p className="mb-6 text-sm text-muted-foreground">Your store purchase history.</p>
 
         {loading && <p className="text-sm text-muted-foreground">Loading orders…</p>}
         {error && <p className="text-sm text-destructive">{error}</p>}
@@ -106,9 +101,8 @@ const MyOrders = () => {
             </Table>
           </div>
         )}
-      </main>
-      <Footer />
-    </div>
+      </div>
+    </AccountLayout>
   );
 };
 

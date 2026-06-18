@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
+import AccountLayout from "@/components/shared/AccountLayout";
 import CryptoPaymentTimeline from "@/components/shared/CryptoPaymentTimeline";
 import DatePickerField from "@/components/shared/DatePickerField";
 import useCryptoPaymentStatus from "@/hooks/useCryptoPaymentStatus";
@@ -419,17 +418,10 @@ const MyCryptoPayments = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="container mx-auto px-4 pb-20 pt-28 sm:pt-32">
+    <AccountLayout title="Crypto Payments">
+      <div>
         <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm uppercase tracking-[0.35em] text-primary">My Account</p>
-            <h1 className="font-display text-3xl sm:text-4xl">Payments Center</h1>
-            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              Track your M-Pesa and crypto-backed orders, bookings, and event registrations in one place, with live review status, proof, and explorer links.
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground">Track your M-Pesa and crypto-backed orders, bookings, and event registrations in one place.</p>
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => void loadItems()} disabled={loading}>
               {loading ? "Refreshing..." : "Refresh"}
@@ -603,7 +595,6 @@ const MyCryptoPayments = () => {
             </Card>
           ) : null}
         </div>
-      </main>
 
       <Dialog
         open={Boolean(selectedItem)}
@@ -631,8 +622,8 @@ const MyCryptoPayments = () => {
         </DialogContent>
       </Dialog>
 
-      <Footer />
-    </div>
+      </div>
+    </AccountLayout>
   );
 };
 

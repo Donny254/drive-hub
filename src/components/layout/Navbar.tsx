@@ -1,14 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Menu, X } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
 import BrandLogo from "@/components/branding/BrandLogo";
@@ -60,84 +52,15 @@ const Navbar = () => {
               </Link>
             ))}
             {user && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="secondary" size="sm">
-                    My Account
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link to="/my-profile" onMouseEnter={prefetchLink("/my-profile")} onFocus={prefetchLink("/my-profile")}>
-                      My Profile
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  {user.role === "admin" ? (
-                    <DropdownMenuItem asChild>
-                      <Link
-                        to="/my-listings"
-                        onMouseEnter={prefetchLink("/my-listings")}
-                        onFocus={prefetchLink("/my-listings")}
-                      >
-                        My Listings
-                      </Link>
-                    </DropdownMenuItem>
-                  ) : null}
-                  <DropdownMenuItem asChild>
-                    <Link to="/my-orders" onMouseEnter={prefetchLink("/my-orders")} onFocus={prefetchLink("/my-orders")}>
-                      My Orders
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link
-                      to="/my-bookings"
-                      onMouseEnter={prefetchLink("/my-bookings")}
-                      onFocus={prefetchLink("/my-bookings")}
-                    >
-                      My Bookings
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link
-                      to="/my-event-registrations"
-                      onMouseEnter={prefetchLink("/my-event-registrations")}
-                      onFocus={prefetchLink("/my-event-registrations")}
-                    >
-                      Event Registrations
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link
-                      to="/my-payments"
-                      onMouseEnter={prefetchLink("/my-payments")}
-                      onFocus={prefetchLink("/my-payments")}
-                    >
-                      Payments Center
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link
-                      to="/my-payouts"
-                      onMouseEnter={prefetchLink("/my-payouts")}
-                      onFocus={prefetchLink("/my-payouts")}
-                    >
-                      Payouts
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link
-                      to="/my-service-bookings"
-                      onMouseEnter={prefetchLink("/my-service-bookings")}
-                      onFocus={prefetchLink("/my-service-bookings")}
-                    >
-                      Service Bookings
-                    </Link>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Link to="/my-profile" onMouseEnter={prefetchLink("/my-profile")} onFocus={prefetchLink("/my-profile")}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className={location.pathname.startsWith("/my-") ? "border-primary text-primary" : ""}
+                >
+                  My Account
+                </Button>
+              </Link>
             )}
           </div>
 
@@ -218,117 +141,16 @@ const Navbar = () => {
                 </Link>
               ))}
               {user && (
-                <div className="rounded-lg border border-border bg-card/60 p-3">
-                  <p className="text-xs uppercase tracking-widest text-muted-foreground">My Account</p>
-                  <div className="mt-3 flex flex-col gap-2">
-                    <Link
-                      to="/my-profile"
-                      onClick={() => setIsOpen(false)}
-                      onMouseEnter={prefetchLink("/my-profile")}
-                      onFocus={prefetchLink("/my-profile")}
-                      className={`font-medium text-sm uppercase tracking-widest ${
-                        location.pathname === "/my-profile"
-                          ? "text-primary"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      My Profile
-                    </Link>
-                    <Link
-                      to="/my-orders"
-                      onClick={() => setIsOpen(false)}
-                      onMouseEnter={prefetchLink("/my-orders")}
-                      onFocus={prefetchLink("/my-orders")}
-                      className={`font-medium text-sm uppercase tracking-widest ${
-                        location.pathname === "/my-orders"
-                          ? "text-primary"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      My Orders
-                    </Link>
-                    {user.role === "admin" ? (
-                      <Link
-                        to="/my-listings"
-                        onClick={() => setIsOpen(false)}
-                        onMouseEnter={prefetchLink("/my-listings")}
-                        onFocus={prefetchLink("/my-listings")}
-                        className={`font-medium text-sm uppercase tracking-widest ${
-                          location.pathname === "/my-listings"
-                            ? "text-primary"
-                            : "text-muted-foreground"
-                        }`}
-                      >
-                        My Listings
-                      </Link>
-                    ) : null}
-                    <Link
-                      to="/my-bookings"
-                      onClick={() => setIsOpen(false)}
-                      onMouseEnter={prefetchLink("/my-bookings")}
-                      onFocus={prefetchLink("/my-bookings")}
-                      className={`font-medium text-sm uppercase tracking-widest ${
-                        location.pathname === "/my-bookings"
-                          ? "text-primary"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      My Bookings
-                    </Link>
-                    <Link
-                      to="/my-event-registrations"
-                      onClick={() => setIsOpen(false)}
-                      onMouseEnter={prefetchLink("/my-event-registrations")}
-                      onFocus={prefetchLink("/my-event-registrations")}
-                      className={`font-medium text-sm uppercase tracking-widest ${
-                        location.pathname === "/my-event-registrations"
-                          ? "text-primary"
-                          : "text-muted-foreground"
-                      }`}
-                      >
-                        Event Registrations
-                      </Link>
-                    <Link
-                      to="/my-payments"
-                      onClick={() => setIsOpen(false)}
-                      onMouseEnter={prefetchLink("/my-payments")}
-                      onFocus={prefetchLink("/my-payments")}
-                      className={`font-medium text-sm uppercase tracking-widest ${
-                        location.pathname === "/my-payments"
-                          ? "text-primary"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      Payments Center
-                    </Link>
-                    <Link
-                      to="/my-payouts"
-                      onClick={() => setIsOpen(false)}
-                      onMouseEnter={prefetchLink("/my-payouts")}
-                      onFocus={prefetchLink("/my-payouts")}
-                      className={`font-medium text-sm uppercase tracking-widest ${
-                        location.pathname === "/my-payouts"
-                          ? "text-primary"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      Payouts
-                    </Link>
-                    <Link
-                      to="/my-service-bookings"
-                      onClick={() => setIsOpen(false)}
-                      onMouseEnter={prefetchLink("/my-service-bookings")}
-                      onFocus={prefetchLink("/my-service-bookings")}
-                      className={`font-medium text-sm uppercase tracking-widest ${
-                        location.pathname === "/my-service-bookings"
-                          ? "text-primary"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      Service Bookings
-                    </Link>
-                  </div>
-                </div>
+                <Link
+                  to="/my-profile"
+                  onClick={() => setIsOpen(false)}
+                  onMouseEnter={prefetchLink("/my-profile")}
+                  onFocus={prefetchLink("/my-profile")}
+                >
+                  <Button variant="secondary" size="default" className="w-full">
+                    My Account
+                  </Button>
+                </Link>
               )}
               {user?.role === "admin" && (
                 <Link

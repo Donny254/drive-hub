@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
+import AccountLayout from "@/components/shared/AccountLayout";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
@@ -259,17 +258,10 @@ const MyPayouts = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="container mx-auto px-4 pb-20 pt-28 sm:pt-32">
+    <AccountLayout title="My Payouts">
+      <div>
         <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm uppercase tracking-[0.35em] text-primary">My Account</p>
-            <h1 className="font-display text-3xl sm:text-4xl">Payouts</h1>
-            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              Track booking payouts tied to your listings, export statements, and see what is pending or settled.
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground">Track booking payouts tied to your listings, export statements, and see what is pending or settled.</p>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => void loadPayouts()} disabled={loading}>
               {loading ? "Refreshing..." : "Refresh"}
@@ -445,9 +437,8 @@ const MyPayouts = () => {
             ) : null}
           </CardContent>
         </Card>
-      </main>
-      <Footer />
-    </div>
+      </div>
+    </AccountLayout>
   );
 };
 

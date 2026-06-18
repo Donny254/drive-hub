@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
+import AccountLayout from "@/components/shared/AccountLayout";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/context/AuthContext";
@@ -71,17 +70,8 @@ const MyBookings = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="pt-28 pb-16">
-        <div className="container mx-auto px-4">
-          <div>
-            <h1 className="font-display text-3xl">My Bookings</h1>
-            <p className="text-muted-foreground mt-1">
-              View and manage your bookings.
-            </p>
-          </div>
-
+    <AccountLayout title="My Bookings">
+      <div>
           <div className="mt-8">
             {loading && <p className="text-muted-foreground">Loading bookings...</p>}
             {!loading && error && <p className="text-destructive">{error}</p>}
@@ -183,8 +173,6 @@ const MyBookings = () => {
               </>
             )}
           </div>
-        </div>
-      </main>
       <ActionConfirmDialog
         open={Boolean(cancelTarget)}
         onOpenChange={(open) => !open && setCancelTarget(null)}
@@ -205,8 +193,8 @@ const MyBookings = () => {
           }
         }}
       />
-      <Footer />
-    </div>
+      </div>
+    </AccountLayout>
   );
 };
 

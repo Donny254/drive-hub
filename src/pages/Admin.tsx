@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import ErrorBoundary from "@/components/shared/ErrorBoundary";
 import { Link, useSearchParams } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
 import AdminBulkActionBar from "@/components/admin/AdminBulkActionBar";
 import AdminBookingsTab from "@/components/admin/AdminBookingsTab";
 import AdminDeleteConfirmDialog from "@/components/admin/AdminDeleteConfirmDialog";
@@ -179,6 +178,7 @@ const Admin = () => {
     users,
   } = useAdminData({ token });
   const [refreshingSystemHealth, setRefreshingSystemHealth] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const initialTab = searchParams.get("tab");
   const [activeTab, setActiveTab] = useState<(typeof ADMIN_TABS)[number]>(
     initialTab && ADMIN_TABS.includes(initialTab as (typeof ADMIN_TABS)[number])
@@ -544,104 +544,182 @@ const Admin = () => {
     usersPage,
   ]);
 
+  const NAV_GROUPS = [
+    {
+      label: "Dashboard",
+      items: [
+        { value: "overview", label: "Overview", icon: LayoutDashboard },
+      ],
+    },
+    {
+      label: "Marketplace",
+      items: [
+        { value: "listings",  label: "Listings",  icon: Car },
+        { value: "inquiries", label: "Inquiries", icon: MessageSquare },
+      ],
+    },
+    {
+      label: "Transactions",
+      items: [
+        { value: "orders",               label: "Orders",          icon: ShoppingBag },
+        { value: "bookings",             label: "Bookings",        icon: CalendarCheck },
+        { value: "crypto-payments",      label: "Crypto Payments", icon: Coins },
+        { value: "payouts",              label: "Payouts",         icon: Banknote },
+        { value: "service-bookings",     label: "Svc Bookings",    icon: Wrench },
+        { value: "event-registrations",  label: "Event Regs",      icon: Ticket },
+      ],
+    },
+    {
+      label: "Content",
+      items: [
+        { value: "services", label: "Services", icon: Settings2 },
+        { value: "events",   label: "Events",   icon: CalendarDays },
+        { value: "products", label: "Products", icon: Package },
+        { value: "posts",    label: "Blog",     icon: FileText },
+      ],
+    },
+    {
+      label: "Admin",
+      items: [
+        { value: "users",    label: "Users",    icon: Users },
+        { value: "settings", label: "Settings", icon: Settings },
+      ],
+    },
+  ] as const;
+
+  const QUICK_LINKS = [
+    { to: "/admin/services", icon: Wrench,       label: "Services" },
+    { to: "/admin/events",   icon: CalendarDays, label: "Events" },
+    { to: "/admin/products", icon: Package,      label: "Products" },
+    { to: "/admin/adverts",  icon: Megaphone,    label: "Adverts" },
+    { to: "/admin/posts",    icon: FileText,     label: "Blog" },
+  ] as const;
+
+  const currentSection = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.value === activeTab);
+
+  const SidebarContent = () => (
+    <div className="flex h-full flex-col">
+      {/* Brand */}
+      <div className="border-b border-border px-4 py-4">
+        <p className="text-[10px] uppercase tracking-[0.3em] text-primary/70">Control Center</p>
+        <h2 className="mt-0.5 font-display text-base">Admin</h2>
+        {analytics && (
+          <div className="mt-3 grid grid-cols-3 gap-1.5">
+            <div className="rounded-lg bg-primary/10 p-2 text-center">
+              <p className="text-xs font-semibold tabular-nums text-primary">{analytics.summary.activeListings}</p>
+              <p className="mt-0.5 text-[9px] text-muted-foreground">Live</p>
+            </div>
+            <div className="rounded-lg bg-amber-400/10 p-2 text-center">
+              <p className="text-xs font-semibold tabular-nums text-amber-400">{analytics.summary.pendingListings}</p>
+              <p className="mt-0.5 text-[9px] text-muted-foreground">Queue</p>
+            </div>
+            <div className="rounded-lg bg-red-400/10 p-2 text-center">
+              <p className="text-xs font-semibold tabular-nums text-red-400">{analytics.summary.highRiskListings}</p>
+              <p className="mt-0.5 text-[9px] text-muted-foreground">Risk</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.label}>
+            <p className="mb-1 px-2 text-[10px] uppercase tracking-[0.25em] text-muted-foreground/60">{group.label}</p>
+            <div className="space-y-0.5">
+              {group.items.map(({ value, label, icon: Icon }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => { setActiveTab(value as (typeof ADMIN_TABS)[number]); setSidebarOpen(false); }}
+                  className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all duration-150 ${
+                    activeTab === value
+                      ? "bg-primary/15 text-primary font-medium"
+                      : "text-muted-foreground hover:bg-border/40 hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {/* Quick links separator */}
+        <div>
+          <p className="mb-1 px-2 text-[10px] uppercase tracking-[0.25em] text-muted-foreground/60">Quick Links</p>
+          <div className="space-y-0.5">
+            {QUICK_LINKS.map(({ to, icon: Icon, label }) => (
+              <Link
+                key={to}
+                to={to}
+                className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-all duration-150 hover:bg-border/40 hover:text-foreground"
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </nav>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <main className="pt-28 pb-20">
-        <div className="container mx-auto px-4">
-          <div className="grid gap-6 xl:grid-cols-[1.35fr,1fr]">
-            <section className="overflow-hidden rounded-3xl border border-border bg-card">
-              <div className="bg-[radial-gradient(circle_at_top_left,rgba(0,229,184,0.18),transparent_42%),linear-gradient(135deg,rgba(255,167,38,0.1),transparent_48%)] px-6 py-8 md:px-8">
-                <p className="text-xs uppercase tracking-[0.35em] text-primary/80">Control Center</p>
-                <h1 className="mt-3 font-display text-3xl md:text-4xl">Admin Dashboard</h1>
-                <p className="mt-3 max-w-2xl text-sm text-muted-foreground md:text-base">
-                  Run moderation, seller operations, orders, and marketplace health from one surface.
-                </p>
-                <div className="mt-5 grid gap-2 sm:grid-cols-3">
-                  <div className="rounded-xl border border-border/70 bg-background/60 p-3">
-                    <div className="flex items-center gap-1.5 text-xs uppercase tracking-[0.2em] text-primary/80">
-                      <Car className="h-3 w-3" /> Live
-                    </div>
-                    <p className="mt-1.5 text-2xl font-semibold tabular-nums">{analytics?.summary.activeListings ?? "--"}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">Active listings</p>
-                  </div>
-                  <div className="rounded-xl border border-border/70 bg-background/60 p-3">
-                    <div className="flex items-center gap-1.5 text-xs uppercase tracking-[0.2em] text-amber-400/90">
-                      <Clock className="h-3 w-3" /> Queue
-                    </div>
-                    <p className="mt-1.5 text-2xl font-semibold tabular-nums">{analytics?.summary.pendingListings ?? "--"}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">Pending approvals</p>
-                  </div>
-                  <div className="rounded-xl border border-border/70 bg-background/60 p-3">
-                    <div className="flex items-center gap-1.5 text-xs uppercase tracking-[0.2em] text-red-400/90">
-                      <AlertTriangle className="h-3 w-3" /> Risk
-                    </div>
-                    <p className="mt-1.5 text-2xl font-semibold tabular-nums">{analytics?.summary.highRiskListings ?? "--"}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">High-risk listings</p>
-                  </div>
-                </div>
-              </div>
-            </section>
 
-            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-2">
-              {([
-                { to: "/admin/services", icon: Wrench,      tag: "Operations", label: "Services",       desc: "Manage service offerings" },
-                { to: "/admin/events",   icon: CalendarDays, tag: "Community",  label: "Events",         desc: "Manage event listings" },
-                { to: "/admin/products", icon: Package,      tag: "Commerce",   label: "Store Products", desc: "Manage merch products" },
-                { to: "/admin/adverts",  icon: Megaphone,    tag: "Market",     label: "Adverts",        desc: "Edit hero slides & CTAs" },
-                { to: "/admin/posts",    icon: FileText,     tag: "Content",    label: "Blog Posts",     desc: "Manage blog content" },
-              ] as const).map(({ to, icon: Icon, tag, label, desc }) => (
-                <Link key={to} to={to} className="group flex items-start gap-3 rounded-2xl border border-border bg-card p-4 transition-all duration-200 hover:border-primary/60 hover:bg-primary/5 cursor-pointer">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary/20">
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">{tag}</p>
-                    <h3 className="mt-0.5 font-display text-base">{label}</h3>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{desc}</p>
-                  </div>
-                </Link>
-              ))}
-            </section>
+      <div className="flex pt-20">
+        {/* Desktop sidebar */}
+        <aside className="fixed left-0 top-20 hidden h-[calc(100vh-5rem)] w-56 flex-col overflow-hidden border-r border-border bg-card lg:flex">
+          <SidebarContent />
+        </aside>
+
+        {/* Mobile sidebar overlay */}
+        {sidebarOpen && (
+          <div className="fixed inset-0 z-40 lg:hidden" onClick={() => setSidebarOpen(false)}>
+            <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
+            <aside className="absolute left-0 top-0 h-full w-56 border-r border-border bg-card pt-20" onClick={(e) => e.stopPropagation()}>
+              <SidebarContent />
+            </aside>
+          </div>
+        )}
+
+        {/* Main content */}
+        <main className="min-h-[calc(100vh-5rem)] flex-1 lg:ml-56">
+          {/* Page header */}
+          <div className="sticky top-20 z-20 border-b border-border bg-background/95 backdrop-blur-sm">
+            <div className="flex items-center gap-3 px-4 py-3 md:px-6">
+              <button
+                type="button"
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-border/40 lg:hidden"
+                onClick={() => setSidebarOpen(true)}
+                aria-label="Open menu"
+              >
+                <LayoutDashboard className="h-4 w-4" />
+              </button>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>Admin</span>
+                <span>/</span>
+                <span className="text-foreground font-medium">{currentSection?.label ?? "Dashboard"}</span>
+              </div>
+            </div>
           </div>
 
-          <div className="mt-8">
-            {loading && <p className="text-muted-foreground">Loading admin data...</p>}
+          <div className="px-4 py-5 md:px-6">
+            {loading && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-primary" />
+                Loading admin data…
+              </div>
+            )}
             {!loading && error && <p className="text-destructive">{error}</p>}
 
             {!loading && !error && (
               <>
                 <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as (typeof ADMIN_TABS)[number])}>
-                <div className="overflow-x-auto pb-1">
-                <TabsList className="inline-flex h-auto min-w-full gap-1 rounded-2xl border border-border bg-card p-1.5">
-                  {([
-                    { value: "overview",             label: "Overview",            icon: LayoutDashboard },
-                    { value: "listings",             label: "Listings",            icon: Car },
-                    { value: "bookings",             label: "Bookings",            icon: CalendarCheck },
-                    { value: "orders",               label: "Orders",              icon: ShoppingBag },
-                    { value: "crypto-payments",      label: "Crypto",              icon: Coins },
-                    { value: "payouts",              label: "Payouts",             icon: Banknote },
-                    { value: "service-bookings",     label: "Svc Bookings",        icon: Wrench },
-                    { value: "event-registrations",  label: "Event Regs",          icon: Ticket },
-                    { value: "inquiries",            label: "Inquiries",           icon: MessageSquare },
-                    { value: "services",             label: "Services",            icon: Settings2 },
-                    { value: "events",               label: "Events",              icon: CalendarDays },
-                    { value: "products",             label: "Products",            icon: Package },
-                    { value: "posts",                label: "Blog",                icon: FileText },
-                    { value: "users",                label: "Users",               icon: Users },
-                    { value: "settings",             label: "Settings",            icon: Settings },
-                  ] as const).map(({ value, label, icon: Icon }) => (
-                    <TabsTrigger
-                      key={value}
-                      value={value}
-                      className="flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-xs"
-                    >
-                      <Icon className="h-3.5 w-3.5 shrink-0" />
-                      {label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-                </div>
+                {/* No TabsList — sidebar handles navigation */}
 
                 <AdminOverviewTab
                   analytics={analytics}
@@ -850,9 +928,8 @@ const Admin = () => {
               </>
             )}
           </div>
-        </div>
-      </main>
-      <Footer />
+        </main>
+      </div>
     </div>
   );
 };

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
+import AccountLayout from "@/components/shared/AccountLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -82,15 +81,12 @@ const MyProfile = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <Navbar />
-      <main className="flex-1 container mx-auto px-4 py-10 max-w-xl">
-        <h1 className="mb-6 text-2xl font-bold">My Profile</h1>
-
+    <AccountLayout title="My Profile">
+      <div className="max-w-xl space-y-6">
         {loading && <p className="text-sm text-muted-foreground">Loading…</p>}
 
         {profile && (
-          <div className="space-y-6">
+          <>
             <Card className="rounded-2xl">
               <CardHeader className="border-b border-border pb-4">
                 <CardTitle className="text-base">Account details</CardTitle>
@@ -123,42 +119,26 @@ const MyProfile = () => {
               <CardContent className="space-y-4 pt-5">
                 <div className="grid gap-1.5">
                   <Label>Current password</Label>
-                  <Input
-                    type="password"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="••••••••"
-                  />
+                  <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="••••••••" />
                 </div>
                 <div className="grid gap-1.5">
                   <Label>New password</Label>
-                  <Input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Min 8 characters"
-                  />
+                  <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min 8 characters" />
                 </div>
                 <div className="grid gap-1.5">
                   <Label>Confirm new password</Label>
-                  <Input
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Repeat new password"
-                  />
+                  <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Repeat new password" />
                 </div>
               </CardContent>
             </Card>
 
-            <Button variant="hero" className="w-full" onClick={saveProfile} disabled={saving}>
+            <Button variant="hero" className="w-full max-w-xl" onClick={saveProfile} disabled={saving}>
               {saving ? "Saving…" : "Save changes"}
             </Button>
-          </div>
+          </>
         )}
-      </main>
-      <Footer />
-    </div>
+      </div>
+    </AccountLayout>
   );
 };
 
