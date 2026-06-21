@@ -63,6 +63,26 @@ export type Inquiry = {
   createdAt: string;
 };
 
+export type ListingBid = {
+  id: string;
+  listingId: string;
+  listingTitle: string | null;
+  listingPriceCents: number | null;
+  listingImageUrl: string | null;
+  sellerId: string | null;
+  sellerName: string | null;
+  userId: string | null;
+  bidderName: string;
+  bidderEmail: string | null;
+  bidderPhone: string | null;
+  amountCents: number;
+  message: string | null;
+  status: "pending" | "accepted" | "rejected";
+  handledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type User = {
   id: string;
   email: string;
@@ -228,6 +248,8 @@ export type AdminAnalytics = {
     averageRiskScore: number;
     totalViews: number;
     totalInquiries: number;
+    totalBids: number;
+    pendingBids: number;
     totalBookings: number;
     confirmedBookings: number;
     verifiedSellers: number;

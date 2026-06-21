@@ -43,7 +43,7 @@ const Footer = () => {
           <div className="md:col-span-1">
             <BrandLogo
               className="items-start"
-              imageClassName="h-14 max-w-[220px] border border-border bg-white/95 p-2 sm:h-16 sm:max-w-[260px]"
+              imageClassName="h-32 max-w-[164px] sm:h-36 sm:max-w-[184px]"
             />
             <p className="mt-4 text-muted-foreground text-sm">
               Kenya's premier destination for performance cars and luxury SUVs. Buy, sell, rent, and experience automotive excellence across East Africa.
@@ -97,7 +97,7 @@ const Footer = () => {
             <ul className="space-y-3">
               <li><span className="text-muted-foreground text-sm">Performance Tuning</span></li>
               <li><span className="text-muted-foreground text-sm">Detailing & Wrap</span></li>
-              <li><span className="text-muted-foreground text-sm">Maintenance</span></li>
+              <li><span className="text-muted-foreground text-sm">Maintenance & Upgrades</span></li>
               <li><span className="text-muted-foreground text-sm">Pre-Purchase Inspections</span></li>
             </ul>
           </div>
@@ -108,18 +108,18 @@ const Footer = () => {
             <ul className="space-y-4 text-muted-foreground text-sm">
               <li className="flex items-center gap-3">
                 <MapPin size={16} className="text-primary flex-shrink-0" />
-                <span className="break-words">{settings?.address || "Westlands, Nairobi, Kenya"}</span>
+                <span className="break-words">{settings?.address || "Nairobi, Kenya"}</span>
               </li>
               <li className="flex items-center gap-3">
                 <Mail size={16} className="text-primary flex-shrink-0" />
-                <a href={`mailto:${settings?.supportEmail || "info@wheelsnationke.co.ke"}`} className="break-all hover:text-primary transition-colors">
-                  {settings?.supportEmail || "info@wheelsnationke.co.ke"}
+                <a href={`mailto:${settings?.supportEmail || "wheelsnationke0@gmail.com"}`} className="break-all hover:text-primary transition-colors">
+                  {settings?.supportEmail || "wheelsnationke0@gmail.com"}
                 </a>
               </li>
               <li className="flex items-center gap-3">
                 <Phone size={16} className="text-primary flex-shrink-0" />
-                <a href={`tel:${settings?.supportPhone || "+254700123456"}`} className="break-words hover:text-primary transition-colors">
-                  {settings?.supportPhone || "+254 700 123 456"}
+                <a href={`tel:${settings?.supportPhone || "++254 701 730 057"}`} className="break-words hover:text-primary transition-colors">
+                  {settings?.supportPhone || "+254 701 730 057"}
                 </a>
               </li>
             </ul>

@@ -148,6 +148,7 @@ const Admin = () => {
     fetchAll,
     fetchSystemHealth,
     inquiries,
+    listingBids,
     listings,
     loading,
     orders,
@@ -643,6 +644,7 @@ const Admin = () => {
 
                 <AdminListingsTab
                   listings={listings}
+                  listingBids={listingBids}
                   flaggedMediaListings={flaggedMediaListings}
                   listingsNeedingReview={listingsNeedingReview}
                   creatingListing={creatingListing}

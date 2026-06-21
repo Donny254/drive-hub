@@ -7,6 +7,7 @@ import type {
   EventItem,
   EventRegistration,
   Inquiry,
+  ListingBid,
   Listing,
   Order,
   Post,
@@ -37,6 +38,7 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
   const [serviceBookings, setServiceBookings] = useState<ServiceBooking[]>([]);
   const [eventRegistrations, setEventRegistrations] = useState<EventRegistration[]>([]);
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
+  const [listingBids, setListingBids] = useState<ListingBid[]>([]);
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
@@ -79,6 +81,7 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
         { key: "serviceBookings", label: "service bookings", path: "/api/service-bookings" },
         { key: "eventRegistrations", label: "event registrations", path: "/api/event-registrations" },
         { key: "inquiries", label: "inquiries", path: "/api/inquiries" },
+        { key: "listingBids", label: "listing bids", path: "/api/listing-bids" },
         { key: "services", label: "services", path: "/api/services" },
         { key: "events", label: "events", path: "/api/events" },
         { key: "products", label: "products", path: "/api/products" },
@@ -134,6 +137,9 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
             break;
           case "inquiries":
             setInquiries(result.value.data as Inquiry[]);
+            break;
+          case "listingBids":
+            setListingBids(result.value.data as ListingBid[]);
             break;
           case "services":
             setServices(result.value.data as Service[]);
@@ -191,6 +197,7 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
     fetchAll,
     fetchSystemHealth,
     inquiries,
+    listingBids,
     listings,
     loading,
     orders,
@@ -208,6 +215,7 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
     setEventRegistrations,
     setEvents,
     setInquiries,
+    setListingBids,
     setListings,
     setLoading,
     setOrders,

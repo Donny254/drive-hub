@@ -36,7 +36,7 @@ const Navbar = () => {
           {/* Logo */}
           <Link to="/" className="min-w-0 shrink-0">
             <BrandLogo
-              imageClassName="h-10 max-w-[170px] sm:h-12 sm:max-w-[220px]"
+              imageClassName="h-[4.5rem] max-w-[96px] sm:h-20 sm:max-w-[108px]"
               textClassName="hidden"
             />
           </Link>
@@ -187,7 +187,7 @@ const Navbar = () => {
 
         {/* Mobile Navigation */}
         {isOpen && (
-          <div className="md:hidden py-4 border-t border-border animate-fade-in">
+            <div className="md:hidden py-4 border-t border-border animate-fade-in">
             <div className="flex flex-col gap-4">
               {navLinks.map((link) => (
                 <Link

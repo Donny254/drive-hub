@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import AdminBulkActionBar from "@/components/admin/AdminBulkActionBar";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import AdminTablePagination from "@/components/admin/AdminTablePagination";
-import type { DeleteTarget, Listing, ListingAuditEntry } from "@/components/admin/types";
+import type { DeleteTarget, Listing, ListingAuditEntry, ListingBid } from "@/components/admin/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +34,7 @@ import { resolveImageUrl } from "@/lib/api";
 
 type AdminListingsTabProps = {
   listings: Listing[];
+  listingBids: ListingBid[];
   flaggedMediaListings: Listing[];
   listingsNeedingReview: Listing[];
   creatingListing: Listing | null;
@@ -81,6 +82,7 @@ type AdminListingsTabProps = {
 
 const AdminListingsTab = ({
   listings,
+  listingBids,
   flaggedMediaListings,
   listingsNeedingReview,
   creatingListing,
@@ -126,7 +128,7 @@ const AdminListingsTab = ({
   addEditImageUrl,
 }: AdminListingsTabProps) => (
 <TabsContent value="listings" className="mt-6 space-y-6">
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                     <Card className="rounded-2xl">
                       <CardHeader className="pb-3">
                         <CardTitle className="text-base">Inventory</CardTitle>
@@ -167,7 +169,91 @@ const AdminListingsTab = ({
                         <p className="mt-2 text-sm text-muted-foreground">Risk or media review needed</p>
                       </CardContent>
                     </Card>
+                    <Card className="rounded-2xl">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base">Open Bids</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-3xl font-semibold">
+                          {listingBids.filter((bid) => bid.status === "pending").length}
+                        </p>
+                        <p className="mt-2 text-sm text-muted-foreground">Client offers awaiting seller action</p>
+                      </CardContent>
+                    </Card>
                   </div>
+
+                  <Card className="rounded-2xl">
+                    <CardHeader className="border-b border-border pb-4">
+                      <AdminSectionHeader
+                        title="Recent Listing Bids"
+                        description="Client bid prices submitted from marketplace listing pages."
+                        stats={
+                          <div className="rounded-full border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+                            {listingBids.length} total
+                          </div>
+                        }
+                      />
+                    </CardHeader>
+                    <CardContent className="pt-6">
+                      {listingBids.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
+                          No bids submitted yet.
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Listing</TableHead>
+                                <TableHead>Client</TableHead>
+                                <TableHead>Bid</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Submitted</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {listingBids.slice(0, 8).map((bid) => (
+                                <TableRow key={bid.id}>
+                                  <TableCell>
+                                    <div className="min-w-[180px]">
+                                      <p className="font-medium">{bid.listingTitle || bid.listingId.slice(0, 8)}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        Seller: {bid.sellerName || bid.sellerId?.slice(0, 8) || "N/A"}
+                                      </p>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="min-w-[160px]">
+                                      <p>{bid.bidderName}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {bid.bidderPhone || bid.bidderEmail || "No contact"}
+                                      </p>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div>
+                                      <p className="font-medium">{formatMoney(bid.amountCents)}</p>
+                                      {bid.listingPriceCents ? (
+                                        <p className="text-xs text-muted-foreground">
+                                          Ask {formatMoney(bid.listingPriceCents)}
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant={statusVariant(bid.status)} className="capitalize">
+                                      {bid.status}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>{formatDateTime(bid.createdAt)}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
 
                   <div className="grid gap-6 xl:grid-cols-[1fr,1.7fr]">
                     <Card className="rounded-2xl">

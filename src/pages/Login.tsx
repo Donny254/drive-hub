@@ -54,7 +54,7 @@ const Login = () => {
             <div className="mb-6 flex justify-center">
               <BrandLogo
                 className="gap-4"
-                imageClassName="h-16 max-w-[240px] border border-border bg-white/95 p-2 sm:h-20 sm:max-w-[280px]"
+                imageClassName="h-32 max-w-[164px] sm:h-36 sm:max-w-[184px]"
                 textClassName="hidden"
               />
             </div>

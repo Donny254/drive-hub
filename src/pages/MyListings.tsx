@@ -11,9 +11,10 @@ import {
 } from "@/components/ui/dialog";
 import { useAuth } from "@/context/AuthContext";
 import { emptyListing, useMyListingsManager, vehicleYears, type Listing } from "@/hooks/useMyListingsManager";
-import { resolveImageUrl } from "@/lib/api";
+import { apiFetch, resolveImageUrl } from "@/lib/api";
 import SellerListingDialog from "@/components/listings/SellerListingDialog";
 import ActionConfirmDialog from "@/components/shared/ActionConfirmDialog";
+import type { ListingBid } from "@/components/admin/types";
 
 const MyListings = () => {
   const { token } = useAuth();
@@ -52,6 +53,7 @@ const MyListings = () => {
   } = useMyListingsManager({ token });
   const [deleteTarget, setDeleteTarget] = useState<Listing | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [listingBids, setListingBids] = useState<ListingBid[]>([]);
 
   useEffect(() => {
     const shouldOpenCreate = searchParams.get("new") === "1";
@@ -80,6 +82,14 @@ const MyListings = () => {
   ]);
 
   const fromMarket = searchParams.get("source") === "market";
+
+  useEffect(() => {
+    if (!token) return;
+    apiFetch("/api/listing-bids", { headers: { Authorization: `Bearer ${token}` } })
+      .then((resp) => (resp.ok ? resp.json() : []))
+      .then((data) => setListingBids(Array.isArray(data) ? data : []))
+      .catch(() => setListingBids([]));
+  }, [token]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -159,7 +169,7 @@ const MyListings = () => {
             {!loading && !error && (
               <>
                 {analytics && (
-                  <div className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+                  <div className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-7">
                     <Card>
                       <CardHeader className="pb-3">
                         <CardTitle className="text-base">Live Inventory</CardTitle>
@@ -206,6 +216,17 @@ const MyListings = () => {
                     </Card>
                     <Card>
                       <CardHeader className="pb-3">
+                        <CardTitle className="text-base">Bids</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-3xl font-semibold">{analytics.summary.totalBids}</p>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          {analytics.summary.pendingBids} pending, highest KES {(analytics.summary.highestBidCents / 100).toLocaleString()}
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader className="pb-3">
                         <CardTitle className="text-base">Conversion</CardTitle>
                       </CardHeader>
                       <CardContent>
@@ -245,6 +266,7 @@ const MyListings = () => {
                           <TableHead>Price</TableHead>
                           <TableHead>Views</TableHead>
                           <TableHead>Inquiries</TableHead>
+                          <TableHead>Bids</TableHead>
                           <TableHead>Bookings</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -258,6 +280,14 @@ const MyListings = () => {
                             <TableCell>KES {(item.priceCents / 100).toLocaleString()}</TableCell>
                             <TableCell>{item.viewsCount}</TableCell>
                             <TableCell>{item.inquiriesCount}</TableCell>
+                            <TableCell>
+                              {item.bidsCount}
+                              {item.highestBidCents > 0 ? (
+                                <span className="block text-xs text-muted-foreground">
+                                  High KES {(item.highestBidCents / 100).toLocaleString()}
+                                </span>
+                              ) : null}
+                            </TableCell>
                             <TableCell>{item.bookingsCount}</TableCell>
                           </TableRow>
                         ))}
@@ -265,6 +295,51 @@ const MyListings = () => {
                     </Table>
                   </div>
                 )}
+
+                <div className="mb-8 rounded-xl border border-border bg-card">
+                  <div className="border-b border-border px-6 py-4">
+                    <h2 className="font-display text-xl tracking-wider">Recent Bids</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Client bid prices submitted on your marketplace listings.
+                    </p>
+                  </div>
+                  {listingBids.length === 0 ? (
+                    <div className="px-6 py-6 text-sm text-muted-foreground">No bids submitted yet.</div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Listing</TableHead>
+                          <TableHead>Client</TableHead>
+                          <TableHead>Bid</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Submitted</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {listingBids.slice(0, 8).map((bid) => (
+                          <TableRow key={bid.id}>
+                            <TableCell>{bid.listingTitle || bid.listingId.slice(0, 8)}</TableCell>
+                            <TableCell>
+                              <p>{bid.bidderName}</p>
+                              <p className="text-xs text-muted-foreground">{bid.bidderPhone || bid.bidderEmail || "No contact"}</p>
+                            </TableCell>
+                            <TableCell>
+                              KES {(bid.amountCents / 100).toLocaleString()}
+                              {bid.listingPriceCents ? (
+                                <span className="block text-xs text-muted-foreground">
+                                  Ask KES {(bid.listingPriceCents / 100).toLocaleString()}
+                                </span>
+                              ) : null}
+                            </TableCell>
+                            <TableCell className="capitalize">{bid.status}</TableCell>
+                            <TableCell>{new Date(bid.createdAt).toLocaleString()}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
 
                 <div className="rounded-xl border border-border bg-card">
                   <Table>

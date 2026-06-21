@@ -60,6 +60,14 @@ const ListingDetails = () => {
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactMessage, setContactMessage] = useState("");
+  const [bidAmount, setBidAmount] = useState("");
+  const [bidderName, setBidderName] = useState("");
+  const [bidderEmail, setBidderEmail] = useState("");
+  const [bidderPhone, setBidderPhone] = useState("");
+  const [bidMessage, setBidMessage] = useState("");
+  const [bidSending, setBidSending] = useState(false);
+  const [bidSent, setBidSent] = useState(false);
+  const [bidError, setBidError] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -143,6 +151,38 @@ const ListingDetails = () => {
       setSendError(err instanceof Error ? err.message : "Failed to send inquiry.");
     } finally {
       setSending(false);
+    }
+  };
+
+  const submitBid = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = Number(bidAmount);
+    if (!listing?.id || !bidderName.trim() || !Number.isFinite(amount) || amount <= 0) return;
+    setBidSending(true);
+    setBidSent(false);
+    setBidError(null);
+    try {
+      const resp = await apiFetch("/api/listing-bids", {
+        method: "POST",
+        body: JSON.stringify({
+          listingId: listing.id,
+          amountCents: Math.round(amount * 100),
+          bidderName,
+          bidderEmail,
+          bidderPhone,
+          message: bidMessage,
+        }),
+      });
+      if (!resp.ok) {
+        throw new Error(await getApiErrorMessage(resp, "Failed to submit bid"));
+      }
+      setBidSent(true);
+      setBidAmount("");
+      setBidMessage("");
+    } catch (err) {
+      setBidError(err instanceof Error ? err.message : "Failed to submit bid.");
+    } finally {
+      setBidSending(false);
     }
   };
 
@@ -291,6 +331,73 @@ const ListingDetails = () => {
 
               <div className="mt-12 grid grid-cols-1 gap-8 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-6">
+                  <div className="bg-card border border-border rounded-xl p-6">
+                    <h3 className="font-display text-xl tracking-wider">Place a Bid</h3>
+                    <p className="text-muted-foreground text-sm mt-1">
+                      Send your offer to the seller. They will be notified with your bid and contact details.
+                    </p>
+                    <form className="mt-4 grid gap-4" onSubmit={submitBid}>
+                      <div className="grid gap-2">
+                        <Label>Bid Price (KES)</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={bidAmount}
+                          onChange={(e) => setBidAmount(e.target.value)}
+                          placeholder={`${Math.round(listing.priceCents / 100).toLocaleString()}`}
+                          required
+                        />
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="grid gap-2">
+                          <Label>Name</Label>
+                          <Input
+                            value={bidderName}
+                            onChange={(e) => setBidderName(e.target.value)}
+                            required
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Phone</Label>
+                          <Input
+                            value={bidderPhone}
+                            onChange={(e) => setBidderPhone(e.target.value)}
+                            placeholder="+254..."
+                          />
+                        </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Email</Label>
+                        <Input
+                          type="email"
+                          value={bidderEmail}
+                          onChange={(e) => setBidderEmail(e.target.value)}
+                          placeholder="name@example.com"
+                          required
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Message</Label>
+                        <Textarea
+                          rows={3}
+                          value={bidMessage}
+                          onChange={(e) => setBidMessage(e.target.value)}
+                          placeholder="I can view and complete payment this week."
+                        />
+                      </div>
+                      {bidError && <p className="text-sm text-destructive">{bidError}</p>}
+                      {bidSent && (
+                        <p className="text-sm text-success">
+                          Bid submitted. The seller has been notified.
+                        </p>
+                      )}
+                      <Button variant="hero" type="submit" disabled={bidSending}>
+                        {bidSending ? "Submitting..." : "Submit Bid"}
+                      </Button>
+                    </form>
+                  </div>
+
                   <div className="bg-card border border-border rounded-xl p-6">
                     <h3 className="font-display text-xl tracking-wider">Contact Seller</h3>
                     <p className="text-muted-foreground text-sm mt-1">

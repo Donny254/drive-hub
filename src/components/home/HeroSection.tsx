@@ -46,7 +46,7 @@ const HeroSection = () => {
       <div className="container relative z-10 mx-auto px-4 pt-20">
         <div className="max-w-3xl">
           <p className="text-primary/90 uppercase tracking-[0.3em] text-sm mb-4 animate-fade-in font-medium">
-            Kenya's Premier Automotive Destination
+            Your Prefered Automotive Destination
           </p>
           <h1 className="font-display animate-fade-in text-5xl leading-none tracking-wider min-[380px]:text-6xl md:text-8xl lg:text-9xl">
             DRIVE YOUR
@@ -60,7 +60,7 @@ const HeroSection = () => {
             </span>
           </h1>
           <p className="mt-6 max-w-xl text-base text-muted-foreground animate-fade-in md:text-xl" style={{ animationDelay: "0.2s" }}>
-            East Africa's exclusive marketplace for performance cars and luxury SUVs. Buy, sell, or rent high-end vehicles from trusted dealers across Kenya and the continent.
+            East Africa's exclusive marketplace for a variaty of cars. Buy, sell, or rent your prefered vehicles from trusted dealers across different location.
           </p>
           <div className="mt-10 flex flex-col gap-4 animate-fade-in sm:flex-row sm:flex-wrap" style={{ animationDelay: "0.4s" }}>
             <Link to="/market" className="w-full sm:w-auto">
@@ -76,20 +76,7 @@ const HeroSection = () => {
           </div>
 
           {/* Stats bar */}
-          <div className="mt-16 grid grid-cols-1 gap-6 animate-fade-in sm:grid-cols-3 sm:gap-8" style={{ animationDelay: "0.6s" }}>
-            <div className="text-center sm:text-left">
-              <p className="font-display text-3xl text-primary">500+</p>
-              <p className="text-sm text-muted-foreground">Premium Cars</p>
-            </div>
-            <div className="text-center sm:text-left">
-              <p className="font-display text-3xl text-primary">50+</p>
-              <p className="text-sm text-muted-foreground">Trusted Dealers</p>
-            </div>
-            <div className="text-center sm:text-left">
-              <p className="font-display text-3xl text-primary">10+</p>
-              <p className="text-sm text-muted-foreground">African Countries</p>
-            </div>
-          </div>
+        
         </div>
       </div>
 

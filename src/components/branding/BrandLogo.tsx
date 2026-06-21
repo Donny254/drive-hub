@@ -27,7 +27,7 @@ const BrandLogo = ({
         <img
           src={LOGO_SRC}
           alt="Wheelsnationke"
-          className={cn("h-10 w-auto max-w-[180px] rounded-sm object-contain bg-white/95 p-1 sm:h-12 sm:max-w-[220px]", imageClassName)}
+          className={cn("brand-logo-image h-16 w-auto max-w-[104px] object-contain sm:h-20 sm:max-w-[132px]", imageClassName)}
           onError={() => setImageError(true)}
         />
       )}

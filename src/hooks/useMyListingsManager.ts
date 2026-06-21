@@ -32,6 +32,9 @@ export type SellerAnalytics = {
     soldListings: number;
     totalViews: number;
     totalInquiries: number;
+    totalBids: number;
+    pendingBids: number;
+    highestBidCents: number;
     totalBookings: number;
     confirmedBookings: number;
     viewToInquiryRate: number;
@@ -46,6 +49,8 @@ export type SellerAnalytics = {
     priceCents: number;
     viewsCount: number;
     inquiriesCount: number;
+    bidsCount: number;
+    highestBidCents: number;
     bookingsCount: number;
   }>;
 };
