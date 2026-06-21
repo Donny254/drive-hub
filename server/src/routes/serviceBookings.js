@@ -34,25 +34,39 @@ const loadOwner = async (req, res, next) => {
 
 router.get("/", requireAuth, async (req, res, next) => {
   try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const offset = parseInt(req.query.offset) || 0;
+    const q = req.query.q ? `%${String(req.query.q).toLowerCase()}%` : null;
+    const statusFilter = req.query.status && req.query.status !== "all" ? req.query.status : null;
+
     if (req.user.role === "admin") {
-      const result = await query(
-        `SELECT sb.*, s.title AS service_title
-         FROM service_bookings sb
-         LEFT JOIN services s ON s.id = sb.service_id
-         ORDER BY sb.created_at DESC`
-      );
-      return res.json(result.rows.map(toApi));
+      const where = [];
+      const params = [];
+      if (statusFilter) { params.push(statusFilter); where.push(`sb.status = $${params.length}`); }
+      if (q) { params.push(q); where.push(`(LOWER(s.title) LIKE $${params.length} OR LOWER(sb.contact_name) LIKE $${params.length})`); }
+      const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+      params.push(limit, offset);
+
+      const [dataResult, countResult] = await Promise.all([
+        query(
+          `SELECT sb.*, s.title AS service_title FROM service_bookings sb LEFT JOIN services s ON s.id = sb.service_id
+           ${whereClause} ORDER BY sb.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+          params
+        ),
+        query(`SELECT COUNT(*)::int AS total FROM service_bookings sb LEFT JOIN services s ON s.id = sb.service_id ${whereClause}`, params.slice(0, -2)),
+      ]);
+      return res.json({ data: dataResult.rows.map(toApi), total: countResult.rows[0].total, limit, offset });
     }
 
-    const result = await query(
-      `SELECT sb.*, s.title AS service_title
-       FROM service_bookings sb
-       LEFT JOIN services s ON s.id = sb.service_id
-       WHERE sb.user_id = $1
-       ORDER BY sb.created_at DESC`,
-      [req.user.id]
-    );
-    return res.json(result.rows.map(toApi));
+    const [dataResult, countResult] = await Promise.all([
+      query(
+        `SELECT sb.*, s.title AS service_title FROM service_bookings sb LEFT JOIN services s ON s.id = sb.service_id
+         WHERE sb.user_id = $1 ORDER BY sb.created_at DESC LIMIT $2 OFFSET $3`,
+        [req.user.id, limit, offset]
+      ),
+      query("SELECT COUNT(*)::int AS total FROM service_bookings WHERE user_id = $1", [req.user.id]),
+    ]);
+    return res.json({ data: dataResult.rows.map(toApi), total: countResult.rows[0].total, limit, offset });
   } catch (error) {
     next(error);
   }

@@ -94,7 +94,7 @@ const ForgotPassword = () => {
                 textClassName="hidden"
               />
             </div>
-            <h1 className="text-center font-display text-3xl tracking-wider">Reset Password</h1>
+            <h1 className="text-center font-display text-3xl">Reset Password</h1>
             <p className="mt-2 text-center text-sm text-muted-foreground">
               Enter your email and we&apos;ll send you a link to choose a new password.
             </p>

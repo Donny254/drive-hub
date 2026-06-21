@@ -101,7 +101,7 @@ const SellerProfile = () => {
                     >
                       {trustLabel}
                     </Badge>
-                    <h1 className="mt-4 font-display text-4xl tracking-wider">{seller.name}</h1>
+                    <h1 className="mt-4 font-display text-4xl">{seller.name}</h1>
                     <p className="mt-2 max-w-2xl text-muted-foreground">
                       Browse active vehicles from this seller. Use the storefront to compare inventory quality,
                       pricing consistency, and seller activity before contacting them.
@@ -139,7 +139,7 @@ const SellerProfile = () => {
               <section className="mt-10">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <h2 className="font-display text-3xl tracking-wider">Seller Inventory</h2>
+                    <h2 className="font-display text-3xl">Seller Inventory</h2>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {listings.length} live listing{listings.length === 1 ? "" : "s"} available now.
                     </p>
@@ -163,7 +163,7 @@ const SellerProfile = () => {
                       <div className="flex flex-1 flex-col p-5">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <h3 className="font-display text-2xl tracking-wider break-words">{listing.title}</h3>
+                            <h3 className="font-display text-2xl break-words">{listing.title}</h3>
                             <p className="mt-2 font-display text-2xl text-primary break-words">
                               KES {(listing.priceCents / 100).toLocaleString()}
                               {listing.listingType === "rent" && (

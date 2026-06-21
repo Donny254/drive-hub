@@ -171,34 +171,69 @@ const AdminSettingsTab = ({ settings, setSettings, saveSettings }: AdminSettings
               <div className="rounded-2xl border border-border bg-background/50 p-5">
                 <h3 className="font-medium">Crypto Payment Details</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  These details are shown during crypto checkout so customers can submit a transfer hash for review.
+                  Configure one or both networks. Customers will see wallet connection buttons for whichever networks are configured.
                 </p>
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
+
+                <div className="mt-4 space-y-5">
+                  {/* TRC20 / TronLink */}
+                  <div>
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">TRC20 — TronLink</p>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="grid gap-2">
+                        <Label>Currency</Label>
+                        <Input
+                          value={settings.cryptoCurrency ?? ""}
+                          onChange={(e) => setSettings((prev) => (prev ? { ...prev, cryptoCurrency: e.target.value } : prev))}
+                          placeholder="USDT"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label>Network</Label>
+                        <Input
+                          value={settings.cryptoNetwork ?? ""}
+                          onChange={(e) => setSettings((prev) => (prev ? { ...prev, cryptoNetwork: e.target.value } : prev))}
+                          placeholder="TRC20"
+                        />
+                      </div>
+                      <div className="grid gap-2 md:col-span-2">
+                        <Label>TRC20 Wallet Address</Label>
+                        <Input
+                          value={settings.cryptoWalletAddress ?? ""}
+                          onChange={(e) => setSettings((prev) => (prev ? { ...prev, cryptoWalletAddress: e.target.value } : prev))}
+                          placeholder="T..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border" />
+
+                  {/* EVM / MetaMask */}
+                  <div>
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">EVM — MetaMask (ETH / BSC / Polygon…)</p>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="grid gap-2 md:col-span-2">
+                        <Label>EVM Network</Label>
+                        <Input
+                          value={settings.cryptoNetworkEvm ?? ""}
+                          onChange={(e) => setSettings((prev) => (prev ? { ...prev, cryptoNetworkEvm: e.target.value } : prev))}
+                          placeholder="bsc  /  ethereum  /  polygon"
+                        />
+                      </div>
+                      <div className="grid gap-2 md:col-span-2">
+                        <Label>EVM Wallet Address</Label>
+                        <Input
+                          value={settings.cryptoWalletAddressEvm ?? ""}
+                          onChange={(e) => setSettings((prev) => (prev ? { ...prev, cryptoWalletAddressEvm: e.target.value } : prev))}
+                          placeholder="0x..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border" />
+
                   <div className="grid gap-2">
-                    <Label>Crypto Currency</Label>
-                    <Input
-                      value={settings.cryptoCurrency ?? ""}
-                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, cryptoCurrency: e.target.value } : prev))}
-                      placeholder="USDT"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Network</Label>
-                    <Input
-                      value={settings.cryptoNetwork ?? ""}
-                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, cryptoNetwork: e.target.value } : prev))}
-                      placeholder="TRC20"
-                    />
-                  </div>
-                  <div className="grid gap-2 md:col-span-2">
-                    <Label>Wallet Address</Label>
-                    <Input
-                      value={settings.cryptoWalletAddress ?? ""}
-                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, cryptoWalletAddress: e.target.value } : prev))}
-                      placeholder="T..."
-                    />
-                  </div>
-                  <div className="grid gap-2 md:col-span-2">
                     <Label>Crypto Instructions</Label>
                     <Textarea
                       value={settings.cryptoInstructions ?? ""}

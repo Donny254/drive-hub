@@ -74,7 +74,7 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
       setError(null);
 
       const requests = [
-        { key: "listings", label: "listings", path: "/api/listings?limit=200" },
+        { key: "listings", label: "listings", path: "/api/listings?limit=1000" },
         { key: "orders", label: "orders", path: "/api/orders" },
         { key: "users", label: "users", path: "/api/users" },
         { key: "bookings", label: "bookings", path: "/api/bookings" },
@@ -121,19 +121,19 @@ export const useAdminData = ({ token }: UseAdminDataParams) => {
             setListings(result.value.data as Listing[]);
             break;
           case "orders":
-            setOrders(result.value.data as Order[]);
+            setOrders((result.value.data?.data ?? result.value.data) as Order[]);
             break;
           case "users":
             setUsers(result.value.data as User[]);
             break;
           case "bookings":
-            setBookings(result.value.data as Booking[]);
+            setBookings((result.value.data?.data ?? result.value.data) as Booking[]);
             break;
           case "serviceBookings":
-            setServiceBookings(result.value.data as ServiceBooking[]);
+            setServiceBookings((result.value.data?.data ?? result.value.data) as ServiceBooking[]);
             break;
           case "eventRegistrations":
-            setEventRegistrations(result.value.data as EventRegistration[]);
+            setEventRegistrations((result.value.data?.data ?? result.value.data) as EventRegistration[]);
             break;
           case "inquiries":
             setInquiries(result.value.data as Inquiry[]);

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { query } from "../db.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { normalizePhone } from "../notifications.js";
+import bcrypt from "bcryptjs";
 
 const router = Router();
 
@@ -110,6 +111,61 @@ router.get("/public/:id", async (req, res, next) => {
         },
       })),
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Current user profile
+router.get("/me", requireAuth, async (req, res, next) => {
+  try {
+    const result = await query(
+      "SELECT id, email, name, phone, role, seller_verification_status, seller_verified_at, created_at FROM users WHERE id = $1",
+      [req.user.id]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: "User not found" });
+    res.json(toApi(result.rows[0]));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put("/me", requireAuth, async (req, res, next) => {
+  try {
+    const { name, phone, currentPassword, newPassword } = req.body;
+    const updates = [];
+    const values = [];
+
+    if (name !== undefined) {
+      const trimmed = String(name).trim();
+      if (!trimmed) return res.status(400).json({ error: "Name cannot be empty" });
+      values.push(trimmed);
+      updates.push(`name = $${values.length}`);
+    }
+
+    if (phone !== undefined) {
+      values.push(phone ? normalizePhone(phone) : null);
+      updates.push(`phone = $${values.length}`);
+    }
+
+    if (newPassword) {
+      if (!currentPassword) return res.status(400).json({ error: "Current password is required to set a new password" });
+      const userResult = await query("SELECT password_hash FROM users WHERE id = $1", [req.user.id]);
+      const valid = await bcrypt.compare(currentPassword, userResult.rows[0].password_hash);
+      if (!valid) return res.status(400).json({ error: "Current password is incorrect" });
+      if (newPassword.length < 8) return res.status(400).json({ error: "New password must be at least 8 characters" });
+      values.push(await bcrypt.hash(newPassword, 12));
+      updates.push(`password_hash = $${values.length}`);
+    }
+
+    if (updates.length === 0) return res.status(400).json({ error: "Nothing to update" });
+
+    values.push(req.user.id);
+    const result = await query(
+      `UPDATE users SET ${updates.join(", ")} WHERE id = $${values.length} RETURNING id, email, name, phone, role, seller_verification_status, seller_verified_at, created_at`,
+      values
+    );
+    res.json(toApi(result.rows[0]));
   } catch (error) {
     next(error);
   }

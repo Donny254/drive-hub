@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
+import AccountLayout from "@/components/shared/AccountLayout";
+import EmptyState from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -58,6 +58,19 @@ const formatCurrency = (amountCents?: number) =>
     maximumFractionDigits: 0,
   }).format((amountCents || 0) / 100);
 
+const isEventPast = (reg: EventRegistration): boolean => {
+  const date = reg.eventEndDate ?? reg.eventStartDate;
+  if (!date) return false;
+  return new Date(date) < new Date();
+};
+
+const getDisplayStatus = (reg: EventRegistration): { label: string; color: string } => {
+  if (reg.status === "cancelled") return { label: "Cancelled", color: "text-destructive" };
+  if (isEventPast(reg)) return { label: "Past", color: "text-muted-foreground" };
+  if (reg.status === "confirmed") return { label: "Confirmed", color: "text-emerald-400" };
+  return { label: "Pending", color: "text-amber-400" };
+};
+
 const MyEventRegistrations = () => {
   const { token } = useAuth();
   const [registrations, setRegistrations] = useState<EventRegistration[]>([]);
@@ -94,14 +107,16 @@ const MyEventRegistrations = () => {
     authHeaders
   );
 
-  const fetchRegistrations = useCallback(async () => {
+  const fetchRegistrations = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoading(true);
       setError(null);
-      const resp = await apiFetch("/api/event-registrations", { headers: authHeaders });
+      const resp = await apiFetch("/api/event-registrations", { headers: authHeaders, signal });
       if (!resp.ok) throw new Error("Failed to load registrations");
-      setRegistrations(await resp.json());
+      const json = await resp.json();
+      setRegistrations(Array.isArray(json) ? json : (json.data ?? []));
     } catch (err) {
+      if (err instanceof DOMException && (err as DOMException).name === "AbortError") return;
       console.error(err);
       setError("Failed to load your event registrations.");
       toast.error("Failed to load your event registrations.");
@@ -111,7 +126,15 @@ const MyEventRegistrations = () => {
   }, [authHeaders]);
 
   useEffect(() => {
-    fetchRegistrations();
+    const controller = new AbortController();
+    fetchRegistrations(controller.signal);
+    return () => controller.abort();
+  }, [fetchRegistrations]);
+
+  // Auto-refresh every 60 s so statuses stay current
+  useEffect(() => {
+    const id = setInterval(() => { void fetchRegistrations(); }, 60_000);
+    return () => clearInterval(id);
   }, [fetchRegistrations]);
 
   useEffect(() => {
@@ -244,20 +267,27 @@ const MyEventRegistrations = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="pt-28 pb-16">
-        <div className="container mx-auto px-4">
-          <div>
-            <h1 className="font-display text-3xl tracking-wider">My Event Registrations</h1>
-            <p className="text-muted-foreground mt-1">View and manage your event registrations.</p>
-          </div>
-
-          <div className="mt-8">
+    <AccountLayout title="Event Registrations">
+      <div>
+          <div className="mt-0">
             {loading && <p className="text-muted-foreground">Loading registrations...</p>}
-            {!loading && error && <p className="text-destructive">{error}</p>}
+            {!loading && error && (
+              <div className="flex items-center gap-3">
+                <p className="text-sm text-destructive">{error}</p>
+                <Button variant="outline" size="sm" onClick={() => void fetchRegistrations()}>Retry</Button>
+              </div>
+            )}
 
-            {!loading && !error && (
+            {!loading && !error && registrations.length === 0 && (
+              <EmptyState
+                icon={ArrowDown}
+                title="No event registrations yet"
+                description="When you register for an event it will appear here."
+                action={{ label: "Browse Events", to: "/events" }}
+              />
+            )}
+
+            {!loading && !error && registrations.length > 0 && (
               <>
                 <div className="grid gap-4 md:hidden">
                   {registrations.map((registration) => (
@@ -270,7 +300,7 @@ const MyEventRegistrations = () => {
                         <div className="flex justify-between gap-3"><span>Tickets</span><span>{registration.tickets}</span></div>
                         <div className="flex justify-between gap-3"><span>Amount</span><span className="text-right break-words">{registration.amountCents > 0 ? formatCurrency(registration.amountCents) : "Free"}</span></div>
                         <div className="flex justify-between gap-3"><span>Payment</span><span className="text-right capitalize">{registration.paymentStatus}</span></div>
-                        <div className="flex justify-between gap-3"><span>Status</span><span className="text-right capitalize">{registration.status}</span></div>
+                        <div className="flex justify-between gap-3"><span>Status</span><span className={`text-right capitalize font-medium ${getDisplayStatus(registration).color}`}>{getDisplayStatus(registration).label}</span></div>
                       </div>
                       <div className="mt-4 flex flex-col gap-2">
                         <Dialog>
@@ -348,7 +378,7 @@ const MyEventRegistrations = () => {
                             variant="hero"
                             size="sm"
                             className="w-full"
-                            disabled={!registration.contactPhone || registration.status === "cancelled"}
+                            disabled={!registration.contactPhone || registration.status === "cancelled" || isEventPast(registration)}
                             onClick={() => setPayTarget(registration)}
                             >
                               Pay Now
@@ -368,10 +398,10 @@ const MyEventRegistrations = () => {
                           variant="destructive"
                           size="sm"
                           className="w-full"
-                          disabled={registration.status === "cancelled"}
+                          disabled={registration.status === "cancelled" || isEventPast(registration)}
                           onClick={() => setCancelTarget(registration)}
                         >
-                          Cancel
+                          {isEventPast(registration) ? "Past" : "Cancel"}
                         </Button>
                       </div>
                     </div>
@@ -475,14 +505,18 @@ const MyEventRegistrations = () => {
                             </DialogContent>
                           </Dialog>
                         </TableCell>
-                        <TableCell className="capitalize">{registration.status}</TableCell>
+                        <TableCell>
+                          <span className={`capitalize font-medium ${getDisplayStatus(registration).color}`}>
+                            {getDisplayStatus(registration).label}
+                          </span>
+                        </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                           {registration.amountCents > 0 && registration.paymentStatus !== "paid" && (
                             <Button
                               variant="hero"
                               size="sm"
-                              disabled={!registration.contactPhone || registration.status === "cancelled"}
+                              disabled={!registration.contactPhone || registration.status === "cancelled" || isEventPast(registration)}
                               onClick={() => setPayTarget(registration)}
                             >
                               Pay Now
@@ -500,10 +534,10 @@ const MyEventRegistrations = () => {
                             <Button
                               variant="destructive"
                               size="sm"
-                              disabled={registration.status === "cancelled"}
+                              disabled={registration.status === "cancelled" || isEventPast(registration)}
                               onClick={() => setCancelTarget(registration)}
                             >
-                              Cancel
+                              {isEventPast(registration) ? "Past" : "Cancel"}
                             </Button>
                           </div>
                         </TableCell>
@@ -515,8 +549,6 @@ const MyEventRegistrations = () => {
               </>
             )}
           </div>
-        </div>
-      </main>
       <Dialog open={Boolean(trackingRegistration)} onOpenChange={(open) => !open && setTrackingRegistration(null)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl" ref={trackingDialogRef}>
           <div className="sticky top-0 z-10 flex justify-end pb-2">
@@ -621,12 +653,6 @@ const MyEventRegistrations = () => {
             )}
           </div>
           <div className="sticky bottom-4 z-20 flex justify-end">
-              <Button type="button" variant="secondary" size="sm" onClick={() => payDialogRef.current?.scrollTo({ top: 0, behavior: "smooth" })}>
-                <ArrowUp className="mr-2 h-4 w-4" />
-                Back to top
-              </Button>
-            </div>
-          <div className="sticky bottom-4 z-20 flex justify-end">
             <Button type="button" variant="secondary" size="sm" onClick={() => payDialogRef.current?.scrollTo({ top: 0, behavior: "smooth" })}>
               <ArrowUp className="mr-2 h-4 w-4" />
               Back to top
@@ -659,8 +685,8 @@ const MyEventRegistrations = () => {
           }
         }}
       />
-      <Footer />
-    </div>
+      </div>
+    </AccountLayout>
   );
 };
 

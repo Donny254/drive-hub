@@ -11,7 +11,8 @@ export default function Markets() {
     <div className="min-h-screen bg-background">
       <Navbar />
       <div className="pt-20 max-w-7xl mx-auto px-4">
-        <h1 className="font-display text-4xl mb-8 text-gradient">All Markets</h1>
+        <h1 className="font-display text-3xl mb-2 text-gradient">All Markets</h1>
+        <p className="text-muted-foreground text-sm mb-8">Live prices across crypto, NSE Kenya, and global equities.</p>
 
         {cryptoDataSource === "demo" && (
           <Alert className="mb-6 border-amber-500/30 bg-amber-500/10 text-amber-100">

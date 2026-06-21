@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import type { Booking, DeleteTarget } from "@/components/admin/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -40,6 +41,15 @@ const AdminBookingsTab = ({
   formatMoney,
   token,
 }: AdminBookingsTabProps) => {
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const filtered = bookings.filter((b) => {
+    if (statusFilter !== "all" && b.status !== statusFilter) return false;
+    if (search && !(b.listingTitle ?? "").toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
   return (
     <TabsContent value="bookings" className="mt-6">
       <Card className="rounded-2xl">
@@ -53,20 +63,33 @@ const AdminBookingsTab = ({
             </div>
             <div className="flex flex-wrap gap-2">
               <div className="rounded-full border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
-                {bookings.length} total
-              </div>
-              <div className="rounded-full border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
-                {bookings.filter((booking) => booking.status === "pending").length} pending
-              </div>
-              <div className="rounded-full border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
-                {bookings.filter((booking) => booking.status === "confirmed").length} confirmed
+                {filtered.length} of {bookings.length}
               </div>
             </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Input
+              placeholder="Search by listing name…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-8 w-48 text-xs"
+            />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+            >
+              <option value="all">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="rejected">Rejected</option>
+            </select>
           </div>
         </CardHeader>
         <CardContent className="pt-6">
           <div className="grid gap-4 md:hidden">
-            {bookings.map((booking) => (
+            {filtered.map((booking) => (
               <div key={booking.id} className="rounded-xl border border-border bg-background/60 p-4">
                 <div className="flex items-start gap-3">
                   {booking.listingImageUrl ? (
@@ -232,7 +255,7 @@ const AdminBookingsTab = ({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {bookings.map((booking) => (
+                {filtered.map((booking) => (
                   <TableRow key={booking.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">

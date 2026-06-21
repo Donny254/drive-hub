@@ -227,7 +227,7 @@ const ListingDetails = () => {
 
                 <div className="space-y-6">
                   <div>
-                    <h1 className="font-display text-4xl tracking-wider break-words">{listing.title}</h1>
+                    <h1 className="font-display text-4xl break-words">{listing.title}</h1>
                     <p className="mt-2 font-display text-3xl text-primary break-words">
                       KES {(listing.priceCents / 100).toLocaleString()}
                       {listing.listingType === "rent" && (
@@ -260,7 +260,7 @@ const ListingDetails = () => {
                   </div>
 
                   <div className="bg-card border border-border rounded-xl p-5">
-                    <h3 className="font-display text-lg tracking-wider">Description</h3>
+                    <h3 className="font-display text-lg">Description</h3>
                     <p className="text-muted-foreground mt-2">
                       {listing.description ?? "No description provided yet."}
                     </p>
@@ -270,7 +270,7 @@ const ListingDetails = () => {
                     <div className="bg-card border border-border rounded-xl p-5">
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
-                          <h3 className="font-display text-lg tracking-wider">Seller Profile</h3>
+                          <h3 className="font-display text-lg">Seller Profile</h3>
                           <p className="mt-2 text-base font-medium text-foreground break-words">{listing.seller.name}</p>
                           <p className="mt-1 text-sm text-muted-foreground">
                             {formatMemberSince(listing.seller.createdAt)}
@@ -332,6 +332,7 @@ const ListingDetails = () => {
               <div className="mt-12 grid grid-cols-1 gap-8 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-6">
                   <div className="bg-card border border-border rounded-xl p-6">
+<<<<<<< HEAD
                     <h3 className="font-display text-xl tracking-wider">Place a Bid</h3>
                     <p className="text-muted-foreground text-sm mt-1">
                       Send your offer to the seller. They will be notified with your bid and contact details.
@@ -400,6 +401,9 @@ const ListingDetails = () => {
 
                   <div className="bg-card border border-border rounded-xl p-6">
                     <h3 className="font-display text-xl tracking-wider">Contact Seller</h3>
+=======
+                    <h3 className="font-display text-xl">Contact Seller</h3>
+>>>>>>> 6bbb07c0a8e89f23f60f09ecbaff08c55bd61b02
                     <p className="text-muted-foreground text-sm mt-1">
                       Send a message to the seller for availability and inspection.
                     </p>
@@ -444,7 +448,7 @@ const ListingDetails = () => {
                 </div>
 
                 <div className="space-y-4">
-                  <h3 className="font-display text-xl tracking-wider">Similar Listings</h3>
+                  <h3 className="font-display text-xl">Similar Listings</h3>
                   {similarListings.length === 0 && (
                     <p className="text-muted-foreground text-sm">No similar listings yet.</p>
                   )}

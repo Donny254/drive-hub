@@ -58,8 +58,8 @@ const Login = () => {
                 textClassName="hidden"
               />
             </div>
-            <h1 className="font-display text-3xl tracking-wider text-center">Welcome Back</h1>
-            <p className="text-muted-foreground text-sm text-center mt-2">
+            <h1 className="font-display text-2xl text-center">Welcome Back</h1>
+            <p className="text-muted-foreground text-sm text-center mt-2 leading-relaxed">
               Sign in to manage listings and bookings.
             </p>
 

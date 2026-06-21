@@ -38,7 +38,7 @@ export function Navbar() {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-neon">
               <TrendingUp className="w-6 h-6 text-primary-foreground" />
             </div>
-            <span className="font-display text-xl tracking-wider text-foreground">
+            <span className="font-display text-xl text-foreground">
               APEX<span className="text-primary">DEX</span>
             </span>
           </Link>

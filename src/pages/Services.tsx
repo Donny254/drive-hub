@@ -16,6 +16,8 @@ import { toast } from "@/components/ui/sonner";
 import { getApiErrorMessage } from "@/lib/feedback";
 import DatePickerField from "@/components/shared/DatePickerField";
 import { getTodayDateValue, isPastDateValue } from "@/lib/date";
+import { usePagination } from "@/hooks/usePagination";
+import PagerBar from "@/components/shared/PagerBar";
 
 type Service = {
   id: string;
@@ -36,6 +38,7 @@ const Services = () => {
   const navigate = useNavigate();
   const { user, token } = useAuth();
   const [services, setServices] = useState<Service[]>([]);
+  const { pageItems: pagedServices, page: servicesPage, totalPages: servicesTotalPages, goTo: goToServicesPage } = usePagination(services, 6);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [bookingOpen, setBookingOpen] = useState(false);
@@ -188,7 +191,7 @@ const Services = () => {
         {/* Ad Slider */}
         <AdSlider />
         {/* Hero */}
-        <section className="relative py-24 overflow-hidden">
+        <section className="relative py-12 overflow-hidden">
           <div 
             className="absolute inset-0 bg-cover bg-center"
             style={{ backgroundImage: `url(${serviceGarage})` }}
@@ -196,17 +199,17 @@ const Services = () => {
             <div className="absolute inset-0 bg-background/90" />
           </div>
           <div className="container relative z-10 mx-auto px-4 text-center">
-            <h1 className="font-display text-5xl md:text-6xl tracking-wider animate-fade-in">
+            <h1 className="font-display text-3xl md:text-5xl animate-fade-in">
               EXPERT <span className="text-primary">SERVICES</span>
             </h1>
-            <p className="text-muted-foreground mt-4 max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: "0.1s" }}>
+            <p className="text-muted-foreground text-base mt-4 max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: "0.1s" }}>
               Professional automotive services by certified technicians. Your car deserves the best.
             </p>
           </div>
         </section>
 
         {/* Services Grid */}
-        <section className="py-16">
+        <section className="py-10">
           <div className="container mx-auto px-4">
             {loading && <p className="text-muted-foreground">Loading services...</p>}
             {!loading && error && <p className="text-destructive">{error}</p>}
@@ -220,13 +223,13 @@ const Services = () => {
             )}
             {!loading && !error && services.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {services.map((service, index) => (
+                {pagedServices.map((service, index) => (
                   <div
                     key={service.id}
                     className="group bg-card rounded-lg border border-border p-8 hover:border-primary/50 transition-all duration-500 animate-fade-in"
                     style={{ animationDelay: `${index * 0.1}s` }}
                   >
-                    <div className="w-14 h-14 rounded-lg bg-gradient-to-br from-primary to-emerald-400 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                    <div className="w-14 h-14 rounded-lg bg-gradient-to-br from-primary to-amber-400 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
                       <Wrench className="w-7 h-7 text-primary-foreground" />
                     </div>
 
@@ -238,8 +241,8 @@ const Services = () => {
                       />
                     )}
 
-                    <h3 className="font-display text-2xl tracking-wider mb-3">{service.title}</h3>
-                    <p className="text-muted-foreground text-sm mb-6">
+                    <h3 className="font-display text-xl mb-3">{service.title}</h3>
+                    <p className="text-muted-foreground text-base mb-6">
                       {service.description ?? "No description provided yet."}
                     </p>
 
@@ -271,16 +274,19 @@ const Services = () => {
                 ))}
               </div>
             )}
+            {!loading && services.length > 0 && (
+              <PagerBar page={servicesPage} totalPages={servicesTotalPages} onPageChange={goToServicesPage} />
+            )}
           </div>
         </section>
 
         {/* CTA */}
-        <section className="py-16 bg-secondary">
+        <section className="py-10 bg-secondary">
           <div className="container mx-auto px-4 text-center">
-            <h2 className="font-display text-4xl tracking-wider">
+            <h2 className="font-display text-4xl">
               NEED A <span className="text-primary">CUSTOM QUOTE?</span>
             </h2>
-            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
+            <p className="text-muted-foreground text-base mt-4 max-w-xl mx-auto">
               Contact us for specialized services or custom build projects.
             </p>
             <Button variant="hero" size="xl" className="mt-8" onClick={() => setQuoteOpen(true)}>

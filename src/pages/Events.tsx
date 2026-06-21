@@ -19,6 +19,8 @@ import CryptoProofUploader from "@/components/shared/CryptoProofUploader";
 import CryptoPaymentTimeline from "@/components/shared/CryptoPaymentTimeline";
 import CryptoPaymentDetails from "@/components/shared/CryptoPaymentDetails";
 import useCryptoPaymentStatus from "@/hooks/useCryptoPaymentStatus";
+import { usePagination } from "@/hooks/usePagination";
+import PagerBar from "@/components/shared/PagerBar";
 
 type EventItem = {
   id: string;
@@ -370,6 +372,9 @@ const Events = () => {
   const featuredPost = posts[0];
   const otherPosts = posts.slice(1);
 
+  const { pageItems: pagedEvents, page: eventsPage, totalPages: eventsTotalPages, goTo: goToEventsPage } = usePagination(otherEvents, 6);
+  const { pageItems: pagedPosts, page: postsPage, totalPages: postsTotalPages, goTo: goToPostsPage } = usePagination(otherPosts, 6);
+
   const handlePrintTicket = async () => {
     if (!selectedEvent || !completedRegistrationId || generatedTickets.length === 0) return;
     await printEventReceipt(
@@ -420,7 +425,7 @@ const Events = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="pt-20">
-        <section className="relative min-h-[70vh] flex items-center justify-center overflow-hidden">
+        <section className="relative flex items-center justify-center overflow-hidden py-10">
           <div
             className="absolute inset-0 bg-cover bg-center"
             style={{ backgroundImage: `url(${carEvent})` }}
@@ -429,47 +434,47 @@ const Events = () => {
           </div>
 
           <div className="container relative z-10 mx-auto px-4 text-center">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/20 border border-primary/40 backdrop-blur-sm mb-8">
-              <Flame className="w-4 h-4 text-primary" />
-              <span className="text-sm font-medium text-primary uppercase tracking-widest">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/20 border border-primary/40 backdrop-blur-sm mb-4">
+              <Flame className="w-3.5 h-3.5 text-primary" />
+              <span className="text-xs font-medium text-primary uppercase tracking-widest">
                 Events & Culture
               </span>
             </div>
 
-            <h1 className="font-display text-6xl md:text-7xl tracking-wider font-bold">
+            <h1 className="font-display text-3xl md:text-4xl font-bold">
               EVENTS & <span className="text-primary">BLOG</span>
             </h1>
-            <p className="text-xl text-muted-foreground mt-6 max-w-3xl mx-auto">
+            <p className="text-sm text-muted-foreground mt-3 max-w-2xl mx-auto">
               Discover upcoming car events and the latest stories from the community.
             </p>
 
-            <div className="flex flex-col sm:flex-row justify-center gap-4 mt-10">
+            <div className="flex flex-col sm:flex-row justify-center gap-3 mt-6">
               <Button
                 variant={activeSection === "events" ? "hero" : "outline"}
-                size="lg"
+                size="default"
                 onClick={() => setActiveSection("events")}
               >
-                <Calendar className="w-5 h-5 mr-2" />
+                <Calendar className="w-4 h-4 mr-2" />
                 Upcoming Events
               </Button>
               <Button
                 variant={activeSection === "blogs" ? "hero" : "outline"}
-                size="lg"
+                size="default"
                 onClick={() => setActiveSection("blogs")}
               >
-                <Star className="w-5 h-5 mr-2" />
+                <Star className="w-4 h-4 mr-2" />
                 Stories & Blog
               </Button>
             </div>
           </div>
         </section>
 
-        <section className="py-20">
+        <section className="py-12">
           <div className="container mx-auto px-4">
             {loading && <p className="text-muted-foreground">Loading...</p>}
 
             {!loading && activeSection === "events" && (
-              <div className="space-y-10">
+              <div className="space-y-6">
                 {eventsError && (
                   <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -494,7 +499,7 @@ const Events = () => {
                           {featuredEvent.status}
                         </Badge>
                       </div>
-                      <h2 className="mt-4 font-display text-4xl tracking-wider break-words">{featuredEvent.title}</h2>
+                      <h2 className="mt-4 font-display text-4xl break-words">{featuredEvent.title}</h2>
                       <p className="mt-4 text-muted-foreground break-words">{featuredEvent.description}</p>
                       <div className="mt-4 flex flex-wrap gap-4 text-sm text-muted-foreground">
                         <div className="flex items-center gap-2">
@@ -529,7 +534,7 @@ const Events = () => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-                    {otherEvents.map((event) => (
+                    {pagedEvents.map((event) => (
                       <div key={event.id} className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card">
                         <img
                           src={resolveImageUrl(event.imageUrl) || carEvent}
@@ -548,7 +553,7 @@ const Events = () => {
                               {event.status}
                             </Badge>
                           </div>
-                          <h3 className="mt-3 font-display text-2xl tracking-wider break-words">{event.title}</h3>
+                          <h3 className="mt-3 font-display text-2xl break-words">{event.title}</h3>
                           <p className="mt-3 text-sm text-muted-foreground line-clamp-3">
                             {event.description}
                           </p>
@@ -564,11 +569,12 @@ const Events = () => {
                     ))}
                   </div>
                 )}
+                <PagerBar page={eventsPage} totalPages={eventsTotalPages} onPageChange={goToEventsPage} />
               </div>
             )}
 
             {!loading && activeSection === "blogs" && (
-              <div className="space-y-10">
+              <div className="space-y-6">
                 {postsError && (
                   <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -588,7 +594,7 @@ const Events = () => {
                     />
                     <div className="flex flex-col p-8">
                       <Badge className="bg-primary text-primary-foreground">Featured</Badge>
-                      <h2 className="mt-4 font-display text-4xl tracking-wider break-words">{featuredPost.title}</h2>
+                      <h2 className="mt-4 font-display text-4xl break-words">{featuredPost.title}</h2>
                       <p className="mt-4 text-muted-foreground break-words">{featuredPost.excerpt}</p>
                       <div className="mt-4 text-sm text-muted-foreground">
                         {formatDate(featuredPost.publishedAt)}
@@ -608,7 +614,7 @@ const Events = () => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-                    {otherPosts.map((post) => (
+                    {pagedPosts.map((post) => (
                       <div key={post.id} className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card">
                         <img
                           src={resolveImageUrl(post.imageUrl) || carEvent}
@@ -617,7 +623,7 @@ const Events = () => {
                         />
                         <div className="flex flex-1 flex-col p-6">
                           <Badge variant="secondary">{formatDate(post.publishedAt)}</Badge>
-                          <h3 className="mt-3 font-display text-2xl tracking-wider break-words">{post.title}</h3>
+                          <h3 className="mt-3 font-display text-2xl break-words">{post.title}</h3>
                           <p className="mt-3 text-sm text-muted-foreground line-clamp-3">{post.excerpt}</p>
                           <Button variant="outline" className="mt-auto w-full" asChild>
                             <Link to={`/blog/${post.id}`}>Read More</Link>
@@ -627,6 +633,7 @@ const Events = () => {
                     ))}
                   </div>
                 )}
+                <PagerBar page={postsPage} totalPages={postsTotalPages} onPageChange={goToPostsPage} />
               </div>
             )}
           </div>

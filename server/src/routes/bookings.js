@@ -75,53 +75,45 @@ const loadBookingOwner = async (req, res, next) => {
 
 router.get("/", requireAuth, async (req, res, next) => {
   try {
+    const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+    const offset = parseInt(req.query.offset) || 0;
+    const q = req.query.q ? `%${String(req.query.q).toLowerCase()}%` : null;
+    const statusFilter = req.query.status && req.query.status !== "all" ? req.query.status : null;
+
+    const cryptoSubqueries = `
+      (SELECT review_notes FROM crypto_transactions ct WHERE ct.booking_id = b.id ORDER BY ct.created_at DESC LIMIT 1) AS crypto_review_notes,
+      (SELECT proof_image_url FROM crypto_transactions ct WHERE ct.booking_id = b.id ORDER BY ct.created_at DESC LIMIT 1) AS crypto_proof_image_url`;
+
     if (req.user.role === "admin") {
-      const result = await query(
-        `SELECT b.*, l.title AS listing_title, l.image_url AS listing_image_url
-         ,(
-          SELECT review_notes
-          FROM crypto_transactions ct
-          WHERE ct.booking_id = b.id
-          ORDER BY ct.created_at DESC
-          LIMIT 1
-        ) AS crypto_review_notes,
-        (
-          SELECT proof_image_url
-          FROM crypto_transactions ct
-          WHERE ct.booking_id = b.id
-          ORDER BY ct.created_at DESC
-          LIMIT 1
-        ) AS crypto_proof_image_url
-         FROM bookings b
-         LEFT JOIN listings l ON l.id = b.listing_id
-         ORDER BY b.created_at DESC`
-      );
-      return res.json(result.rows.map(toApi));
+      const where = [];
+      const params = [];
+      if (statusFilter) { params.push(statusFilter); where.push(`b.status = $${params.length}`); }
+      if (q) { params.push(q); where.push(`(LOWER(l.title) LIKE $${params.length})`); }
+      const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+      params.push(limit, offset);
+
+      const [dataResult, countResult] = await Promise.all([
+        query(
+          `SELECT b.*, l.title AS listing_title, l.image_url AS listing_image_url, ${cryptoSubqueries}
+           FROM bookings b LEFT JOIN listings l ON l.id = b.listing_id
+           ${whereClause} ORDER BY b.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+          params
+        ),
+        query(`SELECT COUNT(*)::int AS total FROM bookings b LEFT JOIN listings l ON l.id = b.listing_id ${whereClause}`, params.slice(0, -2)),
+      ]);
+      return res.json({ data: dataResult.rows.map(toApi), total: countResult.rows[0].total, limit, offset });
     }
 
-    const result = await query(
-      `SELECT b.*, l.title AS listing_title, l.image_url AS listing_image_url
-        ,(
-          SELECT review_notes
-          FROM crypto_transactions ct
-          WHERE ct.booking_id = b.id
-          ORDER BY ct.created_at DESC
-          LIMIT 1
-        ) AS crypto_review_notes,
-        (
-          SELECT proof_image_url
-          FROM crypto_transactions ct
-          WHERE ct.booking_id = b.id
-          ORDER BY ct.created_at DESC
-          LIMIT 1
-        ) AS crypto_proof_image_url
-       FROM bookings b
-       LEFT JOIN listings l ON l.id = b.listing_id
-       WHERE b.user_id = $1
-       ORDER BY b.created_at DESC`,
-      [req.user.id]
-    );
-    return res.json(result.rows.map(toApi));
+    const [dataResult, countResult] = await Promise.all([
+      query(
+        `SELECT b.*, l.title AS listing_title, l.image_url AS listing_image_url, ${cryptoSubqueries}
+         FROM bookings b LEFT JOIN listings l ON l.id = b.listing_id
+         WHERE b.user_id = $1 ORDER BY b.created_at DESC LIMIT $2 OFFSET $3`,
+        [req.user.id, limit, offset]
+      ),
+      query("SELECT COUNT(*)::int AS total FROM bookings WHERE user_id = $1", [req.user.id]),
+    ]);
+    return res.json({ data: dataResult.rows.map(toApi), total: countResult.rows[0].total, limit, offset });
   } catch (error) {
     next(error);
   }
@@ -252,6 +244,9 @@ router.put(
           cryptoProofImageUrl !== undefined) &&
         updated.payment_method === "crypto"
       ) {
+        const resolvedStatus =
+          updated.payment_status === "paid" ? "paid" :
+          updated.payment_status === "failed" ? "failed" : "pending";
         await query(
           `UPDATE crypto_transactions
            SET status = $1,
@@ -264,13 +259,23 @@ router.put(
                ORDER BY created_at DESC
                LIMIT 1
              )`,
-          [
-            updated.payment_status === "paid" ? "paid" : updated.payment_status === "failed" ? "failed" : "pending",
-            updated.id,
-            cryptoReviewNotes ?? null,
-            cryptoProofImageUrl ?? null,
-          ]
+          [resolvedStatus, updated.id, cryptoReviewNotes ?? null, cryptoProofImageUrl ?? null]
         );
+        if (resolvedStatus === "paid" || resolvedStatus === "failed") {
+          await query(
+            `UPDATE crypto_transactions
+             SET status = 'cancelled'
+             WHERE booking_id = $1
+               AND status = 'pending'
+               AND id <> (
+                 SELECT id FROM crypto_transactions
+                 WHERE booking_id = $1
+                 ORDER BY created_at DESC
+                 LIMIT 1
+               )`,
+            [updated.id]
+          );
+        }
       }
       if (
         updated.payment_method === "crypto" &&
@@ -341,6 +346,39 @@ router.delete(
         return res.status(404).json({ error: "Booking not found" });
       }
       res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// Self-service cancellation — users can cancel their own pending/confirmed bookings
+router.post(
+  "/:id/cancel",
+  requireAuth,
+  loadBookingOwner,
+  requireAdminOrOwner((req) => req.bookingOwnerId),
+  async (req, res, next) => {
+    try {
+      const booking = await query(
+        "SELECT id, status, payment_status FROM bookings WHERE id = $1",
+        [req.params.id]
+      );
+      if (booking.rowCount === 0) {
+        return res.status(404).json({ error: "Booking not found" });
+      }
+      const { status } = booking.rows[0];
+      if (!["pending", "confirmed"].includes(status)) {
+        return res.status(400).json({ error: `Cannot cancel a booking with status '${status}'` });
+      }
+      const result = await query(
+        `UPDATE bookings
+         SET status = 'cancelled', cancelled_by = $2, updated_at = now()
+         WHERE id = $1
+         RETURNING *`,
+        [req.params.id, req.user.role === "admin" ? "admin" : "user"]
+      );
+      res.json(toApi(result.rows[0]));
     } catch (error) {
       next(error);
     }

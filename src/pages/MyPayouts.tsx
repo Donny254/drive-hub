@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
+import AccountLayout from "@/components/shared/AccountLayout";
+import EmptyState from "@/components/shared/EmptyState";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { downloadCsv, toCsv } from "@/lib/csv";
 import { toDateInputValue } from "@/lib/date";
 import { jsPDF } from "jspdf";
+import { Banknote } from "lucide-react";
 
 type Payout = {
   id: string;
@@ -64,15 +65,16 @@ const MyPayouts = () => {
   const [fromDate, setFromDate] = useState<string | null>(null);
   const [toDate, setToDate] = useState<string | null>(null);
 
-  const loadPayouts = useCallback(async () => {
+  const loadPayouts = useCallback(async (signal?: AbortSignal) => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      const resp = await apiFetch("/api/payouts/mine", { headers: authHeaders });
+      const resp = await apiFetch("/api/payouts/mine", { headers: authHeaders, signal });
       if (!resp.ok) throw new Error("Failed to load payouts");
       setPayouts((await resp.json()) as Payout[]);
     } catch (err) {
+      if (err instanceof DOMException && (err as DOMException).name === "AbortError") return;
       console.error(err);
       setError("Failed to load your payout history.");
       toast.error("Failed to load your payout history.");
@@ -82,7 +84,9 @@ const MyPayouts = () => {
   }, [authHeaders, token]);
 
   useEffect(() => {
-    void loadPayouts();
+    const controller = new AbortController();
+    void loadPayouts(controller.signal);
+    return () => controller.abort();
   }, [loadPayouts]);
 
   const summary = useMemo(
@@ -105,8 +109,10 @@ const MyPayouts = () => {
             .filter(Boolean)
             .some((value) => String(value).toLowerCase().includes(query));
       const comparedDate = toDateInputValue(new Date(item.payoutAt || item.createdAt));
-      const matchesFrom = fromDate ? comparedDate >= fromDate : true;
-      const matchesTo = toDate ? comparedDate <= toDate : true;
+      const effectiveFrom = fromDate && toDate && fromDate > toDate ? null : fromDate;
+      const effectiveTo   = fromDate && toDate && fromDate > toDate ? null : toDate;
+      const matchesFrom = effectiveFrom ? comparedDate >= effectiveFrom : true;
+      const matchesTo   = effectiveTo   ? comparedDate <= effectiveTo   : true;
       return matchesStatus && matchesSearch && matchesFrom && matchesTo;
     });
   }, [fromDate, payouts, search, statusFilter, toDate]);
@@ -259,17 +265,10 @@ const MyPayouts = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="container mx-auto px-4 pb-20 pt-28 sm:pt-32">
+    <AccountLayout title="My Payouts">
+      <div>
         <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm uppercase tracking-[0.35em] text-primary">My Account</p>
-            <h1 className="font-display text-3xl sm:text-4xl">Payouts</h1>
-            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              Track booking payouts tied to your listings, export statements, and see what is pending or settled.
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground">Track booking payouts tied to your listings, export statements, and see what is pending or settled.</p>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => void loadPayouts()} disabled={loading}>
               {loading ? "Refreshing..." : "Refresh"}
@@ -314,7 +313,10 @@ const MyPayouts = () => {
         </div>
 
         {error ? (
-          <div className="mb-6 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">{error}</div>
+          <div className="mb-6 flex items-center gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+            <span>{error}</span>
+            <Button variant="outline" size="sm" onClick={() => void loadPayouts()}>Retry</Button>
+          </div>
         ) : null}
 
         <Card className="rounded-2xl">
@@ -322,7 +324,7 @@ const MyPayouts = () => {
             <CardTitle className="text-lg">Payout History</CardTitle>
           </CardHeader>
           <CardContent className="pt-6">
-            <div className="mb-6 grid gap-4 md:grid-cols-[1fr_220px]">
+            <div className="mb-6 grid gap-4 md:grid-cols-[1fr_180px_180px_180px]">
               <div className="grid gap-2">
                 <label className="text-sm font-medium">Search</label>
                 <input
@@ -359,7 +361,12 @@ const MyPayouts = () => {
               <p className="text-sm text-muted-foreground">Loading payouts...</p>
             ) : null}
             {!loading && payouts.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No payout records yet.</p>
+              <EmptyState
+                icon={Banknote}
+                title="No payouts yet"
+                description="Payouts for your vehicle bookings will appear here once processed."
+                action={{ label: "View My Listings", to: "/my-listings" }}
+              />
             ) : null}
 
             {!loading && filteredPayouts.length > 0 ? (
@@ -445,9 +452,8 @@ const MyPayouts = () => {
             ) : null}
           </CardContent>
         </Card>
-      </main>
-      <Footer />
-    </div>
+      </div>
+    </AccountLayout>
   );
 };
 

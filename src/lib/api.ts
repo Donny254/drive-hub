@@ -12,7 +12,13 @@ export const apiFetch = async (path: string, options: RequestInit = {}) => {
     headers.set("Content-Type", "application/json");
   }
 
-  return fetch(url, { ...options, headers });
+  const resp = await fetch(url, { ...options, headers });
+
+  if (resp.status === 401) {
+    window.dispatchEvent(new CustomEvent("auth:expired"));
+  }
+
+  return resp;
 };
 
 export const resolveImageUrl = (url?: string | null) => {

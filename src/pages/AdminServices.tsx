@@ -202,7 +202,7 @@ const AdminServices = () => {
         <div className="container mx-auto px-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h1 className="font-display text-3xl tracking-wider">Admin Services</h1>
+              <h1 className="font-display text-3xl">Admin Services</h1>
               <p className="text-muted-foreground mt-1">Create and manage services.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
