@@ -89,9 +89,27 @@ CREATE TABLE IF NOT EXISTS listing_views (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS listing_bids (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  listing_id uuid NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  bidder_name text NOT NULL,
+  bidder_email text,
+  bidder_phone text,
+  amount_cents integer NOT NULL CHECK (amount_cents > 0),
+  message text,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+  handled_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_listing_views_listing_id ON listing_views(listing_id);
 CREATE INDEX IF NOT EXISTS idx_listing_views_user_id ON listing_views(user_id);
 CREATE INDEX IF NOT EXISTS idx_listing_audit_logs_listing_id ON listing_audit_logs(listing_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_listing_bids_listing_id ON listing_bids(listing_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_listing_bids_user_id ON listing_bids(user_id);
+CREATE INDEX IF NOT EXISTS idx_listing_bids_status ON listing_bids(status);
 
 CREATE TABLE IF NOT EXISTS digest_runs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -281,6 +299,25 @@ ALTER TABLE inquiries
 ALTER TABLE inquiries
   ADD COLUMN IF NOT EXISTS handled_at timestamptz;
 
+CREATE TABLE IF NOT EXISTS listing_bids (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  listing_id uuid NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  bidder_name text NOT NULL,
+  bidder_email text,
+  bidder_phone text,
+  amount_cents integer NOT NULL CHECK (amount_cents > 0),
+  message text,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected')),
+  handled_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_listing_bids_listing_id ON listing_bids(listing_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_listing_bids_user_id ON listing_bids(user_id);
+CREATE INDEX IF NOT EXISTS idx_listing_bids_status ON listing_bids(status);
+
 CREATE TABLE IF NOT EXISTS mpesa_transactions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id uuid REFERENCES orders(id) ON DELETE SET NULL,
@@ -416,6 +453,11 @@ FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
 DROP TRIGGER IF EXISTS crypto_transactions_set_updated_at ON crypto_transactions;
 CREATE TRIGGER crypto_transactions_set_updated_at
 BEFORE UPDATE ON crypto_transactions
+FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
+
+DROP TRIGGER IF EXISTS listing_bids_set_updated_at ON listing_bids;
+CREATE TRIGGER listing_bids_set_updated_at
+BEFORE UPDATE ON listing_bids
 FOR EACH ROW EXECUTE PROCEDURE set_updated_at();
 
 ALTER TABLE users
