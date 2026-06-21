@@ -6,10 +6,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import BrandLogo from "@/components/branding/BrandLogo";
 import { useAuth } from "@/context/AuthContext";
 import { prefetchRoute } from "@/lib/routePrefetch";
-<<<<<<< HEAD
-=======
 import ActionConfirmDialog from "@/components/shared/ActionConfirmDialog";
->>>>>>> 6bbb07c0a8e89f23f60f09ecbaff08c55bd61b02
 
 const navLinks = [
   { name: "Home", path: "/" },

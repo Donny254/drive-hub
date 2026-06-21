@@ -332,7 +332,6 @@ const ListingDetails = () => {
               <div className="mt-12 grid grid-cols-1 gap-8 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-6">
                   <div className="bg-card border border-border rounded-xl p-6">
-<<<<<<< HEAD
                     <h3 className="font-display text-xl tracking-wider">Place a Bid</h3>
                     <p className="text-muted-foreground text-sm mt-1">
                       Send your offer to the seller. They will be notified with your bid and contact details.
@@ -401,9 +400,6 @@ const ListingDetails = () => {
 
                   <div className="bg-card border border-border rounded-xl p-6">
                     <h3 className="font-display text-xl tracking-wider">Contact Seller</h3>
-=======
-                    <h3 className="font-display text-xl">Contact Seller</h3>
->>>>>>> 6bbb07c0a8e89f23f60f09ecbaff08c55bd61b02
                     <p className="text-muted-foreground text-sm mt-1">
                       Send a message to the seller for availability and inspection.
                     </p>

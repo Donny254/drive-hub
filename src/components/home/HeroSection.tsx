@@ -49,8 +49,6 @@ const HeroSection = () => {
             East Africa's exclusive marketplace for performance cars and luxury
             SUVs. Buy, sell, or rent high-end vehicles from trusted dealers
             across Kenya and the continent.
-          <p className="mt-6 max-w-xl text-base text-muted-foreground animate-fade-in md:text-xl" style={{ animationDelay: "0.2s" }}>
-            East Africa's exclusive marketplace for a variaty of cars. Buy, sell, or rent your prefered vehicles from trusted dealers across different location.
           </p>
           <div
             className="mt-10 flex flex-col gap-4 animate-fade-in sm:flex-row sm:flex-wrap"
