@@ -4,6 +4,7 @@ import { optionalAuth, requireAuth, requireAdminOrOwner } from "../middleware/au
 import { sendListingModerationEmail } from "../email.js";
 import { sendListingModerationMessage } from "../notifications.js";
 import { sanitizeText } from "../utils.js";
+import { closeAuctionById } from "../auctions.js";
 
 const router = Router();
 
@@ -43,6 +44,12 @@ const toApi = (row) => ({
   riskScore: Number(row.risk_score || 0),
   approvedAt: row.approved_at || null,
   approvedBy: row.approved_by || null,
+  isAuction: row.is_auction ?? false,
+  auctionEndsAt: row.auction_ends_at || null,
+  minBidIncrementCents: row.min_bid_increment_cents == null ? null : Number(row.min_bid_increment_cents),
+  winningBidId: row.winning_bid_id || null,
+  highestBidCents: row.highest_bid_cents == null ? 0 : Number(row.highest_bid_cents),
+  bidCount: row.bid_count == null ? 0 : Number(row.bid_count),
   images: row.images ?? undefined,
   seller: row.seller_id
     ? {
@@ -68,6 +75,27 @@ const parseOptionalInt = (value) => {
   if (value === undefined || value === null || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+// Validate + normalize auction inputs. Returns { error } or
+// { isAuction, auctionEndsAt, minBidIncrementCents }.
+const resolveAuctionInput = ({ isAuction, auctionEndsAt, minBidIncrementCents }) => {
+  if (!isAuction) {
+    return { isAuction: false, auctionEndsAt: null, minBidIncrementCents: null };
+  }
+  const ends = auctionEndsAt ? new Date(auctionEndsAt) : null;
+  if (!ends || Number.isNaN(ends.getTime()) || ends.getTime() <= Date.now()) {
+    return { error: "Auction end time must be a valid future date" };
+  }
+  let increment = null;
+  if (minBidIncrementCents !== null && minBidIncrementCents !== undefined && minBidIncrementCents !== "") {
+    const parsed = Math.round(Number(minBidIncrementCents));
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return { error: "Minimum bid increment must be a positive amount" };
+    }
+    increment = parsed;
+  }
+  return { isAuction: true, auctionEndsAt: ends.toISOString(), minBidIncrementCents: increment };
 };
 
 const validateListingQuality = ({ title, priceCents, year, imageUrl, description, location }) => {
@@ -284,7 +312,14 @@ router.get("/", optionalAuth, async (req, res, next) => {
                 SELECT COUNT(*)
                 FROM listings sl
                 WHERE sl.user_id = l.user_id AND sl.status = 'active'
-              ), 0) AS seller_active_listings_count
+              ), 0) AS seller_active_listings_count,
+              COALESCE((
+                SELECT MAX(amount_cents) FROM listing_bids bb
+                WHERE bb.listing_id = l.id AND bb.status IN ('pending', 'accepted')
+              ), 0) AS highest_bid_cents,
+              COALESCE((
+                SELECT COUNT(*) FROM listing_bids bb WHERE bb.listing_id = l.id
+              ), 0) AS bid_count
        FROM listings l
        LEFT JOIN users u ON u.id = l.user_id
        ${whereClause}
@@ -312,7 +347,14 @@ router.get("/me", requireAuth, async (req, res, next) => {
                 SELECT COUNT(*)
                 FROM listings sl
                 WHERE sl.user_id = l.user_id AND sl.status = 'active'
-              ), 0) AS seller_active_listings_count
+              ), 0) AS seller_active_listings_count,
+              COALESCE((
+                SELECT MAX(amount_cents) FROM listing_bids bb
+                WHERE bb.listing_id = l.id AND bb.status IN ('pending', 'accepted')
+              ), 0) AS highest_bid_cents,
+              COALESCE((
+                SELECT COUNT(*) FROM listing_bids bb WHERE bb.listing_id = l.id
+              ), 0) AS bid_count
        FROM listings l
        LEFT JOIN users u ON u.id = l.user_id
        WHERE l.user_id = $1 AND l.deleted_at IS NULL
@@ -636,7 +678,7 @@ router.get(
 
 router.get("/:id", async (req, res, next) => {
   try {
-    const result = await query(
+    const listingSql =
       `SELECT l.*,
         u.id AS seller_id,
         u.name AS seller_name,
@@ -648,6 +690,13 @@ router.get("/:id", async (req, res, next) => {
           FROM listings sl
           WHERE sl.user_id = l.user_id AND sl.status = 'active'
         ), 0) AS seller_active_listings_count,
+        COALESCE((
+          SELECT MAX(amount_cents) FROM listing_bids bb
+          WHERE bb.listing_id = l.id AND bb.status IN ('pending', 'accepted')
+        ), 0) AS highest_bid_cents,
+        COALESCE((
+          SELECT COUNT(*) FROM listing_bids bb WHERE bb.listing_id = l.id
+        ), 0) AS bid_count,
         COALESCE(
           json_agg(json_build_object('id', li.id, 'url', li.url) ORDER BY li.position)
           FILTER (WHERE li.id IS NOT NULL),
@@ -657,11 +706,27 @@ router.get("/:id", async (req, res, next) => {
        LEFT JOIN users u ON u.id = l.user_id
        LEFT JOIN listing_images li ON li.listing_id = l.id
        WHERE l.id = $1
-       GROUP BY l.id, u.id`,
-      [req.params.id]
-    );
+       GROUP BY l.id, u.id`;
+
+    const fetchListing = () => query(listingSql, [req.params.id]);
+    let result = await fetchListing();
     if (result.rowCount === 0) {
       return res.status(404).json({ error: "Listing not found" });
+    }
+    const row = result.rows[0];
+    // If this is an auction whose end time has passed, resolve the winner now
+    // (lazy close) so the response reflects the final state.
+    if (
+      row.is_auction &&
+      row.status === "active" &&
+      row.auction_ends_at &&
+      new Date(row.auction_ends_at) <= new Date()
+    ) {
+      await closeAuctionById(req.params.id).catch(() => undefined);
+      result = await fetchListing();
+      if (result.rowCount === 0) {
+        return res.status(404).json({ error: "Listing not found" });
+      }
     }
     res.json(toApi(result.rows[0]));
   } catch (error) {
@@ -687,6 +752,9 @@ router.post("/", requireAuth, async (req, res, next) => {
       userId,
       imageUrls,
       moderationNotes,
+      isAuction = false,
+      auctionEndsAt = null,
+      minBidIncrementCents = null,
     } = req.body;
     const qualityError = validateListingQuality({
       title: sanitizeText(title),
@@ -706,6 +774,11 @@ router.post("/", requireAuth, async (req, res, next) => {
       return res.status(400).json({ error: "Invalid status" });
     }
 
+    const auction = resolveAuctionInput({ isAuction, auctionEndsAt, minBidIncrementCents });
+    if (auction.error) {
+      return res.status(400).json({ error: auction.error });
+    }
+
     const ownerId = req.user.role === "admin" && userId ? userId : req.user.id;
     const nextStatus = req.user.role === "admin" ? status : "pending_approval";
     const risk = await detectRiskFlags({
@@ -720,8 +793,8 @@ router.post("/", requireAuth, async (req, res, next) => {
 
     const result = await query(
       `INSERT INTO listings
-      (user_id, title, price_cents, year, mileage, fuel, power_hp, image_url, listing_type, featured, status, description, location, moderation_notes, risk_flags, risk_score, approved_at, approved_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+      (user_id, title, price_cents, year, mileage, fuel, power_hp, image_url, listing_type, featured, status, description, location, moderation_notes, risk_flags, risk_score, approved_at, approved_by, is_auction, auction_ends_at, min_bid_increment_cents)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
       RETURNING *`,
       [
         ownerId,
@@ -742,6 +815,9 @@ router.post("/", requireAuth, async (req, res, next) => {
         risk.riskScore,
         req.user.role === "admin" && nextStatus === "active" ? new Date().toISOString() : null,
         req.user.role === "admin" && nextStatus === "active" ? req.user.id : null,
+        auction.isAuction,
+        auction.auctionEndsAt,
+        auction.minBidIncrementCents,
       ]
     );
 
@@ -881,6 +957,49 @@ router.put(
       }
       maybeSet("description", req.body.description ?? undefined);
       maybeSet("location", req.body.location ?? undefined);
+
+      if (
+        req.body.isAuction !== undefined ||
+        req.body.auctionEndsAt !== undefined ||
+        req.body.minBidIncrementCents !== undefined
+      ) {
+        const wantsAuction =
+          req.body.isAuction !== undefined ? Boolean(req.body.isAuction) : Boolean(current.is_auction);
+        const nextEndsRaw =
+          req.body.auctionEndsAt !== undefined ? req.body.auctionEndsAt : current.auction_ends_at;
+        const nextEndsIso = nextEndsRaw ? new Date(nextEndsRaw).toISOString() : null;
+        const currentEndsIso = current.auction_ends_at ? new Date(current.auction_ends_at).toISOString() : null;
+        const endChanged = nextEndsIso !== currentEndsIso;
+
+        if (wantsAuction) {
+          if (!nextEndsIso) {
+            return res.status(400).json({ error: "Auction end time is required" });
+          }
+          // Only require a future date when the end time is actually being changed,
+          // so editing other fields on a finished auction doesn't get blocked.
+          if (endChanged && new Date(nextEndsIso).getTime() <= Date.now()) {
+            return res.status(400).json({ error: "Auction end time must be a valid future date" });
+          }
+        }
+
+        let increment = null;
+        const incRaw =
+          req.body.minBidIncrementCents !== undefined
+            ? req.body.minBidIncrementCents
+            : current.min_bid_increment_cents;
+        if (incRaw !== null && incRaw !== undefined && incRaw !== "") {
+          const parsed = Math.round(Number(incRaw));
+          if (!Number.isFinite(parsed) || parsed <= 0) {
+            return res.status(400).json({ error: "Minimum bid increment must be a positive amount" });
+          }
+          increment = parsed;
+        }
+
+        maybeSet("is_auction", wantsAuction);
+        maybeSet("auction_ends_at", wantsAuction ? nextEndsIso : null);
+        maybeSet("min_bid_increment_cents", wantsAuction ? increment : null);
+      }
+
       if (updates.length === 0) {
         return res.status(400).json({ error: "No fields to update" });
       }

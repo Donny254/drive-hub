@@ -20,6 +20,12 @@ export type Listing = {
   riskFlags?: string[];
   riskScore?: number;
   approvedAt?: string | null;
+  isAuction?: boolean;
+  auctionEndsAt?: string | null;
+  minBidIncrementCents?: number | null;
+  winningBidId?: string | null;
+  highestBidCents?: number;
+  bidCount?: number;
   images?: Array<{ id: string; url: string }>;
 };
 
@@ -69,6 +75,9 @@ export const emptyListing: Listing = {
   imageUrl: null,
   description: null,
   location: null,
+  isAuction: false,
+  auctionEndsAt: null,
+  minBidIncrementCents: null,
 };
 
 const currentYear = new Date().getFullYear();

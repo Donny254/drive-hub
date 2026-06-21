@@ -6,6 +6,12 @@ dotenv.config();
 
 const { Pool } = pg;
 
+// Fall back to a local Postgres when no DATABASE_URL is configured, so the app
+// works out of the box for local development.
+const DEFAULT_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/wheelsnationke";
+
+export const connectionString = process.env.DATABASE_URL || DEFAULT_DATABASE_URL;
+
 const buildSslConfig = () => {
   if (process.env.PGSSL !== "true") {
     return undefined;
@@ -22,9 +28,11 @@ const buildSslConfig = () => {
   };
 };
 
+export const sslConfig = buildSslConfig();
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: buildSslConfig(),
+  connectionString,
+  ssl: sslConfig,
 });
 
 export const query = (text, params) => pool.query(text, params);

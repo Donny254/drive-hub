@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { query } from "../db.js";
+import { query, withTransaction } from "../db.js";
 import { optionalAuth, requireAuth } from "../middleware/auth.js";
 import { sendListingBidEmail } from "../email.js";
 import { sendListingBidMessage } from "../notifications.js";
+import { minNextBidCents, closeAuctionById } from "../auctions.js";
 
 const router = Router();
 
@@ -93,49 +94,82 @@ router.post("/", optionalAuth, async (req, res, next) => {
       return res.status(400).json({ error: "Email or phone is required" });
     }
 
-    const listingResult = await query(
-      `SELECT l.id,
-              l.title,
-              l.price_cents,
-              l.status,
-              l.user_id,
-              u.name AS seller_name,
-              u.email AS seller_email,
-              u.phone AS seller_phone
-       FROM listings l
-       LEFT JOIN users u ON u.id = l.user_id
-       WHERE l.id = $1`,
-      [listingId]
-    );
-    if (listingResult.rowCount === 0) {
-      return res.status(404).json({ error: "Listing not found" });
+    // Lock the listing row so two simultaneous bids can't both clear the same
+    // minimum and tie for the lead.
+    const outcome = await withTransaction(async (client) => {
+      const listingResult = await client.query(
+        `SELECT l.*,
+                u.name AS seller_name,
+                u.email AS seller_email,
+                u.phone AS seller_phone
+         FROM listings l
+         LEFT JOIN users u ON u.id = l.user_id
+         WHERE l.id = $1
+         FOR UPDATE`,
+        [listingId]
+      );
+      if (listingResult.rowCount === 0) {
+        return { status: 404, error: "Listing not found" };
+      }
+      const listing = listingResult.rows[0];
+
+      if (listing.status !== "active") {
+        return { status: 400, error: "Bids can only be placed on active listings" };
+      }
+      if (req.user?.id && listing.user_id === req.user.id) {
+        return { status: 400, error: "You cannot bid on your own listing" };
+      }
+
+      if (listing.is_auction) {
+        if (listing.auction_ends_at && new Date(listing.auction_ends_at) <= new Date()) {
+          return { status: 400, error: "This auction has ended" };
+        }
+        const highResult = await client.query(
+          `SELECT COALESCE(MAX(amount_cents), 0) AS high
+           FROM listing_bids
+           WHERE listing_id = $1 AND status IN ('pending', 'accepted')`,
+          [listingId]
+        );
+        const high = Number(highResult.rows[0].high || 0);
+        const minRequired = minNextBidCents(listing, high);
+        if (parsedAmount < minRequired) {
+          return {
+            status: 400,
+            error: `Bid must be at least KES ${(minRequired / 100).toLocaleString()}`,
+            minRequiredCents: minRequired,
+            highestBidCents: high,
+          };
+        }
+      }
+
+      const inserted = await client.query(
+        `INSERT INTO listing_bids
+         (listing_id, user_id, bidder_name, bidder_email, bidder_phone, amount_cents, message, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
+         RETURNING *`,
+        [
+          listingId,
+          req.user?.id || null,
+          String(bidderName).trim(),
+          bidderEmail ? String(bidderEmail).trim() : null,
+          bidderPhone ? String(bidderPhone).trim() : null,
+          parsedAmount,
+          message ? String(message).trim() : null,
+        ]
+      );
+      return { status: 201, bid: inserted.rows[0], listing };
+    });
+
+    if (outcome.status !== 201) {
+      const body = { error: outcome.error };
+      if (outcome.minRequiredCents != null) {
+        body.minRequiredCents = outcome.minRequiredCents;
+        body.highestBidCents = outcome.highestBidCents;
+      }
+      return res.status(outcome.status).json(body);
     }
 
-    const listing = listingResult.rows[0];
-    if (listing.status !== "active") {
-      return res.status(400).json({ error: "Bids can only be placed on active listings" });
-    }
-    if (req.user?.id && listing.user_id === req.user.id) {
-      return res.status(400).json({ error: "You cannot bid on your own listing" });
-    }
-
-    const result = await query(
-      `INSERT INTO listing_bids
-       (listing_id, user_id, bidder_name, bidder_email, bidder_phone, amount_cents, message, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
-       RETURNING *`,
-      [
-        listingId,
-        req.user?.id || null,
-        String(bidderName).trim(),
-        bidderEmail ? String(bidderEmail).trim() : null,
-        bidderPhone ? String(bidderPhone).trim() : null,
-        parsedAmount,
-        message ? String(message).trim() : null,
-      ]
-    );
-
-    const bid = result.rows[0];
+    const { bid, listing } = outcome;
     try {
       await sendListingBidEmail({
         to: listing.seller_email || null,
@@ -156,6 +190,55 @@ router.post("/", optionalAuth, async (req, res, next) => {
     }
 
     return res.status(201).json(toApi({ ...bid, listing_title: listing.title, listing_price_cents: listing.price_cents }));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// Public bid summary for a listing (highest bid, count, next minimum, countdown).
+router.get("/listing/:listingId/summary", async (req, res, next) => {
+  try {
+    const fetchSummary = () =>
+      query(
+        `SELECT l.id, l.status, l.is_auction, l.auction_ends_at, l.price_cents,
+                l.min_bid_increment_cents, l.winning_bid_id,
+                COALESCE((SELECT MAX(amount_cents) FROM listing_bids
+                          WHERE listing_id = l.id AND status IN ('pending', 'accepted')), 0) AS highest,
+                COALESCE((SELECT COUNT(*) FROM listing_bids WHERE listing_id = l.id), 0) AS cnt
+         FROM listings l
+         WHERE l.id = $1`,
+        [req.params.listingId]
+      );
+
+    let result = await fetchSummary();
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Listing not found" });
+    }
+    let row = result.rows[0];
+
+    // Resolve the auction now if its time is up, so pollers see the final state.
+    if (row.is_auction && row.status === "active" && row.auction_ends_at && new Date(row.auction_ends_at) <= new Date()) {
+      await closeAuctionById(req.params.listingId).catch(() => undefined);
+      result = await fetchSummary();
+      if (result.rowCount === 0) {
+        return res.status(404).json({ error: "Listing not found" });
+      }
+      row = result.rows[0];
+    }
+
+    const high = Number(row.highest || 0);
+    return res.json({
+      listingId: row.id,
+      status: row.status,
+      isAuction: row.is_auction ?? false,
+      auctionEndsAt: row.auction_ends_at || null,
+      priceCents: Number(row.price_cents || 0),
+      highestBidCents: high,
+      bidCount: Number(row.cnt || 0),
+      minBidIncrementCents: row.min_bid_increment_cents == null ? null : Number(row.min_bid_increment_cents),
+      minNextBidCents: minNextBidCents(row, high),
+      winningBidId: row.winning_bid_id || null,
+    });
   } catch (error) {
     return next(error);
   }

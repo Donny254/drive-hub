@@ -62,6 +62,11 @@ CREATE TABLE IF NOT EXISTS listings (
   risk_score integer NOT NULL DEFAULT 0,
   approved_at timestamptz,
   approved_by uuid REFERENCES users(id) ON DELETE SET NULL,
+  is_auction boolean NOT NULL DEFAULT false,
+  auction_ends_at timestamptz,
+  min_bid_increment_cents integer,
+  winning_bid_id uuid,
+  deleted_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -532,6 +537,22 @@ ALTER TABLE listings
 
 ALTER TABLE listings
   ADD COLUMN IF NOT EXISTS approved_by uuid REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE listings
+  ADD COLUMN IF NOT EXISTS is_auction boolean NOT NULL DEFAULT false;
+
+ALTER TABLE listings
+  ADD COLUMN IF NOT EXISTS auction_ends_at timestamptz;
+
+ALTER TABLE listings
+  ADD COLUMN IF NOT EXISTS min_bid_increment_cents integer;
+
+ALTER TABLE listings
+  ADD COLUMN IF NOT EXISTS winning_bid_id uuid;
+
+CREATE INDEX IF NOT EXISTS idx_listings_auction_open
+  ON listings(auction_ends_at)
+  WHERE is_auction = true AND status = 'active';
 
 ALTER TABLE listings
   DROP CONSTRAINT IF EXISTS listings_status_check;

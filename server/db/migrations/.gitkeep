@@ -1,0 +1,4 @@
+# Ordered incremental migrations (*.sql) applied once each, after the base schema.
+# Name them with a sortable prefix, e.g. 001_add_something.sql, 002_backfill.sql.
+# The base server/db/schema.sql is applied on every boot (it is idempotent);
+# use files here for changes that must run exactly once (e.g. data backfills).

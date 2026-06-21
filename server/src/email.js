@@ -152,6 +152,71 @@ export const sendListingBidEmail = async ({ to, bid, listingTitle, sellerName, a
   });
 };
 
+export const sendAuctionWonEmail = async ({
+  to,
+  bidderName,
+  listingTitle,
+  amountCents,
+  sellerName,
+  sellerEmail,
+  sellerPhone,
+}) => {
+  if (!to) return false;
+
+  const lines = [
+    `Hi ${bidderName || "there"},`,
+    "",
+    `Congratulations! You won the auction${listingTitle ? ` for "${listingTitle}"` : ""} with a winning bid of KES ${(Number(amountCents || 0) / 100).toLocaleString()}.`,
+    "",
+    "Contact the seller to complete the purchase:",
+    `Seller: ${sellerName || "N/A"}`,
+    `Email: ${sellerEmail || "N/A"}`,
+    `Phone: ${sellerPhone || "N/A"}`,
+    "",
+    "Please reach out to arrange payment and collection.",
+  ].filter(Boolean);
+
+  return sendMail({
+    to,
+    subject: listingTitle ? `You won the auction for ${listingTitle}` : "You won the auction",
+    text: lines.join("\n"),
+    replyTo: sellerEmail || undefined,
+  });
+};
+
+export const sendAuctionEndedSellerEmail = async ({
+  to,
+  sellerName,
+  listingTitle,
+  winnerName,
+  amountCents,
+  winnerEmail,
+  winnerPhone,
+}) => {
+  if (!to) return false;
+
+  const lines = [
+    `Hello ${sellerName || "Seller"},`,
+    "",
+    `Your auction${listingTitle ? ` for "${listingTitle}"` : ""} has ended.`,
+    `Winning bid: KES ${(Number(amountCents || 0) / 100).toLocaleString()}`,
+    "",
+    "Winning bidder:",
+    `Name: ${winnerName || "N/A"}`,
+    `Email: ${winnerEmail || "N/A"}`,
+    `Phone: ${winnerPhone || "N/A"}`,
+    "",
+    "Contact the winner to finalize the sale.",
+  ].filter(Boolean);
+
+  return sendMail({
+    to,
+    subject: listingTitle ? `Auction ended for ${listingTitle}` : "Your auction ended",
+    text: lines.join("\n"),
+    replyTo: winnerEmail || undefined,
+  });
+};
+
 export const sendInquiryReceiptEmail = async ({ to, name, listingTitle }) => {
   if (!to) return false;
 

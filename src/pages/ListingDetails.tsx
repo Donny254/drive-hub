@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
@@ -30,6 +30,12 @@ type Listing = {
   status: "active" | "sold" | "inactive";
   description: string | null;
   location: string | null;
+  isAuction?: boolean;
+  auctionEndsAt?: string | null;
+  minBidIncrementCents?: number | null;
+  highestBidCents?: number;
+  bidCount?: number;
+  winningBidId?: string | null;
   seller?: {
     id: string;
     name: string;
@@ -38,6 +44,31 @@ type Listing = {
     activeListingsCount: number;
     trustLevel: "verified" | "dealer" | "private";
   } | null;
+};
+
+type BidSummary = {
+  listingId: string;
+  status: string;
+  isAuction: boolean;
+  auctionEndsAt: string | null;
+  priceCents: number;
+  highestBidCents: number;
+  bidCount: number;
+  minBidIncrementCents: number | null;
+  minNextBidCents: number;
+  winningBidId: string | null;
+};
+
+const formatCountdown = (ms: number) => {
+  if (ms <= 0) return "Ended";
+  const totalSeconds = Math.floor(ms / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  return `${minutes}m ${seconds}s`;
 };
 
 const formatMemberSince = (value?: string | null) => {
@@ -68,6 +99,17 @@ const ListingDetails = () => {
   const [bidSending, setBidSending] = useState(false);
   const [bidSent, setBidSent] = useState(false);
   const [bidError, setBidError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<BidSummary | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  const loadSummary = useCallback(async (listingId: string) => {
+    try {
+      const resp = await apiFetch(`/api/listing-bids/listing/${listingId}/summary`);
+      if (resp.ok) setSummary(await resp.json());
+    } catch {
+      /* ignore polling errors */
+    }
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -117,6 +159,20 @@ const ListingDetails = () => {
     }).catch(() => undefined);
   }, [listing?.id]);
 
+  // Poll the public bid summary so the highest bid + countdown stay live.
+  useEffect(() => {
+    if (!listing?.id) return;
+    loadSummary(listing.id);
+    const interval = setInterval(() => loadSummary(listing.id), 15000);
+    return () => clearInterval(interval);
+  }, [listing?.id, loadSummary]);
+
+  // Tick once a second to drive the countdown display.
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   const galleryImages = useMemo(() => {
     if (!listing) return [];
     const list = listing.images?.map((img) => resolveImageUrl(img.url)) ?? [];
@@ -158,6 +214,13 @@ const ListingDetails = () => {
     e.preventDefault();
     const amount = Number(bidAmount);
     if (!listing?.id || !bidderName.trim() || !Number.isFinite(amount) || amount <= 0) return;
+    const amountCents = Math.round(amount * 100);
+    const auctionLive = summary?.isAuction ?? listing.isAuction ?? false;
+    const requiredMin = summary?.minNextBidCents ?? listing.priceCents ?? 0;
+    if (auctionLive && amountCents < requiredMin) {
+      setBidError(`Bid must be at least KES ${(requiredMin / 100).toLocaleString()}`);
+      return;
+    }
     setBidSending(true);
     setBidSent(false);
     setBidError(null);
@@ -166,7 +229,7 @@ const ListingDetails = () => {
         method: "POST",
         body: JSON.stringify({
           listingId: listing.id,
-          amountCents: Math.round(amount * 100),
+          amountCents,
           bidderName,
           bidderEmail,
           bidderPhone,
@@ -179,12 +242,23 @@ const ListingDetails = () => {
       setBidSent(true);
       setBidAmount("");
       setBidMessage("");
+      loadSummary(listing.id);
     } catch (err) {
       setBidError(err instanceof Error ? err.message : "Failed to submit bid.");
     } finally {
       setBidSending(false);
     }
   };
+
+  const isAuction = summary?.isAuction ?? listing?.isAuction ?? false;
+  const auctionEndsAt = summary?.auctionEndsAt ?? listing?.auctionEndsAt ?? null;
+  const endsMs = auctionEndsAt ? new Date(auctionEndsAt).getTime() : null;
+  const auctionEnded =
+    isAuction && (((summary?.status && summary.status !== "active") ?? false) || (endsMs != null && endsMs <= now));
+  const highestBidCents = summary?.highestBidCents ?? listing?.highestBidCents ?? 0;
+  const bidCount = summary?.bidCount ?? listing?.bidCount ?? 0;
+  const minNextBid = summary?.minNextBidCents ?? listing?.priceCents ?? 0;
+  const countdownLabel = endsMs != null ? formatCountdown(endsMs - now) : null;
 
   return (
     <div className="min-h-screen bg-background">
@@ -205,6 +279,11 @@ const ListingDetails = () => {
                       className="w-full h-full object-cover"
                     />
                     <div className="absolute top-4 left-4 flex gap-2">
+                      {isAuction && (
+                        <Badge className="bg-primary text-primary-foreground">
+                          {auctionEnded ? "Auction ended" : "Auction"}
+                        </Badge>
+                      )}
                       {listing.featured && (
                         <Badge className="bg-primary text-primary-foreground">Featured</Badge>
                       )}
@@ -332,70 +411,130 @@ const ListingDetails = () => {
               <div className="mt-12 grid grid-cols-1 gap-8 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-6">
                   <div className="bg-card border border-border rounded-xl p-6">
-                    <h3 className="font-display text-xl tracking-wider">Place a Bid</h3>
+                    <h3 className="font-display text-xl tracking-wider">
+                      {isAuction ? "Auction" : "Place a Bid"}
+                    </h3>
                     <p className="text-muted-foreground text-sm mt-1">
-                      Send your offer to the seller. They will be notified with your bid and contact details.
+                      {isAuction
+                        ? "The highest bid when the timer ends wins automatically. Each bid must beat the current highest."
+                        : "Send your offer to the seller. They will be notified with your bid and contact details."}
                     </p>
-                    <form className="mt-4 grid gap-4" onSubmit={submitBid}>
-                      <div className="grid gap-2">
-                        <Label>Bid Price (KES)</Label>
-                        <Input
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={bidAmount}
-                          onChange={(e) => setBidAmount(e.target.value)}
-                          placeholder={`${Math.round(listing.priceCents / 100).toLocaleString()}`}
-                          required
-                        />
+
+                    {isAuction && (
+                      <div className="mt-4 grid gap-3 rounded-lg border border-primary/30 bg-primary/5 p-4 sm:grid-cols-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Highest bid</p>
+                          <p className="mt-1 font-display text-2xl text-primary break-words">
+                            {highestBidCents > 0
+                              ? `KES ${(highestBidCents / 100).toLocaleString()}`
+                              : "No bids yet"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {bidCount} {bidCount === 1 ? "bid" : "bids"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                            {auctionEnded ? "Status" : "Time left"}
+                          </p>
+                          <p className="mt-1 font-display text-2xl">
+                            {auctionEnded ? "Ended" : countdownLabel}
+                          </p>
+                          {auctionEndsAt && !auctionEnded && (
+                            <p className="text-xs text-muted-foreground break-words">
+                              Ends {new Date(auctionEndsAt).toLocaleString()}
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Minimum next bid</p>
+                          <p className="mt-1 font-display text-2xl break-words">
+                            KES {(minNextBid / 100).toLocaleString()}
+                          </p>
+                        </div>
                       </div>
-                      <div className="grid gap-4 sm:grid-cols-2">
+                    )}
+
+                    {isAuction && auctionEnded ? (
+                      <div className="mt-4 rounded-lg border border-border bg-background/60 p-4 text-sm">
+                        <p className="font-medium">This auction has ended.</p>
+                        <p className="text-muted-foreground mt-1">
+                          {summary?.status === "sold" || listing.status === "sold"
+                            ? "The vehicle has been sold to the highest bidder. The winner is notified by email."
+                            : highestBidCents > 0
+                              ? "The highest bid has won. The winner is notified by email."
+                              : "The auction closed without any bids."}
+                        </p>
+                      </div>
+                    ) : (
+                      <form className="mt-4 grid gap-4" onSubmit={submitBid}>
                         <div className="grid gap-2">
-                          <Label>Name</Label>
+                          <Label>Bid Price (KES)</Label>
                           <Input
-                            value={bidderName}
-                            onChange={(e) => setBidderName(e.target.value)}
+                            type="number"
+                            min={isAuction ? Math.ceil(minNextBid / 100) : 1}
+                            step="1"
+                            value={bidAmount}
+                            onChange={(e) => setBidAmount(e.target.value)}
+                            placeholder={`${Math.round((isAuction ? minNextBid : listing.priceCents) / 100).toLocaleString()}`}
+                            required
+                          />
+                          {isAuction && (
+                            <p className="text-xs text-muted-foreground">
+                              Enter at least KES {(minNextBid / 100).toLocaleString()}.
+                            </p>
+                          )}
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="grid gap-2">
+                            <Label>Name</Label>
+                            <Input
+                              value={bidderName}
+                              onChange={(e) => setBidderName(e.target.value)}
+                              required
+                            />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label>Phone</Label>
+                            <Input
+                              value={bidderPhone}
+                              onChange={(e) => setBidderPhone(e.target.value)}
+                              placeholder="+254..."
+                            />
+                          </div>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label>Email</Label>
+                          <Input
+                            type="email"
+                            value={bidderEmail}
+                            onChange={(e) => setBidderEmail(e.target.value)}
+                            placeholder="name@example.com"
                             required
                           />
                         </div>
                         <div className="grid gap-2">
-                          <Label>Phone</Label>
-                          <Input
-                            value={bidderPhone}
-                            onChange={(e) => setBidderPhone(e.target.value)}
-                            placeholder="+254..."
+                          <Label>Message</Label>
+                          <Textarea
+                            rows={3}
+                            value={bidMessage}
+                            onChange={(e) => setBidMessage(e.target.value)}
+                            placeholder="I can view and complete payment this week."
                           />
                         </div>
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Email</Label>
-                        <Input
-                          type="email"
-                          value={bidderEmail}
-                          onChange={(e) => setBidderEmail(e.target.value)}
-                          placeholder="name@example.com"
-                          required
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label>Message</Label>
-                        <Textarea
-                          rows={3}
-                          value={bidMessage}
-                          onChange={(e) => setBidMessage(e.target.value)}
-                          placeholder="I can view and complete payment this week."
-                        />
-                      </div>
-                      {bidError && <p className="text-sm text-destructive">{bidError}</p>}
-                      {bidSent && (
-                        <p className="text-sm text-success">
-                          Bid submitted. The seller has been notified.
-                        </p>
-                      )}
-                      <Button variant="hero" type="submit" disabled={bidSending}>
-                        {bidSending ? "Submitting..." : "Submit Bid"}
-                      </Button>
-                    </form>
+                        {bidError && <p className="text-sm text-destructive">{bidError}</p>}
+                        {bidSent && (
+                          <p className="text-sm text-success">
+                            {isAuction
+                              ? "Bid placed. Keep an eye on the highest bid—the top bid when the timer ends wins."
+                              : "Bid submitted. The seller has been notified."}
+                          </p>
+                        )}
+                        <Button variant="hero" type="submit" disabled={bidSending}>
+                          {bidSending ? "Submitting..." : isAuction ? "Place Bid" : "Submit Bid"}
+                        </Button>
+                      </form>
+                    )}
                   </div>
 
                   <div className="bg-card border border-border rounded-xl p-6">

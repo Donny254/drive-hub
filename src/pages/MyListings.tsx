@@ -349,6 +349,7 @@ const MyListings = () => {
                         <TableHead>Risk</TableHead>
                         <TableHead>Moderation</TableHead>
                         <TableHead>Price</TableHead>
+                        <TableHead>Auction</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                   </TableHeader>
@@ -377,6 +378,27 @@ const MyListings = () => {
                         </TableCell>
                         <TableCell>{listing.moderationNotes ?? "--"}</TableCell>
                         <TableCell>KES {(listing.priceCents / 100).toLocaleString()}</TableCell>
+                        <TableCell>
+                          {listing.isAuction ? (
+                            <div className="text-sm">
+                              <span className="font-medium">
+                                {listing.highestBidCents && listing.highestBidCents > 0
+                                  ? `KES ${(listing.highestBidCents / 100).toLocaleString()}`
+                                  : "No bids"}
+                              </span>
+                              <div className="text-xs text-muted-foreground">
+                                {listing.auctionEndsAt
+                                  ? new Date(listing.auctionEndsAt).getTime() <= Date.now()
+                                    ? "Ended"
+                                    : `Ends ${new Date(listing.auctionEndsAt).toLocaleDateString()}`
+                                  : ""}
+                                {listing.bidCount ? ` · ${listing.bidCount} bids` : ""}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">--</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Dialog

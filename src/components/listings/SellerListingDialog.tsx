@@ -14,6 +14,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { resolveImageUrl } from "@/lib/api";
 import type { Listing } from "@/hooks/useMyListingsManager";
 
+// ISO string -> value for <input type="datetime-local"> in the user's local time.
+const toLocalDateTimeInput = (iso?: string | null) => {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
 type SellerListingDialogProps = {
   title: string;
   listing: Listing;
@@ -191,6 +200,65 @@ const SellerListingDialog = ({
             <option value="no">No</option>
             <option value="yes">Yes</option>
           </select>
+        </div>
+        <div className="grid gap-2 rounded-md border border-border bg-background/60 p-3">
+          <Label>Auction</Label>
+          <select
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            value={listing.isAuction ? "yes" : "no"}
+            onChange={(e) =>
+              setListing((prev) => (prev ? { ...prev, isAuction: e.target.value === "yes" } : prev))
+            }
+          >
+            <option value="no">No (fixed price / offers)</option>
+            <option value="yes">Yes (highest bid wins)</option>
+          </select>
+          <p className="text-xs text-muted-foreground">
+            In an auction, the highest bid when the timer ends wins automatically. The price above is the opening
+            (reserve) bid.
+          </p>
+          {listing.isAuction ? (
+            <div className="mt-2 grid gap-3">
+              <div className="grid gap-2">
+                <Label>Auction ends</Label>
+                <Input
+                  type="datetime-local"
+                  value={toLocalDateTimeInput(listing.auctionEndsAt)}
+                  onChange={(e) =>
+                    setListing((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            auctionEndsAt: e.target.value ? new Date(e.target.value).toISOString() : null,
+                          }
+                        : prev
+                    )
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Minimum bid increment (KES)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={listing.minBidIncrementCents != null ? listing.minBidIncrementCents / 100 : ""}
+                  onChange={(e) =>
+                    setListing((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            minBidIncrementCents: e.target.value
+                              ? Math.round(Number(e.target.value) * 100)
+                              : null,
+                          }
+                        : prev
+                    )
+                  }
+                  placeholder="Defaults to 1% of price (min KES 10,000)"
+                />
+              </div>
+            </div>
+          ) : null}
         </div>
         <div className="grid gap-2">
           <Label>Image URL</Label>
