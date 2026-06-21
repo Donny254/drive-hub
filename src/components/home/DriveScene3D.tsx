@@ -37,10 +37,10 @@ function Car() {
     });
   });
 
-  const bodyColor = "#0fd3b3";
+  const bodyColor = "#ff6a13";
   const bodyMat = { color: bodyColor, metalness: 0.75, roughness: 0.2 };
   const darkMat = { color: "#0a0e14", metalness: 0.4, roughness: 0.7 };
-  const glassMat = { color: "#7fffee", metalness: 0.0, roughness: 0.0, transparent: true, opacity: 0.35 };
+  const glassMat = { color: "#ffd9a8", metalness: 0.0, roughness: 0.0, transparent: true, opacity: 0.35 };
   const tireMat = { color: "#111", metalness: 0.2, roughness: 0.9 };
   const rimMat = { color: "#cccccc", metalness: 0.95, roughness: 0.05 };
 
@@ -130,7 +130,7 @@ function Car() {
       {/* DRL strip front */}
       <mesh position={[0, 0.18, 2.17]}>
         <boxGeometry args={[1.4, 0.04, 0.04]} />
-        <meshStandardMaterial color="#0fd3b3" emissive="#0fd3b3" emissiveIntensity={2} />
+        <meshStandardMaterial color="#ff6a13" emissive="#ff6a13" emissiveIntensity={2} />
       </mesh>
 
       {/* Wheels */}
@@ -254,10 +254,10 @@ function Lights() {
 
   return (
     <>
-      <ambientLight intensity={0.08} color="#0fd3b3" />
+      <ambientLight intensity={0.08} color="#ff6a13" />
       <directionalLight position={[-6, 10, 4]} intensity={0.6} color="#ffffff" castShadow shadow-mapSize={[1024, 1024]} />
-      {/* Teal accent undercar glow */}
-      <pointLight position={[0, -0.15, 0]} intensity={4} color="#0fd3b3" distance={3} />
+      {/* Orange accent undercar glow */}
+      <pointLight position={[0, -0.15, 0]} intensity={4} color="#ff6a13" distance={3} />
       {/* Headlight spots */}
       <spotLight position={[0.56, 0.5, 2.5]} target-position={[0.4, -0.3, 25]} angle={0.12} penumbra={0.4} intensity={40} color="#ffffee" distance={30} castShadow />
       <spotLight position={[-0.56, 0.5, 2.5]} target-position={[-0.4, -0.3, 25]} angle={0.12} penumbra={0.4} intensity={40} color="#ffffee" distance={30} castShadow />
@@ -291,7 +291,7 @@ function Scene() {
       {/* Distant glow on horizon */}
       <mesh position={[0, 3, -60]}>
         <planeGeometry args={[80, 8]} />
-        <meshStandardMaterial color="#0fd3b3" emissive="#0fd3b3" emissiveIntensity={0.15} transparent opacity={0.12} />
+        <meshStandardMaterial color="#ff6a13" emissive="#ff6a13" emissiveIntensity={0.15} transparent opacity={0.12} />
       </mesh>
     </>
   );
