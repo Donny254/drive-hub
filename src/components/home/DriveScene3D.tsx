@@ -24,7 +24,7 @@ class WebGLErrorBoundary extends Component<{ children: ReactNode }> {
 }
 
 /* ---- palette (matches the orange brand theme + GT3 reference) ---- */
-const ACCENT = "#ff6a13";
+const ACCENT = "#0fd3b3";
 const NEEDLE = "#ffb020";
 const TICK = "#5a6b8c";
 const TICK_HI = "#d6e4ff";

@@ -229,7 +229,7 @@ const Services = () => {
                     className="group bg-card rounded-lg border border-border p-8 hover:border-primary/50 transition-all duration-500 animate-fade-in"
                     style={{ animationDelay: `${index * 0.1}s` }}
                   >
-                    <div className="w-14 h-14 rounded-lg bg-gradient-to-br from-primary to-amber-400 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                    <div className="w-14 h-14 rounded-lg bg-gradient-to-br from-primary to-emerald-400 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
                       <Wrench className="w-7 h-7 text-primary-foreground" />
                     </div>
 
