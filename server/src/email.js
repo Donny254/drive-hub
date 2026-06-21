@@ -124,6 +124,34 @@ export const sendListingInquiryEmail = async ({ to, inquiry, listingTitle, selle
   });
 };
 
+export const sendListingBidEmail = async ({ to, bid, listingTitle, sellerName, askingPriceCents }) => {
+  if (!to) return false;
+
+  const lines = [
+    `Hello ${sellerName || "Seller"},`,
+    "",
+    `You received a new bid${listingTitle ? ` for "${listingTitle}"` : ""}.`,
+    askingPriceCents ? `Asking price: KES ${(Number(askingPriceCents) / 100).toLocaleString()}` : null,
+    `Bid amount: KES ${(Number(bid.amount_cents || bid.amountCents || 0) / 100).toLocaleString()}`,
+    "",
+    `Client: ${bid.bidder_name || bid.bidderName || "N/A"}`,
+    `Email: ${bid.bidder_email || bid.bidderEmail || "N/A"}`,
+    `Phone: ${bid.bidder_phone || bid.bidderPhone || "N/A"}`,
+    "",
+    "Message:",
+    bid.message || "No message provided.",
+    "",
+    "Review this bid from your seller dashboard or admin marketplace tools.",
+  ].filter(Boolean);
+
+  return sendMail({
+    to,
+    subject: listingTitle ? `New bid for ${listingTitle}` : "New listing bid",
+    text: lines.join("\n"),
+    replyTo: bid.bidder_email || bid.bidderEmail || undefined,
+  });
+};
+
 export const sendInquiryReceiptEmail = async ({ to, name, listingTitle }) => {
   if (!to) return false;
 

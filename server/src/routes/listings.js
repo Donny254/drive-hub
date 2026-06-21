@@ -354,14 +354,17 @@ router.get("/analytics/me", requireAuth, async (req, res, next) => {
             l.price_cents,
             COUNT(DISTINCT lv.id)::int AS views_count,
             COUNT(DISTINCT i.id)::int AS inquiries_count,
+            COUNT(DISTINCT lb.id)::int AS bids_count,
+            COALESCE(MAX(lb.amount_cents), 0)::int AS highest_bid_cents,
             COUNT(DISTINCT b.id)::int AS bookings_count
          FROM listings l
          LEFT JOIN listing_views lv ON lv.listing_id = l.id
          LEFT JOIN inquiries i ON i.listing_id = l.id
+         LEFT JOIN listing_bids lb ON lb.listing_id = l.id
          LEFT JOIN bookings b ON b.listing_id = l.id
          WHERE l.user_id = $1
          GROUP BY l.id
-         ORDER BY COUNT(DISTINCT i.id) DESC, COUNT(DISTINCT lv.id) DESC, COUNT(DISTINCT b.id) DESC, l.created_at DESC
+         ORDER BY COUNT(DISTINCT lb.id) DESC, COUNT(DISTINCT i.id) DESC, COUNT(DISTINCT lv.id) DESC, COUNT(DISTINCT b.id) DESC, l.created_at DESC
          LIMIT 5`,
         [req.user.id]
       ),
@@ -389,10 +392,21 @@ router.get("/analytics/me", requireAuth, async (req, res, next) => {
        WHERE l.user_id = $1 AND b.status = 'confirmed'`,
       [req.user.id]
     );
+    const bidsResult = await query(
+      `SELECT
+         COUNT(*)::int AS total_bids,
+         COUNT(*) FILTER (WHERE lb.status = 'pending')::int AS pending_bids,
+         COALESCE(MAX(lb.amount_cents), 0)::int AS highest_bid_cents
+       FROM listing_bids lb
+       INNER JOIN listings l ON l.id = lb.listing_id
+       WHERE l.user_id = $1`,
+      [req.user.id]
+    );
 
     const totalInquiries = Number(totalInquiriesResult.rows[0]?.count || 0);
     const totalBookings = Number(totalBookingsResult.rows[0]?.count || 0);
     const confirmedBookings = Number(confirmedBookingsResult.rows[0]?.count || 0);
+    const bids = bidsResult.rows[0] || {};
 
     res.json({
       summary: {
@@ -403,6 +417,9 @@ router.get("/analytics/me", requireAuth, async (req, res, next) => {
         soldListings: Number(summary.sold_listings || 0),
         totalViews: Number(summary.total_views || 0),
         totalInquiries,
+        totalBids: Number(bids.total_bids || 0),
+        pendingBids: Number(bids.pending_bids || 0),
+        highestBidCents: Number(bids.highest_bid_cents || 0),
         totalBookings,
         confirmedBookings,
         viewToInquiryRate:
@@ -420,6 +437,8 @@ router.get("/analytics/me", requireAuth, async (req, res, next) => {
         priceCents: Number(row.price_cents || 0),
         viewsCount: Number(row.views_count || 0),
         inquiriesCount: Number(row.inquiries_count || 0),
+        bidsCount: Number(row.bids_count || 0),
+        highestBidCents: Number(row.highest_bid_cents || 0),
         bookingsCount: Number(row.bookings_count || 0),
       })),
     });
@@ -446,6 +465,8 @@ router.get("/analytics/admin", requireAuth, async (req, res, next) => {
             COALESCE(AVG(risk_score), 0)::float AS average_risk_score,
             COALESCE((SELECT COUNT(*) FROM listing_views), 0)::int AS total_views,
             COALESCE((SELECT COUNT(*) FROM inquiries), 0)::int AS total_inquiries,
+            COALESCE((SELECT COUNT(*) FROM listing_bids), 0)::int AS total_bids,
+            COALESCE((SELECT COUNT(*) FROM listing_bids WHERE status = 'pending'), 0)::int AS pending_bids,
             COALESCE((SELECT COUNT(*) FROM bookings), 0)::int AS total_bookings,
             COALESCE((SELECT COUNT(*) FROM bookings WHERE status = 'confirmed'), 0)::int AS confirmed_bookings,
             COALESCE((SELECT COUNT(*) FROM users WHERE seller_verification_status = 'verified'), 0)::int AS verified_sellers
@@ -483,6 +504,7 @@ router.get("/analytics/admin", requireAuth, async (req, res, next) => {
     const summary = summaryResult.rows[0] || {};
     const totalViews = Number(summary.total_views || 0);
     const totalInquiries = Number(summary.total_inquiries || 0);
+    const totalBids = Number(summary.total_bids || 0);
     const totalBookings = Number(summary.total_bookings || 0);
     const confirmedBookings = Number(summary.confirmed_bookings || 0);
 
@@ -497,6 +519,8 @@ router.get("/analytics/admin", requireAuth, async (req, res, next) => {
         averageRiskScore: Number(Number(summary.average_risk_score || 0).toFixed(1)),
         totalViews,
         totalInquiries,
+        totalBids,
+        pendingBids: Number(summary.pending_bids || 0),
         totalBookings,
         confirmedBookings,
         verifiedSellers: Number(summary.verified_sellers || 0),
