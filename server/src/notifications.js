@@ -83,6 +83,20 @@ export const sendListingModerationMessage = async ({
       .join(" "),
   });
 
+export const sendListingBidMessage = async ({ phone, listingTitle, amountCents, bidderName, bidderPhone }) =>
+  maybeSend({
+    phone,
+    message: [
+      `New WheelsnationKe bid${listingTitle ? ` for "${listingTitle}"` : ""}.`,
+      `Amount: KES ${(Number(amountCents || 0) / 100).toLocaleString()}.`,
+      bidderName ? `Client: ${bidderName}.` : null,
+      bidderPhone ? `Phone: ${bidderPhone}.` : null,
+      "Review it in your seller dashboard.",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  });
+
 export const sendEventTicketMessage = async ({
   phone,
   attendeeName,

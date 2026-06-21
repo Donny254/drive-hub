@@ -18,6 +18,7 @@ import paymentsRouter from "./routes/payments.js";
 import serviceBookingsRouter from "./routes/serviceBookings.js";
 import eventRegistrationsRouter from "./routes/eventRegistrations.js";
 import inquiriesRouter from "./routes/inquiries.js";
+import listingBidsRouter from "./routes/listingBids.js";
 import settingsRouter from "./routes/settings.js";
 import payoutsRouter from "./routes/payouts.js";
 import advertsRouter from "./routes/adverts.js";
@@ -104,6 +105,7 @@ export const createApp = () => {
   app.use("/api/service-bookings", serviceBookingsRouter);
   app.use("/api/event-registrations", eventRegistrationsRouter);
   app.use("/api/inquiries", inquiriesRouter);
+  app.use("/api/listing-bids", listingBidsRouter);
   app.use("/api/settings", settingsRouter);
   app.use("/api/payouts", payoutsRouter);
   app.use("/api/adverts", advertsRouter);
