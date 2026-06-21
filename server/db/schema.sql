@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS site_settings (
   crypto_network text,
   crypto_wallet_address text,
   crypto_instructions text,
+  crypto_network_evm text,
+  crypto_wallet_address_evm text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -407,10 +409,45 @@ ALTER TABLE site_settings
   ADD COLUMN IF NOT EXISTS crypto_instructions text;
 
 ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS crypto_network_evm text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS crypto_wallet_address_evm text;
+
+ALTER TABLE site_settings
   ADD COLUMN IF NOT EXISTS seller_commission_rate integer NOT NULL DEFAULT 0 CHECK (seller_commission_rate >= 0 AND seller_commission_rate <= 100);
 
 ALTER TABLE crypto_transactions
   ADD COLUMN IF NOT EXISTS proof_image_url text;
+
+-- Performance indexes
+CREATE INDEX IF NOT EXISTS idx_listings_user_id ON listings(user_id);
+CREATE INDEX IF NOT EXISTS idx_listings_status ON listings(status);
+CREATE INDEX IF NOT EXISTS idx_listings_listing_type ON listings(listing_type);
+CREATE INDEX IF NOT EXISTS idx_listings_deleted_at ON listings(deleted_at) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_bookings_user_id ON bookings(user_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_listing_id ON bookings(listing_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_product_id ON order_items(product_id);
+CREATE INDEX IF NOT EXISTS idx_event_registrations_user_id ON event_registrations(user_id);
+CREATE INDEX IF NOT EXISTS idx_event_registrations_event_id ON event_registrations(event_id);
+CREATE INDEX IF NOT EXISTS idx_service_bookings_user_id ON service_bookings(user_id);
+CREATE INDEX IF NOT EXISTS idx_service_bookings_service_id ON service_bookings(service_id);
+CREATE INDEX IF NOT EXISTS idx_listing_images_listing_id ON listing_images(listing_id);
+CREATE INDEX IF NOT EXISTS idx_crypto_transactions_order_id ON crypto_transactions(order_id);
+CREATE INDEX IF NOT EXISTS idx_crypto_transactions_booking_id ON crypto_transactions(booking_id);
+CREATE INDEX IF NOT EXISTS idx_mpesa_transactions_order_id ON mpesa_transactions(order_id);
+CREATE INDEX IF NOT EXISTS idx_mpesa_transactions_booking_id ON mpesa_transactions(booking_id);
+CREATE INDEX IF NOT EXISTS idx_seller_payouts_seller_id ON seller_payouts(seller_id);
+
+-- Soft delete column for listings
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+
+-- Booking cancellation
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancelled_by text;
 
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS trigger AS $$

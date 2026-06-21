@@ -31,6 +31,11 @@ const Register = () => {
       setLoading(false);
       return;
     }
+    if (phone && !/^\+?[\d\s\-()]{7,15}$/.test(phone.trim())) {
+      setError("Enter a valid phone number (7–15 digits).");
+      setLoading(false);
+      return;
+    }
     try {
       await register(name, email, phone, password);
       navigate("/");
@@ -68,8 +73,8 @@ const Register = () => {
                 textClassName="hidden"
               />
             </div>
-            <h1 className="font-display text-3xl tracking-wider text-center">Create Account</h1>
-            <p className="text-muted-foreground text-sm text-center mt-2">
+            <h1 className="font-display text-2xl text-center">Create Account</h1>
+            <p className="text-muted-foreground text-sm text-center mt-2 leading-relaxed">
               Join WheelsnationKe to list and book cars.
             </p>
 

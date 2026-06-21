@@ -187,7 +187,7 @@ const AdminAdverts = () => {
         <div className="container mx-auto px-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h1 className="font-display text-3xl tracking-wider">Admin Adverts</h1>
+              <h1 className="font-display text-3xl">Admin Adverts</h1>
               <p className="mt-1 text-muted-foreground">
                 Manage the market slider adverts, including title, copy, image, button text, and link.
               </p>

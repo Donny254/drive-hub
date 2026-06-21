@@ -1,119 +1,170 @@
-import { useState, useEffect } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { ChevronLeft, ChevronRight, ShoppingBag } from "lucide-react";
+import { Link } from "react-router-dom";
+import { apiFetch, resolveImageUrl } from "@/lib/api";
 
-const adverts = [
-  {
-    id: 1,
-    title: "Premium Auto Insurance",
-    description: "Protect your ride with our comprehensive coverage plans. Get 20% off your first year!",
-    cta: "Get Quote",
-    gradient: "from-primary/20 via-primary/10 to-background",
-    sponsor: "AutoShield Insurance",
-  },
-  {
-    id: 2,
-    title: "Michelin Performance Tires",
-    description: "Experience the road like never before. Engineered for precision, built for performance.",
-    cta: "Shop Now",
-    gradient: "from-blue-600/20 via-blue-500/10 to-background",
-    sponsor: "Michelin",
-  },
-  {
-    id: 3,
-    title: "Mobile Car Wash Pro",
-    description: "We come to you! Professional detailing at your doorstep. Book your first wash free.",
-    cta: "Book Free Wash",
-    gradient: "from-purple-600/20 via-purple-500/10 to-background",
-    sponsor: "WashPro Mobile",
-  },
+type Product = {
+  id: string;
+  name: string;
+  priceCents: number;
+  category: string | null;
+  imageUrl: string | null;
+};
+
+const formatPrice = (cents: number) =>
+  `KES ${(cents / 100).toLocaleString("en-KE")}`;
+
+const SLIDE_INTERVAL = 5000;
+
+const GRADIENTS = [
+  "from-primary/15 via-primary/5 to-transparent",
+  "from-blue-500/15 via-blue-500/5 to-transparent",
+  "from-purple-500/15 via-purple-500/5 to-transparent",
+  "from-orange-500/15 via-orange-500/5 to-transparent",
+  "from-rose-500/15 via-rose-500/5 to-transparent",
+  "from-cyan-500/15 via-cyan-500/5 to-transparent",
+  "from-emerald-500/15 via-emerald-500/5 to-transparent",
+  "from-yellow-500/15 via-yellow-500/5 to-transparent",
 ];
 
 const AdSlider = () => {
-  const [currentSlide, setCurrentSlide] = useState(0);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [current, setCurrent] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % adverts.length);
-    }, 5000);
-
-    return () => clearInterval(interval);
+    apiFetch("/api/products?active=true")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data: Product[]) => setProducts(data.slice(0, 8)))
+      .catch(() => setProducts([]))
+      .finally(() => setLoading(false));
   }, []);
 
-  const goToSlide = (index: number) => {
-    setCurrentSlide(index);
-  };
+  const total = products.length;
+  const next = useCallback(() => setCurrent((p) => (p + 1) % total), [total]);
+  const prev = useCallback(() => setCurrent((p) => (p - 1 + total) % total), [total]);
 
-  const nextSlide = () => {
-    setCurrentSlide((prev) => (prev + 1) % adverts.length);
-  };
+  useEffect(() => {
+    if (total < 2) return;
+    const id = setInterval(next, SLIDE_INTERVAL);
+    return () => clearInterval(id);
+  }, [next, total]);
 
-  const prevSlide = () => {
-    setCurrentSlide((prev) => (prev - 1 + adverts.length) % adverts.length);
-  };
+  if (loading) {
+    return (
+      <div className="w-full h-24 bg-card border-b border-border flex items-center justify-center gap-4 px-8">
+        <div className="h-10 w-10 rounded-lg bg-muted animate-pulse" />
+        <div className="flex flex-col gap-2 flex-1 max-w-xs">
+          <div className="h-3 w-20 bg-muted animate-pulse rounded" />
+          <div className="h-4 w-40 bg-muted animate-pulse rounded" />
+        </div>
+      </div>
+    );
+  }
+
+  if (total === 0) return null;
 
   return (
-    <div className="relative w-full h-32 md:h-40 overflow-hidden bg-card border-b border-border">
+    <div className="relative w-full overflow-hidden border-b border-border bg-card">
       {/* Slides */}
       <div
-        className="flex transition-transform duration-700 ease-in-out h-full"
-        style={{ transform: `translateX(-${currentSlide * 100}%)` }}
+        className="flex transition-transform duration-700 ease-in-out"
+        style={{ transform: `translateX(-${current * 100}%)` }}
       >
-        {adverts.map((ad) => (
+        {products.map((product, i) => (
           <div
-            key={ad.id}
-            className={`min-w-full h-full flex items-center justify-center bg-gradient-to-r ${ad.gradient}`}
+            key={product.id}
+            className={`min-w-full bg-gradient-to-r ${GRADIENTS[i % GRADIENTS.length]}`}
           >
-            <div className="container mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="text-center md:text-left">
-                <p className="text-xs text-muted-foreground uppercase tracking-widest mb-1">
-                  Sponsored by {ad.sponsor}
-                </p>
-                <h3 className="font-display text-xl md:text-2xl tracking-wider text-foreground">
-                  {ad.title}
+            {/* Content row — padded clear of arrows */}
+            <div className="flex items-center gap-4 px-14 md:px-16 py-3 md:py-4">
+
+              {/* Image */}
+              <div className="flex-shrink-0 w-14 h-14 md:w-20 md:h-20 rounded-xl overflow-hidden border border-border bg-muted flex items-center justify-center">
+                {product.imageUrl ? (
+                  <img
+                    src={resolveImageUrl(product.imageUrl)}
+                    alt={product.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <ShoppingBag className="w-6 h-6 text-muted-foreground" />
+                )}
+              </div>
+
+              {/* Text */}
+              <div className="flex-1 min-w-0">
+                {product.category && (
+                  <span className="inline-block text-[10px] font-semibold uppercase tracking-widest text-primary bg-primary/10 px-2 py-0.5 rounded-full mb-1">
+                    {product.category}
+                  </span>
+                )}
+                <h3 className="font-display text-base md:text-xl text-foreground leading-tight line-clamp-1">
+                  {product.name}
                 </h3>
-                <p className="text-muted-foreground text-sm mt-1 max-w-md hidden md:block">
-                  {ad.description}
+                <p className="text-primary font-semibold text-sm md:text-base mt-0.5">
+                  {formatPrice(product.priceCents)}
                 </p>
               </div>
-              <button className="px-6 py-2 bg-primary text-primary-foreground font-medium text-sm rounded-lg hover:bg-primary/90 transition-colors whitespace-nowrap">
-                {ad.cta}
-              </button>
+
+              {/* CTA */}
+              <Link
+                to="/store"
+                className="flex-shrink-0 hidden sm:flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground font-semibold text-sm rounded-xl hover:bg-primary/90 hover:scale-105 transition-all duration-200 cursor-pointer"
+              >
+                <ShoppingBag className="w-4 h-4" />
+                Shop Now
+              </Link>
+              {/* Mobile CTA */}
+              <Link
+                to="/store"
+                className="flex-shrink-0 sm:hidden flex items-center justify-center w-9 h-9 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors cursor-pointer"
+                aria-label="Shop Now"
+              >
+                <ShoppingBag className="w-4 h-4" />
+              </Link>
             </div>
+
+            {/* Bottom dots row */}
+            {total > 1 && (
+              <div className="flex justify-center gap-1.5 pb-2">
+                {products.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrent(idx)}
+                    className={`h-1 rounded-full transition-all duration-300 cursor-pointer ${
+                      current === idx
+                        ? "bg-primary w-5"
+                        : "bg-muted-foreground/30 w-1 hover:bg-muted-foreground/60"
+                    }`}
+                    aria-label={`Go to product ${idx + 1}`}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>
 
-      {/* Navigation Arrows */}
-      <button
-        onClick={prevSlide}
-        className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-background/80 border border-border flex items-center justify-center text-foreground hover:bg-background transition-colors"
-        aria-label="Previous slide"
-      >
-        <ChevronLeft className="w-4 h-4" />
-      </button>
-      <button
-        onClick={nextSlide}
-        className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-background/80 border border-border flex items-center justify-center text-foreground hover:bg-background transition-colors"
-        aria-label="Next slide"
-      >
-        <ChevronRight className="w-4 h-4" />
-      </button>
-
-      {/* Dots Indicator */}
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
-        {adverts.map((_, index) => (
+      {/* Arrows — fixed to sides, clear of text */}
+      {total > 1 && (
+        <>
           <button
-            key={index}
-            onClick={() => goToSlide(index)}
-            className={`w-2 h-2 rounded-full transition-all duration-300 ${
-              currentSlide === index
-                ? "bg-primary w-6"
-                : "bg-muted-foreground/40 hover:bg-muted-foreground"
-            }`}
-            aria-label={`Go to slide ${index + 1}`}
-          />
-        ))}
-      </div>
+            onClick={prev}
+            className="absolute left-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-background/80 backdrop-blur-sm border border-border flex items-center justify-center text-foreground hover:bg-background hover:text-primary transition-colors cursor-pointer z-10"
+            aria-label="Previous product"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            onClick={next}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-background/80 backdrop-blur-sm border border-border flex items-center justify-center text-foreground hover:bg-background hover:text-primary transition-colors cursor-pointer z-10"
+            aria-label="Next product"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </>
+      )}
     </div>
   );
 };

@@ -28,15 +28,26 @@ const STORAGE_USER = "auth_user";
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const isJwtExpired = (token: string): boolean => {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1])) as { exp?: number };
+    if (!payload.exp) return false;
+    return Date.now() / 1000 > payload.exp;
+  } catch {
+    return false;
+  }
+};
+
 const loadStoredAuth = (): AuthState => {
   try {
     const token = localStorage.getItem(STORAGE_TOKEN);
     const userRaw = localStorage.getItem(STORAGE_USER);
     const user = userRaw ? (JSON.parse(userRaw) as User) : null;
 
-    // Treat partially persisted auth as signed out so protected routes don't
-    // admit a stale user object without a valid bearer token.
-    if (!token || !user) {
+    if (!token || !user) return { token: null, user: null };
+    if (isJwtExpired(token)) {
+      localStorage.removeItem(STORAGE_TOKEN);
+      localStorage.removeItem(STORAGE_USER);
       return { token: null, user: null };
     }
 
@@ -66,6 +77,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setUser(stored.user);
     setToken(stored.token);
     setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    const handleExpired = () => {
+      setUser(null);
+      setToken(null);
+    };
+    window.addEventListener("auth:expired", handleExpired);
+    return () => window.removeEventListener("auth:expired", handleExpired);
   }, []);
 
   useEffect(() => {

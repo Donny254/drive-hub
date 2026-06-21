@@ -15,7 +15,10 @@ import { feedbackText, getApiErrorMessage } from "@/lib/feedback";
 import CryptoProofUploader from "@/components/shared/CryptoProofUploader";
 import CryptoPaymentTimeline from "@/components/shared/CryptoPaymentTimeline";
 import CryptoPaymentDetails from "@/components/shared/CryptoPaymentDetails";
+import WalletPayButton from "@/components/shared/WalletPayButton";
 import useCryptoPaymentStatus from "@/hooks/useCryptoPaymentStatus";
+import { usePagination } from "@/hooks/usePagination";
+import PagerBar from "@/components/shared/PagerBar";
 
 interface Product {
   id: string;
@@ -36,6 +39,8 @@ type CryptoDetails = {
   asset: string;
   network: string | null;
   walletAddress: string | null;
+  networkEvm: string | null;
+  walletAddressEvm: string | null;
   instructions: string | null;
 };
 
@@ -70,6 +75,8 @@ const Store = () => {
   const [transactionHash, setTransactionHash] = useState("");
   const [payerWallet, setPayerWallet] = useState("");
   const [proofImageUrl, setProofImageUrl] = useState<string | null>(null);
+  const [walletPaid, setWalletPaid] = useState(false);
+  const [showManualCrypto, setShowManualCrypto] = useState(false);
   const [submittedOrderTotalCents, setSubmittedOrderTotalCents] = useState(0);
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
@@ -119,6 +126,8 @@ const Store = () => {
     ? products
     : products.filter((p) => p.category === activeCategory);
 
+  const { pageItems: pagedProducts, page: productsPage, totalPages: productsTotalPages, goTo: goToProductsPage, reset: resetProductsPage } = usePagination(filteredProducts, 12);
+
   const addToCart = (product: Product) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id);
@@ -167,6 +176,8 @@ const Store = () => {
     setTransactionHash("");
     setPayerWallet("");
     setProofImageUrl(null);
+    setWalletPaid(false);
+    setShowManualCrypto(false);
     setSubmittedOrderTotalCents(cartTotalCents);
     setCheckoutOpen(true);
   };
@@ -206,9 +217,14 @@ const Store = () => {
 
   const submitOrder = async () => {
     if (cart.length === 0) return;
-    if (!customerName.trim() || !customerPhone.trim()) {
-      setCheckoutError("Name and phone are required.");
-      toast.error("Name and phone are required.");
+    if (!customerName.trim()) {
+      setCheckoutError("Name is required.");
+      toast.error("Name is required.");
+      return;
+    }
+    if (paymentMethod === "mpesa" && !customerPhone.trim()) {
+      setCheckoutError("Phone number is required for M-Pesa payment.");
+      toast.error("Phone number is required for M-Pesa payment.");
       return;
     }
     if (paymentMethod === "crypto" && !transactionHash.trim()) {
@@ -216,9 +232,9 @@ const Store = () => {
       toast.error("Transaction hash is required for crypto payment.");
       return;
     }
-    if (paymentMethod === "crypto" && !proofImageUrl) {
-      setCheckoutError("Payment proof image is required for crypto payment.");
-      toast.error("Payment proof image is required for crypto payment.");
+    if (paymentMethod === "crypto" && !walletPaid && !proofImageUrl) {
+      setCheckoutError("Payment proof image is required for manual crypto payment.");
+      toast.error("Payment proof image is required for manual crypto payment.");
       return;
     }
     setSubmittedOrderTotalCents(cartTotalCents);
@@ -296,9 +312,9 @@ const Store = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="pt-20">
-        <section className="py-16 bg-secondary">
+        <section className="py-10 bg-secondary">
           <div className="container mx-auto px-4 text-center">
-            <h1 className="font-display text-5xl md:text-6xl tracking-wider animate-fade-in">
+            <h1 className="font-display text-3xl md:text-5xl animate-fade-in">
               MERCH <span className="text-primary">STORE</span>
             </h1>
             <p className="text-muted-foreground mt-4 max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: "0.1s" }}>
@@ -311,7 +327,7 @@ const Store = () => {
                   key={cat}
                   variant={activeCategory === cat ? "hero" : "secondary"}
                   size="default"
-                  onClick={() => setActiveCategory(cat)}
+                  onClick={() => { setActiveCategory(cat); resetProductsPage(); }}
                 >
                   {cat}
                 </Button>
@@ -320,7 +336,7 @@ const Store = () => {
           </div>
         </section>
 
-        <section className="py-16">
+        <section className="py-10">
           <div className="container mx-auto px-4">
             {filteredProducts.length === 0 ? (
               <div className="text-center text-muted-foreground py-12">
@@ -328,7 +344,7 @@ const Store = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                {filteredProducts.map((product, index) => (
+                {pagedProducts.map((product, index) => (
                   <div
                     key={product.id}
                     className="group flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card transition-all duration-500 hover:border-primary/50 animate-fade-in"
@@ -338,6 +354,7 @@ const Store = () => {
                       <img
                         src={resolveImageUrl(product.imageUrl) || "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600"}
                         alt={product.name}
+                        loading="lazy"
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                       />
                       {product.category && (
@@ -347,7 +364,7 @@ const Store = () => {
                       )}
                     </div>
                     <div className="flex flex-1 flex-col p-5">
-                      <h3 className="font-display text-xl tracking-wider break-words">{product.name}</h3>
+                      <h3 className="font-display text-xl break-words">{product.name}</h3>
                       <div className="mt-auto flex flex-col gap-4 pt-4">
                         <span className="font-display text-2xl text-primary break-words">
                           KES {(product.priceCents / 100).toLocaleString()}
@@ -360,6 +377,9 @@ const Store = () => {
                   </div>
                 ))}
               </div>
+            )}
+            {filteredProducts.length > 0 && (
+              <PagerBar page={productsPage} totalPages={productsTotalPages} onPageChange={goToProductsPage} />
             )}
           </div>
         </section>
@@ -387,7 +407,7 @@ const Store = () => {
           <div className="fixed right-0 top-0 h-full w-full max-w-md bg-card border-l border-border z-50 animate-slide-in-left overflow-y-auto">
             <div className="p-6">
               <div className="flex items-center justify-between mb-8">
-                <h2 className="font-display text-2xl tracking-wider">YOUR CART</h2>
+                <h2 className="font-display text-2xl">YOUR CART</h2>
                 <button
                   onClick={() => setIsCartOpen(false)}
                   className="text-muted-foreground hover:text-foreground"
@@ -480,10 +500,12 @@ const Store = () => {
               <Label>Name</Label>
               <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
             </div>
-            <div className="grid gap-2">
-              <Label>Phone</Label>
-              <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
-            </div>
+            {paymentMethod === "mpesa" && (
+              <div className="grid gap-2">
+                <Label>Phone</Label>
+                <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+              </div>
+            )}
             <div className="grid gap-2">
               <Label>Payment Method</Label>
               <select
@@ -496,7 +518,7 @@ const Store = () => {
               </select>
               <p className="text-xs text-muted-foreground">
                 {paymentMethod === "crypto"
-                  ? "Crypto orders are reviewed manually after you submit proof and a transaction hash."
+                  ? "Connect your wallet to pay directly — no screenshot needed."
                   : "M-Pesa sends a payment prompt to your phone for instant confirmation."}
               </p>
             </div>
@@ -519,7 +541,7 @@ const Store = () => {
               </div>
               <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
                 <span className="font-medium">Total</span>
-                <span className="font-semibold text-primary">KES {(checkoutSuccess ? submittedOrderTotalCents : cartTotalCents).toLocaleString()}</span>
+                <span className="font-semibold text-primary">KES {(checkoutSuccess ? submittedOrderTotalCents / 100 : cartTotal).toLocaleString()}</span>
               </div>
             </div>
             {paymentMethod === "crypto" && (
@@ -531,23 +553,43 @@ const Store = () => {
                 showAdminShortcut={isAdmin}
               />
             )}
-            {paymentMethod === "crypto" && (
+            {paymentMethod === "crypto" && !checkoutSuccess && (
               <div className="grid gap-4">
-                <CryptoProofUploader
-                  token={token}
-                  proofImageUrl={proofImageUrl}
-                  onProofImageUrlChange={setProofImageUrl}
-                  label="Payment proof"
-                  description="Upload a clear transfer screenshot or receipt before submitting."
+                <WalletPayButton
+                  trc20={cryptoDetails?.network && cryptoDetails?.walletAddress ? { network: cryptoDetails.network, toAddress: cryptoDetails.walletAddress } : null}
+                  evm={cryptoDetails?.networkEvm && cryptoDetails?.walletAddressEvm ? { network: cryptoDetails.networkEvm, toAddress: cryptoDetails.walletAddressEvm } : null}
+                  asset={cryptoDetails?.asset}
+                  amountCents={cartTotalCents}
+                  disabled={checkoutLoading}
+                  showManual={showManualCrypto}
+                  onToggleManual={() => setShowManualCrypto((v) => !v)}
+                  onSuccess={(txHash, payerAddr) => {
+                    setTransactionHash(txHash);
+                    setPayerWallet(payerAddr);
+                    setWalletPaid(true);
+                    setShowManualCrypto(false);
+                    void submitOrder();
+                  }}
                 />
-                <div className="grid gap-2">
-                  <Label>Transaction Hash</Label>
-                  <Input value={transactionHash} onChange={(e) => setTransactionHash(e.target.value)} />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Payer Wallet (optional)</Label>
-                  <Input value={payerWallet} onChange={(e) => setPayerWallet(e.target.value)} />
-                </div>
+                {showManualCrypto && (
+                  <div className="grid gap-4 rounded-lg border border-border p-4">
+                    <CryptoProofUploader
+                      token={token}
+                      proofImageUrl={proofImageUrl}
+                      onProofImageUrlChange={setProofImageUrl}
+                      label="Payment proof"
+                      description="Upload a clear transfer screenshot or receipt before submitting."
+                    />
+                    <div className="grid gap-2">
+                      <Label>Transaction Hash</Label>
+                      <Input value={transactionHash} onChange={(e) => setTransactionHash(e.target.value)} />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Payer Wallet (optional)</Label>
+                      <Input value={payerWallet} onChange={(e) => setPayerWallet(e.target.value)} />
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             {checkoutError && <p className="text-sm text-destructive">{checkoutError}</p>}

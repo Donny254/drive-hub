@@ -215,6 +215,8 @@ export type SiteSettings = {
   cryptoNetwork: string | null;
   cryptoWalletAddress: string | null;
   cryptoInstructions: string | null;
+  cryptoNetworkEvm: string | null;
+  cryptoWalletAddressEvm: string | null;
 };
 
 export type AdminAnalytics = {

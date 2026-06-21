@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
+import { useState } from "react";
 import type { ServiceBooking } from "@/components/admin/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,19 @@ const AdminServiceBookingsTab = ({
   statusVariant,
 }: AdminServiceBookingsTabProps) => {
   const todayDate = getTodayDateValue();
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ServiceBooking["status"] | "all">("all");
+
+  const filtered = serviceBookings.filter((b) => {
+    const q = search.toLowerCase();
+    const matchSearch =
+      !q ||
+      (b.serviceTitle ?? "").toLowerCase().includes(q) ||
+      b.id.toLowerCase().includes(q) ||
+      (b.contactName ?? "").toLowerCase().includes(q);
+    const matchStatus = statusFilter === "all" || b.status === statusFilter;
+    return matchSearch && matchStatus;
+  });
   return (
     <TabsContent value="service-bookings" className="mt-6">
       <Card className="rounded-2xl">
@@ -52,12 +66,30 @@ const AdminServiceBookingsTab = ({
                 {serviceBookings.length} total
               </div>
               <div className="rounded-full border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
-                {serviceBookings.filter((booking) => booking.status === "pending").length} pending
+                {serviceBookings.filter((b) => b.status === "pending").length} pending
               </div>
               <div className="rounded-full border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
-                {serviceBookings.filter((booking) => booking.status === "confirmed").length} confirmed
+                {serviceBookings.filter((b) => b.status === "confirmed").length} confirmed
               </div>
             </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Input
+              placeholder="Search by service, booking ID, or customer"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="max-w-xs"
+            />
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as ServiceBooking["status"] | "all")}
+            >
+              <option value="all">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
           </div>
         </CardHeader>
         <CardContent className="pt-6">
@@ -72,7 +104,7 @@ const AdminServiceBookingsTab = ({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {serviceBookings.map((booking) => (
+                {filtered.map((booking) => (
                   <TableRow key={booking.id}>
                     <TableCell>
                       <div>

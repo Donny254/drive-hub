@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import type { DeleteTarget, Order, OrderItem } from "@/components/admin/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,15 @@ const AdminOrdersTab = ({
   formatMoney,
   token,
 }: AdminOrdersTabProps) => {
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const filtered = orders.filter((o) => {
+    if (statusFilter !== "all" && o.status !== statusFilter) return false;
+    if (search && !o.id.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
   return (
     <TabsContent value="orders" className="mt-6">
       <Card className="rounded-2xl">
@@ -66,20 +75,33 @@ const AdminOrdersTab = ({
             </div>
             <div className="flex flex-wrap gap-2">
               <div className="rounded-full border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
-                {orders.length} total
-              </div>
-              <div className="rounded-full border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
-                {orders.filter((order) => order.status === "pending").length} pending
-              </div>
-              <div className="rounded-full border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
-                {orders.filter((order) => order.paymentStatus === "paid" || order.status === "paid").length} paid
+                {filtered.length} of {orders.length}
               </div>
             </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Input
+              placeholder="Search by order ID…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-8 w-48 text-xs"
+            />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+            >
+              <option value="all">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="paid">Paid</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="refunded">Refunded</option>
+            </select>
           </div>
         </CardHeader>
         <CardContent className="pt-6">
           <div className="grid gap-4 md:hidden">
-            {orders.map((order) => (
+            {filtered.map((order) => (
               <div key={order.id} className="rounded-xl border border-border bg-background/60 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -253,7 +275,7 @@ const AdminOrdersTab = ({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {orders.map((order) => (
+                {filtered.map((order) => (
                   <TableRow key={order.id}>
                     <TableCell>
                       <div>

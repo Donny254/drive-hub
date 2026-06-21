@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
+import AccountLayout from "@/components/shared/AccountLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -82,13 +81,11 @@ const MyListings = () => {
   const fromMarket = searchParams.get("source") === "market";
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="pt-28 pb-16">
-        <div className="container mx-auto px-4">
+    <AccountLayout title="My Listings">
+      <div>
           <div className="flex items-center justify-between gap-4">
             <div>
-              <h1 className="font-display text-3xl tracking-wider">My Listings</h1>
+              <h1 className="font-display text-3xl">My Listings</h1>
               <p className="text-muted-foreground mt-1">
                 Create listings, respond to moderation feedback, and resubmit for approval.
               </p>
@@ -189,7 +186,7 @@ const MyListings = () => {
                       <CardContent>
                         <p className="text-3xl font-semibold">{analytics.summary.totalViews}</p>
                         <p className="mt-2 text-sm text-muted-foreground">
-                          {analytics.summary.viewToInquiryRate}% view-to-inquiry rate
+                          {isFinite(analytics.summary.viewToInquiryRate) ? analytics.summary.viewToInquiryRate : 0}% view-to-inquiry rate
                         </p>
                       </CardContent>
                     </Card>
@@ -232,7 +229,7 @@ const MyListings = () => {
                 {analytics && analytics.topListings.length > 0 && (
                   <div className="mb-8 rounded-xl border border-border bg-card">
                     <div className="border-b border-border px-6 py-4">
-                      <h2 className="font-display text-xl tracking-wider">Top Performing Listings</h2>
+                      <h2 className="font-display text-xl">Top Performing Listings</h2>
                       <p className="mt-1 text-sm text-muted-foreground">
                         Listings sorted by inquiries and booking activity.
                       </p>
@@ -382,8 +379,6 @@ const MyListings = () => {
               </>
             )}
           </div>
-        </div>
-      </main>
       <ActionConfirmDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
@@ -404,8 +399,8 @@ const MyListings = () => {
           }
         }}
       />
-      <Footer />
-    </div>
+      </div>
+    </AccountLayout>
   );
 };
 

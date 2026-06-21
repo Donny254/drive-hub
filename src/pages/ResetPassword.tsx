@@ -115,7 +115,7 @@ const ResetPassword = () => {
                 textClassName="hidden"
               />
             </div>
-            <h1 className="text-center font-display text-3xl tracking-wider">Choose New Password</h1>
+            <h1 className="text-center font-display text-3xl">Choose New Password</h1>
             <p className="mt-2 text-center text-sm text-muted-foreground">
               Set a new password for your WheelsnationKe account.
             </p>

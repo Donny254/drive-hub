@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
+import AccountLayout from "@/components/shared/AccountLayout";
+import EmptyState from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
+import { Wrench } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch } from "@/lib/api";
@@ -33,14 +34,16 @@ const MyServiceBookings = () => {
     return { Authorization: `Bearer ${token}` };
   }, [token]);
 
-  const fetchBookings = useCallback(async () => {
+  const fetchBookings = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoading(true);
       setError(null);
-      const resp = await apiFetch("/api/service-bookings", { headers: authHeaders });
+      const resp = await apiFetch("/api/service-bookings", { headers: authHeaders, signal });
       if (!resp.ok) throw new Error("Failed to load service bookings");
-      setBookings(await resp.json());
+      const json = await resp.json();
+      setBookings(Array.isArray(json) ? json : (json.data ?? []));
     } catch (err) {
+      if (err instanceof DOMException && (err as DOMException).name === "AbortError") return;
       console.error(err);
       setError("Failed to load your service bookings.");
       toast.error("Failed to load your service bookings.");
@@ -50,7 +53,9 @@ const MyServiceBookings = () => {
   }, [authHeaders]);
 
   useEffect(() => {
-    fetchBookings();
+    const controller = new AbortController();
+    fetchBookings(controller.signal);
+    return () => controller.abort();
   }, [fetchBookings]);
 
   const cancelBooking = async (id: string) => {
@@ -69,22 +74,27 @@ const MyServiceBookings = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="pt-28 pb-16">
-        <div className="container mx-auto px-4">
-          <div>
-            <h1 className="font-display text-3xl tracking-wider">My Service Bookings</h1>
-            <p className="text-muted-foreground mt-1">
-              View and manage your service appointments.
-            </p>
-          </div>
-
-          <div className="mt-8">
+    <AccountLayout title="Service Bookings">
+      <div>
+          <div className="mt-0">
             {loading && <p className="text-muted-foreground">Loading bookings...</p>}
-            {!loading && error && <p className="text-destructive">{error}</p>}
+            {!loading && error && (
+              <div className="flex items-center gap-3">
+                <p className="text-sm text-destructive">{error}</p>
+                <Button variant="outline" size="sm" onClick={() => void fetchBookings()}>Retry</Button>
+              </div>
+            )}
 
-            {!loading && !error && (
+            {!loading && !error && bookings.length === 0 && (
+              <EmptyState
+                icon={Wrench}
+                title="No service bookings yet"
+                description="When you book an automotive service it will appear here."
+                action={{ label: "Browse Services", to: "/services" }}
+              />
+            )}
+
+            {!loading && !error && bookings.length > 0 && (
               <>
                 <div className="grid gap-4 md:hidden">
                   {bookings.map((booking) => (
@@ -145,8 +155,6 @@ const MyServiceBookings = () => {
               </>
             )}
           </div>
-        </div>
-      </main>
       <ActionConfirmDialog
         open={Boolean(cancelTarget)}
         onOpenChange={(open) => !open && setCancelTarget(null)}
@@ -167,8 +175,8 @@ const MyServiceBookings = () => {
           }
         }}
       />
-      <Footer />
-    </div>
+      </div>
+    </AccountLayout>
   );
 };
 

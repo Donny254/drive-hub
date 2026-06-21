@@ -101,10 +101,10 @@ const useCryptoPaymentStatus = (
       setData(null);
       setError(null);
       setLoading(false);
-      return;
+      return () => {};
     }
     void refresh();
-    if (!pollMs) return;
+    if (!pollMs) return () => {};
     const interval = window.setInterval(() => {
       void refresh();
     }, pollMs);

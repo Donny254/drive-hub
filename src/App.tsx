@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
+import ErrorBoundary from "./components/shared/ErrorBoundary";
 
 const queryClient = new QueryClient();
 const Index = lazy(() => import("./pages/Index"));
@@ -34,6 +35,8 @@ const AdminPosts = lazy(() => import("./pages/AdminPosts"));
 const AdminAdverts = lazy(() => import("./pages/AdminAdverts"));
 const BlogPost = lazy(() => import("./pages/BlogPost"));
 const EventDetails = lazy(() => import("./pages/EventDetails"));
+const MyOrders = lazy(() => import("./pages/MyOrders"));
+const MyProfile = lazy(() => import("./pages/MyProfile"));
 
 const RouteFallback = () => (
   <div className="min-h-[40vh] flex items-center justify-center text-sm text-muted-foreground">
@@ -48,6 +51,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <ErrorBoundary>
           <Suspense fallback={<RouteFallback />}>
             <Routes>
               <Route path="/" element={<Index />} />
@@ -120,6 +124,22 @@ const App = () => (
                 }
               />
               <Route
+                path="/my-orders"
+                element={
+                  <ProtectedRoute roles={["user", "admin"]}>
+                    <MyOrders />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/my-profile"
+                element={
+                  <ProtectedRoute roles={["user", "admin"]}>
+                    <MyProfile />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/admin"
                 element={
                   <ProtectedRoute roles={["admin"]}>
@@ -170,6 +190,7 @@ const App = () => (
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
+          </ErrorBoundary>
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>

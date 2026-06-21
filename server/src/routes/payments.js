@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { query } from "../db.js";
+import { query, withTransaction } from "../db.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { issueTicketsForRegistration } from "../utils/eventTickets.js";
 import { sendEventTicketEmail } from "../email.js";
@@ -122,6 +122,8 @@ const getCryptoDetails = async () => {
     asset: settings?.crypto_currency || process.env.CRYPTO_CURRENCY || "USDT",
     network: settings?.crypto_network || process.env.CRYPTO_NETWORK || null,
     walletAddress: settings?.crypto_wallet_address || process.env.CRYPTO_WALLET_ADDRESS || null,
+    networkEvm: settings?.crypto_network_evm || process.env.CRYPTO_NETWORK_EVM || null,
+    walletAddressEvm: settings?.crypto_wallet_address_evm || process.env.CRYPTO_WALLET_ADDRESS_EVM || null,
     instructions:
       settings?.crypto_instructions ||
       process.env.CRYPTO_INSTRUCTIONS ||
@@ -155,9 +157,8 @@ const normalizeCryptoPayload = (body, cryptoDetails) => {
 };
 
 const ensureCryptoProof = (payload) => {
-  if (!payload.transactionHash) {
-    return "Transaction hash is required";
-  }
+  const hashError = validateCryptoHash(payload.network, payload.transactionHash);
+  if (hashError) return hashError;
   if (!payload.proofImageUrl) {
     return "Payment proof image is required";
   }
@@ -176,6 +177,27 @@ const ensureUniqueCryptoHash = async (transactionHash) => {
     [normalizedHash]
   );
   return result.rowCount > 0 ? "This transaction hash has already been submitted" : null;
+};
+
+const EVM_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
+const TRON_HASH_RE = /^[0-9a-fA-F]{64}$/;
+const SOL_HASH_RE = /^[1-9A-HJ-NP-Za-km-z]{80,100}$/;
+
+const validateCryptoHash = (network, transactionHash) => {
+  const hash = String(transactionHash || "").trim();
+  if (!hash) return "Transaction hash is required";
+  if (hash.length < 20 || hash.length > 200) return "Transaction hash length is invalid";
+
+  const net = String(network || "").trim().toLowerCase();
+  if (/^(eth|ethereum|erc20|erc-20|bsc|bnb|bep20|binance smart chain|polygon|matic|poly|arb|arbitrum|base|avax|avalanche|optimism|op|celo|fantom|ftm)$/.test(net)) {
+    if (!EVM_HASH_RE.test(hash)) return "Transaction hash must be a 0x-prefixed 66-character hex string for this network";
+  } else if (/^(tron|trc20)$/.test(net)) {
+    if (!TRON_HASH_RE.test(hash)) return "Transaction hash must be a 64-character hex string for Tron";
+  } else if (/^(sol|solana)$/.test(net)) {
+    if (!SOL_HASH_RE.test(hash)) return "Transaction hash must be a valid Solana base58 signature";
+  }
+
+  return null;
 };
 
 const latestCryptoSelect = `SELECT *
@@ -780,39 +802,38 @@ router.post("/crypto/checkout", requireAuth, async (req, res, next) => {
       return res.status(400).json({ error: "Order total must be a positive integer" });
     }
 
-    const orderResult = await query(
-      `INSERT INTO orders (user_id, total_cents, payment_method, payment_status, status)
-       VALUES ($1, $2, 'crypto', 'pending', 'pending')
-       RETURNING *`,
-      [req.user.id, totalCents]
-    );
-    const order = orderResult.rows[0];
-    await insertOrderItems(order.id, safeItems);
-
-    const txResult = await query(
-      `INSERT INTO crypto_transactions
-       (order_id, asset, network, wallet_address, payer_wallet, transaction_hash, proof_image_url, amount_cents, status, response)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
-       RETURNING *`,
-      [
-        order.id,
-        cryptoPayload.asset,
-        cryptoPayload.network,
-        cryptoPayload.walletAddress,
-        cryptoPayload.payerWallet,
-        cryptoPayload.transactionHash,
-        cryptoPayload.proofImageUrl,
-        totalCents,
-        {
-          submittedBy: req.user.id,
-          submittedAt: new Date().toISOString(),
-        },
-      ]
-    );
+    const { order, txRow } = await withTransaction(async (client) => {
+      const orderResult = await client.query(
+        `INSERT INTO orders (user_id, total_cents, payment_method, payment_status, status)
+         VALUES ($1, $2, 'crypto', 'pending', 'pending')
+         RETURNING *`,
+        [req.user.id, totalCents]
+      );
+      const order = orderResult.rows[0];
+      await insertOrderItems(order.id, safeItems);
+      const txResult = await client.query(
+        `INSERT INTO crypto_transactions
+         (order_id, asset, network, wallet_address, payer_wallet, transaction_hash, proof_image_url, amount_cents, status, response)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
+         RETURNING *`,
+        [
+          order.id,
+          cryptoPayload.asset,
+          cryptoPayload.network,
+          cryptoPayload.walletAddress,
+          cryptoPayload.payerWallet,
+          cryptoPayload.transactionHash,
+          cryptoPayload.proofImageUrl,
+          totalCents,
+          { submittedBy: req.user.id, submittedAt: new Date().toISOString() },
+        ]
+      );
+      return { order, txRow: txResult.rows[0] };
+    });
 
     return res.status(201).json({
       orderId: order.id,
-      transactionId: txResult.rows[0].id,
+      transactionId: txRow.id,
       status: "pending",
       paymentMethod: "crypto",
       paymentStatus: "pending",
@@ -864,38 +885,37 @@ router.post("/crypto/booking", requireAuth, async (req, res, next) => {
       return res.status(400).json({ error: "Invalid listing price" });
     }
 
-    const bookingResult = await query(
-      `INSERT INTO bookings (user_id, listing_id, start_date, end_date, status, payment_method, payment_status, amount_cents)
-       VALUES ($1, $2, $3, $4, 'pending', 'crypto', 'pending', $5)
-       RETURNING *`,
-      [req.user.id, listing.id, startDate ?? null, endDate ?? null, totalCents]
-    );
-    const booking = bookingResult.rows[0];
-
-    const txResult = await query(
-      `INSERT INTO crypto_transactions
-       (booking_id, asset, network, wallet_address, payer_wallet, transaction_hash, proof_image_url, amount_cents, status, response)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
-       RETURNING *`,
-      [
-        booking.id,
-        cryptoPayload.asset,
-        cryptoPayload.network,
-        cryptoPayload.walletAddress,
-        cryptoPayload.payerWallet,
-        cryptoPayload.transactionHash,
-        cryptoPayload.proofImageUrl,
-        totalCents,
-        {
-          submittedBy: req.user.id,
-          submittedAt: new Date().toISOString(),
-        },
-      ]
-    );
+    const { booking, txRow } = await withTransaction(async (client) => {
+      const bookingResult = await client.query(
+        `INSERT INTO bookings (user_id, listing_id, start_date, end_date, status, payment_method, payment_status, amount_cents)
+         VALUES ($1, $2, $3, $4, 'pending', 'crypto', 'pending', $5)
+         RETURNING *`,
+        [req.user.id, listing.id, startDate ?? null, endDate ?? null, totalCents]
+      );
+      const booking = bookingResult.rows[0];
+      const txResult = await client.query(
+        `INSERT INTO crypto_transactions
+         (booking_id, asset, network, wallet_address, payer_wallet, transaction_hash, proof_image_url, amount_cents, status, response)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
+         RETURNING *`,
+        [
+          booking.id,
+          cryptoPayload.asset,
+          cryptoPayload.network,
+          cryptoPayload.walletAddress,
+          cryptoPayload.payerWallet,
+          cryptoPayload.transactionHash,
+          cryptoPayload.proofImageUrl,
+          totalCents,
+          { submittedBy: req.user.id, submittedAt: new Date().toISOString() },
+        ]
+      );
+      return { booking, txRow: txResult.rows[0] };
+    });
 
     return res.status(201).json({
       bookingId: booking.id,
-      transactionId: txResult.rows[0].id,
+      transactionId: txRow.id,
       status: "pending",
       paymentMethod: "crypto",
       paymentStatus: "pending",
@@ -951,39 +971,38 @@ router.post("/crypto/event-registration", requireAuth, async (req, res, next) =>
       return res.status(400).json({ error: "This registration does not require payment" });
     }
 
-    await query(
-      `UPDATE event_registrations
-       SET contact_phone = COALESCE($1, contact_phone),
-           payment_method = 'crypto',
-           payment_status = 'pending'
-       WHERE id = $2`,
-      [req.body.contactPhone || null, registration.id]
-    );
-
-    const txResult = await query(
-      `INSERT INTO crypto_transactions
-       (event_registration_id, asset, network, wallet_address, payer_wallet, transaction_hash, proof_image_url, amount_cents, status, response)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
-       RETURNING *`,
-      [
-        registration.id,
-        cryptoPayload.asset,
-        cryptoPayload.network,
-        cryptoPayload.walletAddress,
-        cryptoPayload.payerWallet,
-        cryptoPayload.transactionHash,
-        cryptoPayload.proofImageUrl,
-        totalCents,
-        {
-          submittedBy: req.user.id,
-          submittedAt: new Date().toISOString(),
-        },
-      ]
-    );
+    const txRow = await withTransaction(async (client) => {
+      await client.query(
+        `UPDATE event_registrations
+         SET contact_phone = COALESCE($1, contact_phone),
+             payment_method = 'crypto',
+             payment_status = 'pending'
+         WHERE id = $2`,
+        [req.body.contactPhone || null, registration.id]
+      );
+      const txResult = await client.query(
+        `INSERT INTO crypto_transactions
+         (event_registration_id, asset, network, wallet_address, payer_wallet, transaction_hash, proof_image_url, amount_cents, status, response)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
+         RETURNING *`,
+        [
+          registration.id,
+          cryptoPayload.asset,
+          cryptoPayload.network,
+          cryptoPayload.walletAddress,
+          cryptoPayload.payerWallet,
+          cryptoPayload.transactionHash,
+          cryptoPayload.proofImageUrl,
+          totalCents,
+          { submittedBy: req.user.id, submittedAt: new Date().toISOString() },
+        ]
+      );
+      return txResult.rows[0];
+    });
 
     return res.status(201).json({
       registrationId: registration.id,
-      transactionId: txResult.rows[0].id,
+      transactionId: txRow.id,
       status: "pending",
       paymentMethod: "crypto",
       paymentStatus: "pending",
