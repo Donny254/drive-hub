@@ -107,7 +107,7 @@ const AdminOrdersTab = ({
                   <div className="min-w-0">
                     <p className="font-medium break-words">{order.id.slice(0, 8)}</p>
                     <p className="mt-1 text-xs text-muted-foreground break-words">
-                      User {order.userId.slice(0, 8)} • {order.itemsCount ?? 0} items
+                      User {order.userId?.slice(0, 8) ?? "--"} • {order.itemsCount ?? 0} items
                     </p>
                   </div>
                   <Badge variant={statusVariant(order.status)} className="capitalize">
@@ -281,7 +281,7 @@ const AdminOrdersTab = ({
                       <div>
                         <p className="font-medium">{order.id.slice(0, 8)}</p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          User {order.userId.slice(0, 8)} • {order.itemsCount ?? 0} items
+                          User {order.userId?.slice(0, 8) ?? "--"} • {order.itemsCount ?? 0} items
                         </p>
                       </div>
                     </TableCell>

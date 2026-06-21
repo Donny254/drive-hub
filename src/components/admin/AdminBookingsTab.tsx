@@ -102,9 +102,9 @@ const AdminBookingsTab = ({
                     <div className="h-14 w-20 rounded-md border border-dashed border-border bg-secondary/40" />
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium break-words">{booking.listingTitle ?? booking.listingId.slice(0, 8)}</p>
+                    <p className="font-medium break-words">{booking.listingTitle ?? booking.listingId?.slice(0, 8) ?? "--"}</p>
                     <p className="mt-1 text-xs text-muted-foreground break-words">
-                      Booking {booking.id.slice(0, 8)} • User {booking.userId.slice(0, 8)}
+                      Booking {booking.id.slice(0, 8)} • User {booking.userId?.slice(0, 8) ?? "--"}
                     </p>
                   </div>
                 </div>
@@ -269,9 +269,9 @@ const AdminBookingsTab = ({
                           <div className="h-12 w-16 rounded-md border border-dashed border-border bg-secondary/40" />
                         )}
                         <div>
-                          <p className="font-medium">{booking.listingTitle ?? booking.listingId.slice(0, 8)}</p>
+                          <p className="font-medium">{booking.listingTitle ?? booking.listingId?.slice(0, 8) ?? "--"}</p>
                           <p className="mt-1 text-xs text-muted-foreground">
-                            Booking {booking.id.slice(0, 8)} • User {booking.userId.slice(0, 8)}
+                            Booking {booking.id.slice(0, 8)} • User {booking.userId?.slice(0, 8) ?? "--"}
                           </p>
                         </div>
                       </div>

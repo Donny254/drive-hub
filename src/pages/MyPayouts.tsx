@@ -179,7 +179,7 @@ const MyPayouts = () => {
       doc.roundedRect(margin, y, contentWidth, 78, 6, 6);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
-      doc.text(`${index + 1}. ${item.listingTitle || item.listingId.slice(0, 8)}`, margin + 10, y + 18);
+      doc.text(`${index + 1}. ${item.listingTitle || (item.listingId?.slice(0, 8) ?? "--")}`, margin + 10, y + 18);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
       doc.text(`Buyer: ${item.buyerName || "--"}`, margin + 10, y + 34);
@@ -207,7 +207,7 @@ const MyPayouts = () => {
       .map(
         (item) => `
           <tr>
-            <td>${item.listingTitle || item.listingId.slice(0, 8)}</td>
+            <td>${item.listingTitle || (item.listingId?.slice(0, 8) ?? "--")}</td>
             <td>${item.buyerName || "--"}</td>
             <td>${money(item.amountCents)} / ${money(item.feeCents)}</td>
             <td>${money(item.payoutAmountCents)}</td>
@@ -376,8 +376,8 @@ const MyPayouts = () => {
                     <div key={payout.id} className="rounded-xl border border-border bg-card p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="font-medium break-words">{payout.listingTitle ?? payout.listingId.slice(0, 8)}</p>
-                          <p className="mt-1 text-xs text-muted-foreground">Booking #{payout.bookingId.slice(0, 8)}</p>
+                          <p className="font-medium break-words">{payout.listingTitle ?? payout.listingId?.slice(0, 8) ?? "--"}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">Booking #{payout.bookingId?.slice(0, 8) ?? "--"}</p>
                         </div>
                         <Badge variant={tone(payout.payoutStatus)} className="capitalize">
                           {payout.payoutStatus}
@@ -422,8 +422,8 @@ const MyPayouts = () => {
                         <TableRow key={payout.id}>
                     <TableCell>
                       <div>
-                        <p className="font-medium">{payout.listingTitle ?? payout.listingId.slice(0, 8)}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">Booking #{payout.bookingId.slice(0, 8)}</p>
+                        <p className="font-medium">{payout.listingTitle ?? payout.listingId?.slice(0, 8) ?? "--"}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Booking #{payout.bookingId?.slice(0, 8) ?? "--"}</p>
                       </div>
                     </TableCell>
                     <TableCell>{payout.buyerName || "--"}</TableCell>

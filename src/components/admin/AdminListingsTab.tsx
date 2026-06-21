@@ -216,7 +216,7 @@ const AdminListingsTab = ({
                                 <TableRow key={bid.id}>
                                   <TableCell>
                                     <div className="min-w-[180px]">
-                                      <p className="font-medium">{bid.listingTitle || bid.listingId.slice(0, 8)}</p>
+                                      <p className="font-medium">{bid.listingTitle || (bid.listingId?.slice(0, 8) ?? "--")}</p>
                                       <p className="text-xs text-muted-foreground">
                                         Seller: {bid.sellerName || bid.sellerId?.slice(0, 8) || "N/A"}
                                       </p>

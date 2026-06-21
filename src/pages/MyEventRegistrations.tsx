@@ -293,7 +293,7 @@ const MyEventRegistrations = () => {
                   {registrations.map((registration) => (
                     <div key={registration.id} className="rounded-xl border border-border bg-card p-4">
                       <div>
-                        <p className="font-medium break-words">{registration.eventTitle ?? registration.eventId.slice(0, 8)}</p>
+                        <p className="font-medium break-words">{registration.eventTitle ?? registration.eventId?.slice(0, 8) ?? "--"}</p>
                         <p className="mt-1 text-sm text-muted-foreground">Registration #{registration.id.slice(0, 8)}</p>
                       </div>
                       <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
@@ -426,7 +426,7 @@ const MyEventRegistrations = () => {
                       <TableRow key={registration.id}>
                         <TableCell>{registration.id.slice(0, 8)}</TableCell>
                         <TableCell>
-                          {registration.eventTitle ?? registration.eventId.slice(0, 8)}
+                          {registration.eventTitle ?? registration.eventId?.slice(0, 8) ?? "--"}
                         </TableCell>
                         <TableCell>{registration.tickets}</TableCell>
                         <TableCell>{registration.amountCents > 0 ? formatCurrency(registration.amountCents) : "Free"}</TableCell>

@@ -69,8 +69,8 @@ const AdminPayoutsTab = ({
   const exportCsv = () => {
     const csv = toCsv(
       filteredPayouts.map((payout) => ({
-        listing: payout.listingTitle || payout.listingId.slice(0, 8),
-        booking: payout.bookingId.slice(0, 8),
+        listing: payout.listingTitle || (payout.listingId?.slice(0, 8) ?? "--"),
+        booking: payout.bookingId?.slice(0, 8) ?? "--",
         buyer: payout.buyerName || "--",
         gross: payout.amountCents / 100,
         commission: payout.feeCents / 100,
@@ -155,8 +155,8 @@ const AdminPayoutsTab = ({
               <div key={payout.id} className="rounded-xl border border-border bg-background/60 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-medium break-words">{payout.listingTitle ?? payout.listingId.slice(0, 8)}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Booking #{payout.bookingId.slice(0, 8)}</p>
+                    <p className="font-medium break-words">{payout.listingTitle ?? payout.listingId?.slice(0, 8) ?? "--"}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Booking #{payout.bookingId?.slice(0, 8) ?? "--"}</p>
                   </div>
                   <Badge variant={statusVariant(payout.payoutStatus)} className="capitalize">
                     {payout.payoutStatus}
@@ -232,7 +232,7 @@ const AdminPayoutsTab = ({
                           />
                         </div>
                         <div className="rounded-xl border border-border bg-secondary/20 p-4 text-sm text-muted-foreground">
-                          <p className="font-medium text-foreground">{editingPayout.listingTitle ?? editingPayout.listingId.slice(0, 8)}</p>
+                          <p className="font-medium text-foreground">{editingPayout.listingTitle ?? editingPayout.listingId?.slice(0, 8) ?? "--"}</p>
                           <p className="mt-1">Buyer: {editingPayout.buyerName || "--"}</p>
                           <p className="mt-1">Created: {formatDateTime(editingPayout.createdAt)}</p>
                           <p className="mt-1">Payout at: {formatDateTime(editingPayout.payoutAt)}</p>
@@ -267,8 +267,8 @@ const AdminPayoutsTab = ({
                   <TableRow key={payout.id}>
                     <TableCell>
                       <div>
-                        <p className="font-medium">{payout.listingTitle ?? payout.listingId.slice(0, 8)}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">Booking #{payout.bookingId.slice(0, 8)}</p>
+                        <p className="font-medium">{payout.listingTitle ?? payout.listingId?.slice(0, 8) ?? "--"}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">Booking #{payout.bookingId?.slice(0, 8) ?? "--"}</p>
                         <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(payout.createdAt)}</p>
                       </div>
                     </TableCell>

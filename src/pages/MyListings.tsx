@@ -316,7 +316,7 @@ const MyListings = () => {
                       <TableBody>
                         {listingBids.slice(0, 8).map((bid) => (
                           <TableRow key={bid.id}>
-                            <TableCell>{bid.listingTitle || bid.listingId.slice(0, 8)}</TableCell>
+                            <TableCell>{bid.listingTitle || (bid.listingId?.slice(0, 8) ?? "--")}</TableCell>
                             <TableCell>
                               <p>{bid.bidderName}</p>
                               <p className="text-xs text-muted-foreground">{bid.bidderPhone || bid.bidderEmail || "No contact"}</p>

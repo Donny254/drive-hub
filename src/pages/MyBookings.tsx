@@ -111,7 +111,7 @@ const MyBookings = () => {
                           <div className="h-16 w-20 rounded-md border border-dashed border-border bg-secondary/40" />
                         )}
                         <div className="min-w-0 flex-1">
-                          <p className="font-medium break-words">{booking.listingTitle ?? booking.listingId.slice(0, 8)}</p>
+                          <p className="font-medium break-words">{booking.listingTitle ?? booking.listingId?.slice(0, 8) ?? "--"}</p>
                           <p className="mt-1 text-sm text-muted-foreground">Booking #{booking.id.slice(0, 8)}</p>
                         </div>
                       </div>
@@ -163,7 +163,7 @@ const MyBookings = () => {
                         </TableCell>
                         <TableCell>{booking.id.slice(0, 8)}</TableCell>
                         <TableCell>
-                          {booking.listingTitle ?? booking.listingId.slice(0, 8)}
+                          {booking.listingTitle ?? booking.listingId?.slice(0, 8) ?? "--"}
                         </TableCell>
                         <TableCell>{booking.startDate ?? "--"}</TableCell>
                         <TableCell>{booking.endDate ?? "--"}</TableCell>

@@ -108,7 +108,7 @@ const AdminServiceBookingsTab = ({
                   <TableRow key={booking.id}>
                     <TableCell>
                       <div>
-                        <p className="font-medium">{booking.serviceTitle ?? booking.serviceId.slice(0, 8)}</p>
+                        <p className="font-medium">{booking.serviceTitle ?? booking.serviceId?.slice(0, 8) ?? "Service"}</p>
                         <p className="mt-1 text-xs text-muted-foreground">
                           Booking {booking.id.slice(0, 8)} • User {booking.userId?.slice(0, 8) ?? "--"}
                         </p>

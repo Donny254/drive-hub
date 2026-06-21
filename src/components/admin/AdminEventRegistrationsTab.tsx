@@ -77,7 +77,7 @@ const AdminEventRegistrationsTab = ({
                     <TableCell>
                       <div>
                         <p className="font-medium">
-                          {registration.eventTitle ?? registration.eventId.slice(0, 8)}
+                          {registration.eventTitle ?? registration.eventId?.slice(0, 8) ?? "--"}
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
                           Registration {registration.id.slice(0, 8)} • User{" "}

@@ -100,7 +100,7 @@ const MyServiceBookings = () => {
                   {bookings.map((booking) => (
                     <div key={booking.id} className="rounded-xl border border-border bg-card p-4">
                       <div>
-                        <p className="font-medium break-words">{booking.serviceTitle ?? booking.serviceId.slice(0, 8)}</p>
+                        <p className="font-medium break-words">{booking.serviceTitle ?? booking.serviceId?.slice(0, 8) ?? "--"}</p>
                         <p className="mt-1 text-sm text-muted-foreground">Booking #{booking.id.slice(0, 8)}</p>
                       </div>
                       <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
@@ -134,7 +134,7 @@ const MyServiceBookings = () => {
                     {bookings.map((booking) => (
                       <TableRow key={booking.id}>
                         <TableCell>{booking.id.slice(0, 8)}</TableCell>
-                        <TableCell>{booking.serviceTitle ?? booking.serviceId.slice(0, 8)}</TableCell>
+                        <TableCell>{booking.serviceTitle ?? booking.serviceId?.slice(0, 8) ?? "--"}</TableCell>
                         <TableCell>{booking.scheduledDate ?? "--"}</TableCell>
                         <TableCell className="capitalize">{booking.status}</TableCell>
                         <TableCell className="text-right">
