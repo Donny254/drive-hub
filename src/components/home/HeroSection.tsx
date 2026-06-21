@@ -15,8 +15,8 @@ const HeroSection = () => {
       </div>
 
       {/* Left-side gradient overlay so text is readable */}
-      <div className="absolute inset-0 bg-gradient-to-r from-[hsl(180_10%_4%)] via-[hsl(180_10%_4%)/70%] to-transparent pointer-events-none" />
-      <div className="absolute inset-0 bg-gradient-to-t from-[hsl(180_10%_4%)] via-transparent to-[hsl(180_10%_4%)/40%] pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-r from-[hsl(180_10%_4%)] via-[hsl(180_10%_4%)/85%] to-transparent pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-t from-[hsl(180_10%_4%)] via-[hsl(180_10%_4%)/30%] to-transparent pointer-events-none" />
 
       {/* Static accent lines */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">

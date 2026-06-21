@@ -95,7 +95,7 @@ function Gauge({ position, radius, majors, redlineFrom = 2, label, needleRef }: 
       {/* inner glow ring */}
       <mesh position={[0, 0, 0.01]}>
         <torusGeometry args={[radius * 0.93, 0.012, 12, 80]} />
-        <meshStandardMaterial color={ACCENT} emissive={ACCENT} emissiveIntensity={1.4} />
+        <meshStandardMaterial color={ACCENT} emissive={ACCENT} emissiveIntensity={0.6} />
       </mesh>
 
       {/* minor ticks */}
@@ -109,7 +109,7 @@ function Gauge({ position, radius, majors, redlineFrom = 2, label, needleRef }: 
       {majorTicks.map((tk, i) => (
         <mesh key={`mj${i}`} position={tk.pos} rotation={[0, 0, tk.rot]}>
           <boxGeometry args={[0.04, radius * 0.13, 0.025]} />
-          <meshStandardMaterial color={tk.red ? RED : TICK_HI} emissive={tk.red ? RED : TICK_HI} emissiveIntensity={tk.red ? 1.4 : 0.6} />
+          <meshStandardMaterial color={tk.red ? RED : TICK_HI} emissive={tk.red ? RED : TICK_HI} emissiveIntensity={tk.red ? 1.1 : 0.4} />
         </mesh>
       ))}
       {/* numbers */}
@@ -118,7 +118,7 @@ function Gauge({ position, radius, majors, redlineFrom = 2, label, needleRef }: 
           key={`nm${i}`}
           position={n.pos}
           fontSize={radius * 0.13}
-          color={n.red ? RED : TICK_HI}
+          color={n.red ? RED : "#9fb1cf"}
           anchorX="center"
           anchorY="middle"
         >
@@ -224,109 +224,102 @@ function DigitalGauge({ position, radius, dotRef }: DigitalGaugeProps) {
 
 interface TroikaText { text: string; sync?: () => void; }
 
+const easeInOut = (x: number) => (x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2);
+
+// base placement of the whole cluster (shifted right + down so it clears the copy)
+const BASE_POS: [number, number, number] = [2.0, -1.8, 0];
+const BASE_SCALE = 0.72;
+
 function Cluster() {
   const tachNeedle = useRef<THREE.Group>(null);
   const speedNeedle = useRef<THREE.Group>(null);
   const gDot = useRef<THREE.Group>(null);
   const speedText = useRef<TroikaText>(null);
-  const gearText = useRef<TroikaText>(null);
   const group = useRef<THREE.Group>(null);
+  const lastMph = useRef(-1);
 
-  const sim = useRef({ speed: 0, rpm: 0.12, gear: 1, phase: "accel" as "accel" | "brake" });
-  const last = useRef({ mph: -1, gear: -1 });
+  useFrame((state) => {
+    const t = state.clock.elapsedTime;
 
-  useFrame((state, delta) => {
-    const dt = Math.min(delta, 0.05);
-    const s = sim.current;
-
-    if (s.phase === "accel") {
-      s.rpm += dt * 0.62;
-      if (s.rpm >= 0.95) {
-        if (s.gear < 6) { s.gear += 1; s.rpm = 0.46; }
-        else s.rpm = 0.95;
-      }
-      s.speed = Math.min(1, s.speed + dt * (0.045 + s.rpm * 0.05));
-      if (s.speed >= 0.97) s.phase = "brake";
+    // ignition self-test: sweep both needles up to full, hold, return to zero,
+    // then sit at idle — like starting a car. Loops.
+    const CYCLE = 60;
+    const p = t % CYCLE;
+    let tachV: number;
+    let speedV: number;
+    if (p < 1.8) {
+      const e = easeInOut(p / 1.8);            // sweep up 0 -> max
+      tachV = e; speedV = e;
+    } else if (p < 2.6) {
+      tachV = 1; speedV = 1;                    // hold at max
+    } else if (p < 4.4) {
+      const e = 1 - easeInOut((p - 2.6) / 1.8); // sweep back to zero
+      tachV = e; speedV = e;
     } else {
-      s.rpm += (0.12 - s.rpm) * dt * 3.5;
-      s.speed = Math.max(0, s.speed - dt * 0.2);
-      if (s.speed <= 0.03) { s.phase = "accel"; s.gear = 1; s.rpm = 0.14; }
+      tachV = 0.08 + Math.sin(t * 22) * 0.012;  // engine idle flutter
+      speedV = 0;
     }
 
-    // tiny vibration on the needles for life
-    const jitter = Math.sin(state.clock.elapsedTime * 40) * 0.004;
-    if (tachNeedle.current) tachNeedle.current.rotation.z = angleAt(s.rpm) + jitter;
-    if (speedNeedle.current) speedNeedle.current.rotation.z = angleAt(s.speed);
+    if (tachNeedle.current) tachNeedle.current.rotation.z = angleAt(tachV);
+    if (speedNeedle.current) speedNeedle.current.rotation.z = angleAt(speedV);
 
-    // g-force dot reacts to accel / braking
+    // g-force dot leans with the sweep (accel up, decel down)
     if (gDot.current) {
-      const t = state.clock.elapsedTime;
-      const lat = Math.sin(t * 2.1) * 0.05;
-      const lon = s.phase === "accel" ? -s.rpm * 0.18 : 0.22;
-      gDot.current.position.x = lat;
+      let lon = 0;
+      if (p < 1.8) lon = -0.16;
+      else if (p >= 2.6 && p < 4.4) lon = 0.16;
+      gDot.current.position.x = Math.sin(t * 2.1) * 0.04;
       gDot.current.position.y = -0.05 - lon;
     }
 
-    // digital readouts (only sync on integer change)
-    const mph = Math.round(s.speed * 225);
-    if (mph !== last.current.mph && speedText.current) {
+    // live speed readout (only re-sync the text on integer change)
+    const mph = Math.round(speedV * 225);
+    if (mph !== lastMph.current && speedText.current) {
       speedText.current.text = `${mph}`;
       speedText.current.sync?.();
-      last.current.mph = mph;
-    }
-    if (s.gear !== last.current.gear && gearText.current) {
-      gearText.current.text = `${s.gear}`;
-      gearText.current.sync?.();
-      last.current.gear = s.gear;
+      lastMph.current = mph;
     }
 
-    // gentle idle parallax for the whole cluster
+    // gentle idle parallax (keeps the base offset intact)
     if (group.current) {
-      const t = state.clock.elapsedTime;
-      group.current.rotation.y = Math.sin(t * 0.3) * 0.05;
-      group.current.rotation.x = -0.12 + Math.sin(t * 0.4) * 0.015;
-      group.current.position.y = Math.sin(t * 0.8) * 0.02;
+      group.current.rotation.y = Math.sin(t * 0.3) * 0.04;
+      group.current.rotation.x = -0.1 + Math.sin(t * 0.4) * 0.012;
+      group.current.position.y = BASE_POS[1] + Math.sin(t * 0.8) * 0.015;
     }
   });
 
   return (
-    <group ref={group} rotation={[-0.12, 0, 0]}>
+    <group ref={group} position={BASE_POS} rotation={[-0.1, 0, 0]} scale={BASE_SCALE}>
       {/* central tachometer */}
       <Gauge
         position={[0, 0, 0]}
-        radius={1.45}
+        radius={1.3}
         majors={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]}
         redlineFrom={0.8}
         label="GT3"
         needleRef={tachNeedle}
       />
-      {/* gear + mph digital readout in the tach */}
-      <Text ref={gearText} position={[0, -0.5, 0.1]} fontSize={0.34} color={ACCENT} anchorX="center" anchorY="middle">
-        1
-      </Text>
-      <Text position={[0, -0.86, 0.1]} fontSize={0.13} color="#7c8aa3" anchorX="center" anchorY="middle" letterSpacing={0.2}>
-        GEAR
-      </Text>
-      <group position={[0, -1.12, 0.1]}>
-        <Text ref={speedText} position={[-0.12, 0, 0]} fontSize={0.22} color={TICK_HI} anchorX="right" anchorY="middle">
-          0
-        </Text>
-        <Text position={[0.05, -0.01, 0]} fontSize={0.12} color="#7c8aa3" anchorX="left" anchorY="middle">
-          mph
-        </Text>
-      </group>
 
       {/* speedometer */}
       <Gauge
-        position={[-2.75, 0.05, -0.15]}
-        radius={1.15}
+        position={[-2.2, 0.05, -0.1]}
+        radius={1.0}
         majors={[0, 25, 50, 75, 100, 125, 150, 175, 200, 225]}
         label="MPH"
         needleRef={speedNeedle}
       />
+      {/* live speed readout inside the speedometer */}
+      <group position={[-2.2, -0.4, 0.12]}>
+        <Text ref={speedText} position={[-0.06, 0, 0]} fontSize={0.2} color={TICK_HI} anchorX="right" anchorY="middle">
+          0
+        </Text>
+        <Text position={[0.04, -0.015, 0]} fontSize={0.1} color="#7c8aa3" anchorX="left" anchorY="middle">
+          mph
+        </Text>
+      </group>
 
       {/* digital G-force gauge */}
-      <DigitalGauge position={[2.75, 0.05, -0.15]} radius={1.1} dotRef={gDot} />
+      <DigitalGauge position={[2.2, 0.05, -0.1]} radius={0.9} dotRef={gDot} />
     </group>
   );
 }
