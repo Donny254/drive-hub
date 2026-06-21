@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Navbar from "@/components/layout/Navbar";
+import AdminLayout from "@/components/admin/AdminLayout";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -207,9 +207,8 @@ const AdminPosts = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="pt-28 pb-16">
+    <AdminLayout>
+      <main className="pb-16 pt-6">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -487,7 +486,7 @@ const AdminPosts = () => {
         </div>
       </main>
       <Footer />
-    </div>
+    </AdminLayout>
   );
 };
 

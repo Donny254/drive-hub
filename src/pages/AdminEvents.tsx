@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Navbar from "@/components/layout/Navbar";
+import AdminLayout from "@/components/admin/AdminLayout";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -370,9 +370,8 @@ const AdminEvents = () => {
   }, [scanOpen, startScanner, stopScanner]);
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="pt-28 pb-16">
+    <AdminLayout>
+      <main className="pb-16 pt-6">
         <div className="container mx-auto px-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -777,7 +776,7 @@ const AdminEvents = () => {
         </div>
       </main>
       <Footer />
-    </div>
+    </AdminLayout>
   );
 };
 
