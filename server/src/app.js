@@ -80,7 +80,10 @@ export const createApp = () => {
 
   // Rate limiters
   const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false });
-  const paymentLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, message: { error: "Too many payment requests. Please try again later." } });
+  // Only throttle state-changing requests (checkout/payment/booking creation).
+  // GET reads — e.g. the admin lists — are covered by apiLimiter and must not
+  // be blocked by the stricter payment limit.
+  const paymentLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, message: { error: "Too many payment requests. Please try again later." }, skip: (req) => req.method === "GET" || req.method === "HEAD" });
   const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false, message: { error: "Too many attempts. Please try again later." } });
 
   app.use("/api", apiLimiter);
