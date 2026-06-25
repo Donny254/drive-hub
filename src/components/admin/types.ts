@@ -19,6 +19,9 @@ export type Listing = {
   approvedAt?: string | null;
   approvedBy?: string | null;
   images?: Array<{ id: string; url: string }>;
+  isAuction?: boolean;
+  auctionEndsAt?: string | null;
+  minBidIncrementCents?: number | null;
 };
 
 export type ListingAuditEntry = {

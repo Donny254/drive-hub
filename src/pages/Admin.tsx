@@ -228,8 +228,12 @@ const Admin = () => {
   const [usersPage, setUsersPage] = useState(parsePageParam(searchParams.get("usersPage")));
 
   const {
+    addCreateImageUrl,
     addEditImageUrl,
     createImageUrl,
+    createImages,
+    removeCreateImage,
+    setCreateImages,
     creatingListing,
     editImageUrl,
     editImages,
@@ -312,6 +316,9 @@ const Admin = () => {
     riskScore: 0,
     approvedAt: null,
     approvedBy: null,
+    isAuction: false,
+    auctionEndsAt: null,
+    minBidIncrementCents: null,
   };
 
   const notifySuccess = (title: string, description?: string) => {
@@ -423,7 +430,10 @@ const Admin = () => {
     setEditingListing,
     creatingListing,
     setCreatingListing,
+    createImageUrl,
     setCreateImageUrl,
+    createImages,
+    setCreateImages,
     setEditImages,
     setEditImageUrl,
     setListingAudit,
@@ -753,6 +763,13 @@ const Admin = () => {
                   setEditingListing={setEditingListing}
                   createImageUrl={createImageUrl}
                   setCreateImageUrl={setCreateImageUrl}
+                  createImages={createImages}
+                  addCreateImageUrl={addCreateImageUrl}
+                  removeCreateImage={removeCreateImage}
+                  resetCreateImages={() => setCreateImages([])}
+                  setCreateCoverImage={(url) =>
+                    setCreatingListing((prev) => (prev ? { ...prev, imageUrl: url } : prev))
+                  }
                   editImageUrl={editImageUrl}
                   setEditImageUrl={setEditImageUrl}
                   editImages={editImages}

@@ -16,6 +16,36 @@ export const useAdminListingEditor = ({ token, authHeaders }: UseAdminListingEdi
   const [editImages, setEditImages] = useState<Array<{ id: string; url: string }>>([]);
   const [editImageUrl, setEditImageUrl] = useState("");
   const [createImageUrl, setCreateImageUrl] = useState("");
+  // Candidate images for the (not-yet-saved) new listing. The cover image is
+  // kept in creatingListing.imageUrl; when there is only one candidate it is the
+  // cover automatically, when there are several the admin picks the cover.
+  const [createImages, setCreateImages] = useState<string[]>([]);
+
+  const addCreateImage = useCallback((url: string) => {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    setCreateImages((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
+    // Auto-select as the cover when it is the first image added.
+    setCreatingListing((prev) => (prev ? { ...prev, imageUrl: prev.imageUrl || trimmed } : prev));
+  }, []);
+
+  const addCreateImageUrl = useCallback(() => {
+    addCreateImage(createImageUrl);
+    setCreateImageUrl("");
+  }, [addCreateImage, createImageUrl]);
+
+  const removeCreateImage = useCallback((url: string) => {
+    setCreateImages((prev) => {
+      const next = prev.filter((item) => item !== url);
+      // If the removed image was the cover, fall back to the first remaining one.
+      setCreatingListing((listing) =>
+        listing && listing.imageUrl === url ? { ...listing, imageUrl: next[0] ?? null } : listing
+      );
+      return next;
+    });
+  }, []);
+
+  const resetCreateImages = useCallback(() => setCreateImages([]), []);
 
   const loadListingAudit = useCallback(
     async (listingId: string) => {
@@ -42,7 +72,8 @@ export const useAdminListingEditor = ({ token, authHeaders }: UseAdminListingEdi
         setUploading(true);
         const result = await uploadImage(file, token);
         if (mode === "create") {
-          setCreatingListing((prev) => (prev ? { ...prev, imageUrl: result.url } : prev));
+          setCreateImages((prev) => (prev.includes(result.url) ? prev : [...prev, result.url]));
+          setCreatingListing((prev) => (prev ? { ...prev, imageUrl: prev.imageUrl || result.url } : prev));
           return;
         }
         setEditingListing((prev) => (prev ? { ...prev, imageUrl: result.url } : prev));
@@ -134,9 +165,14 @@ export const useAdminListingEditor = ({ token, authHeaders }: UseAdminListingEdi
   );
 
   return {
+    addCreateImageUrl,
     addEditImageUrl,
     createImageUrl,
+    createImages,
     creatingListing,
+    removeCreateImage,
+    resetCreateImages,
+    setCreateImages,
     editImageUrl,
     editImages,
     editingListing,

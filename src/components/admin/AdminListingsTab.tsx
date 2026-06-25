@@ -31,6 +31,13 @@ import { TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { resolveImageUrl } from "@/lib/api";
 
+const toLocalDateTimeInput = (iso?: string | null) => {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
 
 type AdminListingsTabProps = {
   listings: Listing[];
@@ -43,6 +50,11 @@ type AdminListingsTabProps = {
   setEditingListing: Dispatch<SetStateAction<Listing | null>>;
   createImageUrl: string;
   setCreateImageUrl: Dispatch<SetStateAction<string>>;
+  createImages: string[];
+  addCreateImageUrl: () => void;
+  removeCreateImage: (url: string) => void;
+  setCreateCoverImage: (url: string) => void;
+  resetCreateImages: () => void;
   editImageUrl: string;
   setEditImageUrl: Dispatch<SetStateAction<string>>;
   editImages: Array<{ id: string; url: string }>;
@@ -91,6 +103,11 @@ const AdminListingsTab = ({
   setEditingListing,
   createImageUrl,
   setCreateImageUrl,
+  createImages,
+  addCreateImageUrl,
+  removeCreateImage,
+  setCreateCoverImage,
+  resetCreateImages,
   editImageUrl,
   setEditImageUrl,
   editImages,
@@ -343,11 +360,19 @@ const AdminListingsTab = ({
                                   if (!open) {
                                     setCreatingListing(null);
                                     setCreateImageUrl("");
+                                    resetCreateImages();
                                   }
                                 }}
                               >
                                 <DialogTrigger asChild>
-                                  <Button variant="hero" onClick={() => setCreatingListing({ ...emptyListing })}>
+                                  <Button
+                                    variant="hero"
+                                    onClick={() => {
+                                      resetCreateImages();
+                                      setCreateImageUrl("");
+                                      setCreatingListing({ ...emptyListing });
+                                    }}
+                                  >
                                     New Listing
                                   </Button>
                                 </DialogTrigger>
@@ -450,36 +475,20 @@ const AdminListingsTab = ({
                                         />
                                       </div>
                                       <div className="grid gap-2">
-                                        <Label>Image URL</Label>
-                                        <Input
-                                          value={creatingListing.imageUrl ?? ""}
-                                          onChange={(e) =>
-                                            setCreatingListing({
-                                              ...creatingListing,
-                                              imageUrl: e.target.value || null,
-                                            })
-                                          }
-                                        />
-                                      </div>
-                                      <div className="grid gap-2">
                                         <Label>Add Image URL</Label>
                                         <div className="flex gap-2">
                                           <Input
                                             value={createImageUrl}
+                                            placeholder="https://..."
                                             onChange={(e) => setCreateImageUrl(e.target.value)}
-                                          />
-                                          <Button
-                                            type="button"
-                                            variant="secondary"
-                                            onClick={() => {
-                                              if (!createImageUrl.trim()) return;
-                                              setCreatingListing({
-                                                ...creatingListing,
-                                                imageUrl: creatingListing.imageUrl || createImageUrl.trim(),
-                                              });
-                                              setCreateImageUrl("");
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                addCreateImageUrl();
+                                              }
                                             }}
-                                          >
+                                          />
+                                          <Button type="button" variant="secondary" onClick={addCreateImageUrl}>
                                             Use
                                           </Button>
                                         </div>
@@ -492,9 +501,126 @@ const AdminListingsTab = ({
                                           onChange={(e) => {
                                             const file = e.target.files?.[0];
                                             if (file) handleUpload(file, "create");
+                                            e.target.value = "";
                                           }}
                                           disabled={uploading}
                                         />
+                                      </div>
+                                      {createImages.length > 0 && (
+                                        <div className="grid gap-2">
+                                          <Label>
+                                            Images ({createImages.length})
+                                            {createImages.length === 1 && (
+                                              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                                                used as cover automatically
+                                              </span>
+                                            )}
+                                          </Label>
+                                          <div className="grid grid-cols-3 gap-2">
+                                            {createImages.map((url) => {
+                                              const isCover = creatingListing.imageUrl === url;
+                                              return (
+                                                <div key={url} className="relative">
+                                                  <img
+                                                    src={resolveImageUrl(url)}
+                                                    alt="Listing"
+                                                    className={`h-20 w-full rounded-md border-2 object-cover ${
+                                                      isCover ? "border-primary" : "border-border"
+                                                    }`}
+                                                  />
+                                                  {isCover && (
+                                                    <span className="absolute bottom-1 left-1 rounded bg-primary px-1.5 text-[10px] font-medium text-primary-foreground">
+                                                      Cover
+                                                    </span>
+                                                  )}
+                                                  <button
+                                                    type="button"
+                                                    className="absolute top-1 right-1 rounded-full bg-background/80 px-2 text-xs"
+                                                    onClick={() => removeCreateImage(url)}
+                                                  >
+                                                    ✕
+                                                  </button>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {createImages.length > 1 && (
+                                        <div className="grid gap-2">
+                                          <Label>Cover Image</Label>
+                                          <select
+                                            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                                            value={creatingListing.imageUrl ?? ""}
+                                            onChange={(e) => setCreateCoverImage(e.target.value)}
+                                          >
+                                            {createImages.map((url, index) => (
+                                              <option key={url} value={url}>
+                                                Image {index + 1}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                      )}
+                                      <div className="grid gap-2 rounded-md border border-border bg-background/60 p-3">
+                                        <Label>Auction</Label>
+                                        <select
+                                          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                                          value={creatingListing.isAuction ? "yes" : "no"}
+                                          onChange={(e) =>
+                                            setCreatingListing({
+                                              ...creatingListing,
+                                              isAuction: e.target.value === "yes",
+                                            })
+                                          }
+                                        >
+                                          <option value="no">No (fixed price / offers)</option>
+                                          <option value="yes">Yes (highest bid wins)</option>
+                                        </select>
+                                        <p className="text-xs text-muted-foreground">
+                                          In an auction, the highest bid when the timer ends wins automatically. The price
+                                          above is the opening (reserve) bid.
+                                        </p>
+                                        {creatingListing.isAuction && (
+                                          <div className="mt-2 grid gap-3">
+                                            <div className="grid gap-2">
+                                              <Label>Auction ends</Label>
+                                              <Input
+                                                type="datetime-local"
+                                                value={toLocalDateTimeInput(creatingListing.auctionEndsAt)}
+                                                onChange={(e) =>
+                                                  setCreatingListing({
+                                                    ...creatingListing,
+                                                    auctionEndsAt: e.target.value
+                                                      ? new Date(e.target.value).toISOString()
+                                                      : null,
+                                                  })
+                                                }
+                                              />
+                                            </div>
+                                            <div className="grid gap-2">
+                                              <Label>Minimum bid increment (KES)</Label>
+                                              <Input
+                                                type="number"
+                                                min="0"
+                                                value={
+                                                  creatingListing.minBidIncrementCents != null
+                                                    ? creatingListing.minBidIncrementCents / 100
+                                                    : ""
+                                                }
+                                                onChange={(e) =>
+                                                  setCreatingListing({
+                                                    ...creatingListing,
+                                                    minBidIncrementCents: e.target.value
+                                                      ? Math.round(Number(e.target.value) * 100)
+                                                      : null,
+                                                  })
+                                                }
+                                                placeholder="Defaults to 1% of price (min KES 10,000)"
+                                              />
+                                            </div>
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   )}
@@ -933,6 +1059,66 @@ const AdminListingsTab = ({
                                                     </div>
                                                   </div>
                                                 )}
+                                                <div className="grid gap-2 rounded-md border border-border bg-background/60 p-3">
+                                                  <Label>Auction</Label>
+                                                  <select
+                                                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                                                    value={editingListing.isAuction ? "yes" : "no"}
+                                                    onChange={(e) =>
+                                                      setEditingListing({
+                                                        ...editingListing,
+                                                        isAuction: e.target.value === "yes",
+                                                      })
+                                                    }
+                                                  >
+                                                    <option value="no">No (fixed price / offers)</option>
+                                                    <option value="yes">Yes (highest bid wins)</option>
+                                                  </select>
+                                                  <p className="text-xs text-muted-foreground">
+                                                    Highest bid when the timer ends wins automatically. The price is the
+                                                    opening (reserve) bid.
+                                                  </p>
+                                                  {editingListing.isAuction && (
+                                                    <div className="mt-2 grid gap-3">
+                                                      <div className="grid gap-2">
+                                                        <Label>Auction ends</Label>
+                                                        <Input
+                                                          type="datetime-local"
+                                                          value={toLocalDateTimeInput(editingListing.auctionEndsAt)}
+                                                          onChange={(e) =>
+                                                            setEditingListing({
+                                                              ...editingListing,
+                                                              auctionEndsAt: e.target.value
+                                                                ? new Date(e.target.value).toISOString()
+                                                                : null,
+                                                            })
+                                                          }
+                                                        />
+                                                      </div>
+                                                      <div className="grid gap-2">
+                                                        <Label>Minimum bid increment (KES)</Label>
+                                                        <Input
+                                                          type="number"
+                                                          min="0"
+                                                          value={
+                                                            editingListing.minBidIncrementCents != null
+                                                              ? editingListing.minBidIncrementCents / 100
+                                                              : ""
+                                                          }
+                                                          onChange={(e) =>
+                                                            setEditingListing({
+                                                              ...editingListing,
+                                                              minBidIncrementCents: e.target.value
+                                                                ? Math.round(Number(e.target.value) * 100)
+                                                                : null,
+                                                            })
+                                                          }
+                                                          placeholder="Defaults to 1% of price (min KES 10,000)"
+                                                        />
+                                                      </div>
+                                                    </div>
+                                                  )}
+                                                </div>
                                                 <div className="grid gap-2">
                                                   <Label>Audit History</Label>
                                                   <div className="rounded-lg border border-border bg-card/50 p-3">

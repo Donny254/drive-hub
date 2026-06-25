@@ -7,9 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Car, Fuel, Gauge, MapPin, ShieldCheck, Store } from "lucide-react";
+import { Calendar, Car, Fuel, Gauge, Gavel, MapPin, ShieldCheck, Store } from "lucide-react";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/feedback";
+import { useAuth } from "@/context/AuthContext";
 
 const FALLBACK_IMAGE =
   "https://images.unsplash.com/photo-1614162692292-7ac56d7f7f1e?w=1200";
@@ -44,6 +45,15 @@ type Listing = {
     activeListingsCount: number;
     trustLevel: "verified" | "dealer" | "private";
   } | null;
+};
+
+type AuctionResult = {
+  listingId: string;
+  isAuction: boolean;
+  ended: boolean;
+  won: boolean;
+  amountCents: number | null;
+  seller: { name: string | null; email: string | null; phone: string | null } | null;
 };
 
 type BidSummary = {
@@ -81,7 +91,9 @@ const formatMemberSince = (value?: string | null) => {
 
 const ListingDetails = () => {
   const { id } = useParams();
+  const { user, token } = useAuth();
   const [listing, setListing] = useState<Listing | null>(null);
+  const [auctionResult, setAuctionResult] = useState<AuctionResult | null>(null);
   const [similarListings, setSimilarListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,8 +104,6 @@ const ListingDetails = () => {
   const [contactEmail, setContactEmail] = useState("");
   const [contactMessage, setContactMessage] = useState("");
   const [bidAmount, setBidAmount] = useState("");
-  const [bidderName, setBidderName] = useState("");
-  const [bidderEmail, setBidderEmail] = useState("");
   const [bidderPhone, setBidderPhone] = useState("");
   const [bidMessage, setBidMessage] = useState("");
   const [bidSending, setBidSending] = useState(false);
@@ -173,6 +183,38 @@ const ListingDetails = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Once an auction has ended, ask the server whether the signed-in user is the
+  // winning bidder (and, if so, get the seller's contact details to pay offline).
+  useEffect(() => {
+    if (!listing?.id || !token) {
+      setAuctionResult(null);
+      return;
+    }
+    const auction = summary?.isAuction ?? listing.isAuction ?? false;
+    const endsAt = summary?.auctionEndsAt ?? listing.auctionEndsAt ?? null;
+    const status = summary?.status ?? listing.status;
+    const hasEnded =
+      auction && (status !== "active" || (endsAt != null && new Date(endsAt).getTime() <= Date.now()));
+    if (!hasEnded) {
+      setAuctionResult(null);
+      return;
+    }
+    let cancelled = false;
+    apiFetch(`/api/listing-bids/listing/${listing.id}/my-result`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((resp) => (resp.ok ? resp.json() : null))
+      .then((data) => {
+        if (!cancelled) setAuctionResult(data);
+      })
+      .catch(() => {
+        if (!cancelled) setAuctionResult(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [listing?.id, listing?.isAuction, listing?.auctionEndsAt, listing?.status, summary?.isAuction, summary?.auctionEndsAt, summary?.status, token]);
+
   const galleryImages = useMemo(() => {
     if (!listing) return [];
     const list = listing.images?.map((img) => resolveImageUrl(img.url)) ?? [];
@@ -212,8 +254,12 @@ const ListingDetails = () => {
 
   const submitBid = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!token) {
+      setBidError("Please sign in to place a bid.");
+      return;
+    }
     const amount = Number(bidAmount);
-    if (!listing?.id || !bidderName.trim() || !Number.isFinite(amount) || amount <= 0) return;
+    if (!listing?.id || !Number.isFinite(amount) || amount <= 0) return;
     const amountCents = Math.round(amount * 100);
     const auctionLive = summary?.isAuction ?? listing.isAuction ?? false;
     const requiredMin = summary?.minNextBidCents ?? listing.priceCents ?? 0;
@@ -227,11 +273,10 @@ const ListingDetails = () => {
     try {
       const resp = await apiFetch("/api/listing-bids", {
         method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           listingId: listing.id,
           amountCents,
-          bidderName,
-          bidderEmail,
           bidderPhone,
           message: bidMessage,
         }),
@@ -280,7 +325,8 @@ const ListingDetails = () => {
                     />
                     <div className="absolute top-4 left-4 flex gap-2">
                       {isAuction && (
-                        <Badge className="bg-primary text-primary-foreground">
+                        <Badge className="gap-1 bg-amber-500 text-black hover:bg-amber-500">
+                          <Gavel className="h-3.5 w-3.5" />
                           {auctionEnded ? "Auction ended" : "Auction"}
                         </Badge>
                       )}
@@ -456,15 +502,75 @@ const ListingDetails = () => {
                     )}
 
                     {isAuction && auctionEnded ? (
+                      auctionResult?.won ? (
+                        <div className="mt-4 rounded-lg border-2 border-primary bg-primary/10 p-4 text-sm">
+                          <p className="font-display text-lg text-primary">🎉 You won this auction!</p>
+                          <p className="mt-1">
+                            Amount to pay:{" "}
+                            <span className="font-semibold">
+                              KES {((auctionResult.amountCents ?? 0) / 100).toLocaleString()}
+                            </span>
+                          </p>
+                          <p className="mt-2 text-muted-foreground">
+                            Payment is arranged directly with the seller. Use the contact details below to complete
+                            your payment.
+                          </p>
+                          <div className="mt-3 grid gap-1 rounded-md border border-border bg-background/70 p-3">
+                            <p>
+                              <span className="text-muted-foreground">Seller:</span>{" "}
+                              {auctionResult.seller?.name || "—"}
+                            </p>
+                            {auctionResult.seller?.email && (
+                              <p>
+                                <span className="text-muted-foreground">Email:</span>{" "}
+                                <a className="text-primary hover:underline" href={`mailto:${auctionResult.seller.email}`}>
+                                  {auctionResult.seller.email}
+                                </a>
+                              </p>
+                            )}
+                            {auctionResult.seller?.phone && (
+                              <p>
+                                <span className="text-muted-foreground">Phone:</span>{" "}
+                                <a className="text-primary hover:underline" href={`tel:${auctionResult.seller.phone}`}>
+                                  {auctionResult.seller.phone}
+                                </a>
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-4 rounded-lg border border-border bg-background/60 p-4 text-sm">
+                          <p className="font-medium">This auction has ended.</p>
+                          <p className="mt-1 text-muted-foreground">
+                            {summary?.status === "sold" || listing.status === "sold"
+                              ? "The vehicle has been sold to the highest bidder. The winner has been notified."
+                              : highestBidCents > 0
+                                ? "The highest bid has won. The winner has been notified."
+                                : "The auction closed without any bids."}
+                          </p>
+                          {!token && highestBidCents > 0 && (
+                            <p className="mt-2 text-muted-foreground">
+                              If you were the winning bidder,{" "}
+                              <Link to="/login" className="text-primary hover:underline">
+                                sign in
+                              </Link>{" "}
+                              to see payment details.
+                            </p>
+                          )}
+                        </div>
+                      )
+                    ) : !token ? (
                       <div className="mt-4 rounded-lg border border-border bg-background/60 p-4 text-sm">
-                        <p className="font-medium">This auction has ended.</p>
-                        <p className="text-muted-foreground mt-1">
-                          {summary?.status === "sold" || listing.status === "sold"
-                            ? "The vehicle has been sold to the highest bidder. The winner is notified by email."
-                            : highestBidCents > 0
-                              ? "The highest bid has won. The winner is notified by email."
-                              : "The auction closed without any bids."}
+                        <p className="font-medium">Sign in to {isAuction ? "place a bid" : "make an offer"}</p>
+                        <p className="mt-1 text-muted-foreground">
+                          You need an account to bid. This keeps every bid tied to a verified user and lets us reach you
+                          if you win.
                         </p>
+                        <Link to="/login">
+                          <Button variant="hero" className="mt-3">
+                            Sign in to bid
+                          </Button>
+                        </Link>
                       </div>
                     ) : (
                       <form className="mt-4 grid gap-4" onSubmit={submitBid}>
@@ -485,33 +591,16 @@ const ListingDetails = () => {
                             </p>
                           )}
                         </div>
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          <div className="grid gap-2">
-                            <Label>Name</Label>
-                            <Input
-                              value={bidderName}
-                              onChange={(e) => setBidderName(e.target.value)}
-                              required
-                            />
-                          </div>
-                          <div className="grid gap-2">
-                            <Label>Phone</Label>
-                            <Input
-                              value={bidderPhone}
-                              onChange={(e) => setBidderPhone(e.target.value)}
-                              placeholder="+254..."
-                            />
-                          </div>
-                        </div>
                         <div className="grid gap-2">
-                          <Label>Email</Label>
+                          <Label>Phone (optional)</Label>
                           <Input
-                            type="email"
-                            value={bidderEmail}
-                            onChange={(e) => setBidderEmail(e.target.value)}
-                            placeholder="name@example.com"
-                            required
+                            value={bidderPhone}
+                            onChange={(e) => setBidderPhone(e.target.value)}
+                            placeholder="+254..."
                           />
+                          <p className="text-xs text-muted-foreground">
+                            Bidding as {user?.name || user?.email}. The seller sees this so they can reach you.
+                          </p>
                         </div>
                         <div className="grid gap-2">
                           <Label>Message</Label>
