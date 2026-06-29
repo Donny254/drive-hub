@@ -159,11 +159,21 @@ CREATE TABLE IF NOT EXISTS products (
   price_cents integer NOT NULL,
   category text,
   image_url text,
+  image_urls text[] DEFAULT '{}',
   sizes text[] DEFAULT '{}',
   stock integer NOT NULL DEFAULT 0,
   active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS product_reviews (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_id uuid NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES users(id) ON DELETE SET NULL,
+  rating integer NOT NULL CHECK (rating >= 1 AND rating <= 5),
+  comment text,
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS posts (
@@ -425,6 +435,12 @@ ALTER TABLE site_settings
 ALTER TABLE crypto_transactions
   ADD COLUMN IF NOT EXISTS proof_image_url text;
 
+ALTER TABLE products
+  ADD COLUMN IF NOT EXISTS image_urls text[] DEFAULT '{}';
+
+ALTER TABLE events
+  ADD COLUMN IF NOT EXISTS marketing_slot integer NOT NULL DEFAULT 0;
+
 -- Performance indexes
 CREATE INDEX IF NOT EXISTS idx_listings_user_id ON listings(user_id);
 CREATE INDEX IF NOT EXISTS idx_listings_status ON listings(status);
@@ -437,6 +453,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_product_id ON order_items(product_id);
+CREATE INDEX IF NOT EXISTS idx_product_reviews_product_id ON product_reviews(product_id);
 CREATE INDEX IF NOT EXISTS idx_event_registrations_user_id ON event_registrations(user_id);
 CREATE INDEX IF NOT EXISTS idx_event_registrations_event_id ON event_registrations(event_id);
 CREATE INDEX IF NOT EXISTS idx_service_bookings_user_id ON service_bookings(user_id);

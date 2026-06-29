@@ -47,7 +47,7 @@ const HeroSection = () => {
             style={{ animationDelay: "0.2s" }}
           >
             East Africa's exclusive marketplace for performance cars and luxury
-            SUVs. Buy, sell, or rent high-end vehicles from trusted dealers
+            SUVs. BUY, SELL, or RENT high-end vehicles from trusted dealers
             across Kenya and the continent.
           </p>
           <div

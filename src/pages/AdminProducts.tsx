@@ -17,46 +17,23 @@ import { feedbackText, getApiErrorMessage } from "@/lib/feedback";
 
 interface CategorySelectProps {
   value: string | null;
-  categories: string[];
   onChange: (value: string) => void;
 }
 
-function CategorySelect({ value, categories, onChange }: CategorySelectProps) {
-  const isNew = value !== null && value !== "" && !categories.includes(value);
-  const [adding, setAdding] = useState(isNew);
+const productCategories = ["Merchandise", "Accessories"];
 
-  const handleSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (e.target.value === "__add__") {
-      setAdding(true);
-      onChange("");
-    } else {
-      setAdding(false);
-      onChange(e.target.value);
-    }
-  };
-
+function CategorySelect({ value, onChange }: CategorySelectProps) {
   return (
-    <div className="flex flex-col gap-2">
-      <select
-        className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-        value={adding ? "__add__" : (value ?? "")}
-        onChange={handleSelect}
-      >
-        <option value="">-- Select category --</option>
-        {categories.map((cat) => (
-          <option key={cat} value={cat}>{cat}</option>
-        ))}
-        <option value="__add__">+ Add new category…</option>
-      </select>
-      {adding && (
-        <Input
-          autoFocus
-          placeholder="Type new category name"
-          value={value ?? ""}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      )}
-    </div>
+    <select
+      className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">-- Select category --</option>
+      {productCategories.map((cat) => (
+        <option key={cat} value={cat}>{cat}</option>
+      ))}
+    </select>
   );
 }
 
@@ -67,6 +44,7 @@ type Product = {
   priceCents: number;
   category: string | null;
   imageUrl: string | null;
+  imageUrls: string[];
   sizes: string[];
   stock: number;
   active: boolean;
@@ -84,10 +62,22 @@ const emptyProduct: Product = {
   priceCents: 0,
   category: null,
   imageUrl: null,
+  imageUrls: [],
   sizes: [],
   stock: 0,
   active: true,
 };
+
+const normalizeProductImages = (product: Product) => {
+  const images = Array.from(new Set([product.imageUrl, ...(product.imageUrls || [])].filter(Boolean) as string[])).slice(0, 6);
+  return {
+    ...product,
+    imageUrl: images[0] ?? null,
+    imageUrls: images,
+  };
+};
+
+const imageListText = (product: Product) => normalizeProductImages(product).imageUrls.join("\n");
 
 const AdminProducts = () => {
   const { token } = useAuth();
@@ -104,11 +94,6 @@ const AdminProducts = () => {
   const [maxPrice, setMaxPrice] = useState("");
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
-
-  const existingCategories = useMemo(
-    () => Array.from(new Set(products.map((p) => p.category).filter(Boolean) as string[])).sort(),
-    [products],
-  );
 
   const fetchProducts = useCallback(async () => {
     const resp = await apiFetch("/api/products", { headers: authHeaders });
@@ -138,15 +123,31 @@ const AdminProducts = () => {
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
-  const handleUpload = async (file: File, mode: "create" | "edit") => {
+  const setProductImages = (mode: "create" | "edit", images: string[]) => {
+    const normalized = Array.from(new Set(images.filter(Boolean))).slice(0, 6);
+    const updater = (prev: Product | null) =>
+      prev ? { ...prev, imageUrl: normalized[0] ?? null, imageUrls: normalized } : prev;
+    if (mode === "create") setCreating(updater);
+    else setEditing(updater);
+  };
+
+  const handleUpload = async (files: FileList | File[], mode: "create" | "edit") => {
     try {
       setUploading(true);
-      const result = await uploadImage(file, token);
-      if (mode === "create") {
-        setCreating((prev) => (prev ? { ...prev, imageUrl: result.url } : prev));
-      } else {
-        setEditing((prev) => (prev ? { ...prev, imageUrl: result.url } : prev));
+      const current = mode === "create" ? creating : editing;
+      const currentImages = current ? normalizeProductImages(current).imageUrls : [];
+      const availableSlots = Math.max(0, 6 - currentImages.length);
+      const selectedFiles = Array.from(files).slice(0, availableSlots);
+      if (selectedFiles.length === 0) {
+        toast.error("Each product can have a maximum of 6 images.");
+        return;
       }
+      const uploaded = [];
+      for (const file of selectedFiles) {
+        const result = await uploadImage(file, token);
+        uploaded.push(result.url);
+      }
+      setProductImages(mode, [...currentImages, ...uploaded]);
       toast.success(feedbackText.uploaded());
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Image upload failed");
@@ -162,11 +163,12 @@ const AdminProducts = () => {
       priceCents: product.priceCents,
       category: product.category ?? "",
       imageUrl: product.imageUrl ?? "",
+      imageUrls: (product.imageUrls || []).join("|"),
       sizes: product.sizes.join("|"),
       stock: product.stock,
       active: product.active ? "true" : "false",
     }));
-    const csv = toCsv(rows, ["name", "description", "priceCents", "category", "imageUrl", "sizes", "stock", "active"]);
+    const csv = toCsv(rows, ["name", "description", "priceCents", "category", "imageUrl", "imageUrls", "sizes", "stock", "active"]);
     downloadCsv("products.csv", csv);
   };
 
@@ -177,14 +179,15 @@ const AdminProducts = () => {
           name: "WheelsnationKe Hoodie",
           description: "Premium cotton hoodie",
           priceCents: 8900,
-          category: "Apparel",
+          category: "Merchandise",
           imageUrl: "/placeholder.svg",
+          imageUrls: "/placeholder.svg",
           sizes: "S|M|L|XL",
           stock: 20,
           active: "true",
         },
       ],
-      ["name", "description", "priceCents", "category", "imageUrl", "sizes", "stock", "active"]
+      ["name", "description", "priceCents", "category", "imageUrl", "imageUrls", "sizes", "stock", "active"]
     );
     downloadCsv("products_template.csv", csv);
   };
@@ -201,6 +204,7 @@ const AdminProducts = () => {
           priceCents: row.priceCents ? Number(row.priceCents) : 0,
           category: row.category || null,
           imageUrl: row.imageUrl || null,
+          imageUrls: row.imageUrls ? row.imageUrls.split("|").map((s) => s.trim()).filter(Boolean) : row.imageUrl ? [row.imageUrl] : [],
           sizes: row.sizes ? row.sizes.split("|").map((s) => s.trim()) : [],
           stock: row.stock ? Number(row.stock) : 0,
           active: row.active === "true",
@@ -220,7 +224,7 @@ const AdminProducts = () => {
     const resp = await apiFetch("/api/products", {
       method: "POST",
       headers: authHeaders,
-      body: JSON.stringify(creating),
+      body: JSON.stringify(normalizeProductImages(creating)),
     });
     if (resp.ok) {
       setCreating(null);
@@ -236,7 +240,7 @@ const AdminProducts = () => {
     const resp = await apiFetch(`/api/products/${editing.id}`, {
       method: "PUT",
       headers: authHeaders,
-      body: JSON.stringify(editing),
+      body: JSON.stringify(normalizeProductImages(editing)),
     });
     if (resp.ok) {
       setEditing(null);
@@ -331,7 +335,6 @@ const AdminProducts = () => {
                         <Label>Category</Label>
                         <CategorySelect
                           value={creating.category}
-                          categories={existingCategories}
                           onChange={(v) => setCreating({ ...creating, category: v || null })}
                         />
                       </div>
@@ -358,30 +361,46 @@ const AdminProducts = () => {
                         />
                       </div>
                       <div className="grid gap-2">
-                        <Label>Image URL</Label>
-                        <Input
-                          value={creating.imageUrl ?? ""}
-                          onChange={(e) => setCreating({ ...creating, imageUrl: e.target.value })}
+                        <Label>Images (max 6 URLs, one per line)</Label>
+                        <Textarea
+                          value={imageListText(creating)}
+                          onChange={(e) => {
+                            const images = e.target.value.split("\n").map((url) => url.trim()).filter(Boolean).slice(0, 6);
+                            setCreating({ ...creating, imageUrl: images[0] ?? null, imageUrls: images });
+                          }}
                         />
                       </div>
-                      {creating.imageUrl && (
-                        <img
-                          src={resolveImageUrl(creating.imageUrl)}
-                          alt="Product"
-                          className="h-32 w-full rounded-md object-cover border border-border"
-                        />
+                      {normalizeProductImages(creating).imageUrls.length > 0 && (
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {normalizeProductImages(creating).imageUrls.map((url, index) => (
+                            <div key={`${url}-${index}`} className="relative overflow-hidden rounded-md border border-border">
+                              <img src={resolveImageUrl(url)} alt={`Product ${index + 1}`} className="h-24 w-full object-cover" />
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="sm"
+                                className="absolute right-1 top-1 h-7 px-2"
+                                onClick={() => setProductImages("create", normalizeProductImages(creating).imageUrls.filter((_, imageIndex) => imageIndex !== index))}
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
                       )}
                       <div className="grid gap-2">
-                        <Label>Upload Image</Label>
+                        <Label>Upload Images</Label>
                         <Input
                           type="file"
                           accept="image/*"
+                          multiple
                           onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) handleUpload(file, "create");
+                            const files = e.target.files;
+                            if (files) handleUpload(files, "create");
                           }}
-                          disabled={uploading}
+                          disabled={uploading || normalizeProductImages(creating).imageUrls.length >= 6}
                         />
+                        <p className="text-xs text-muted-foreground">{normalizeProductImages(creating).imageUrls.length}/6 images selected.</p>
                       </div>
                       <div className="grid gap-2">
                         <Label>Active</Label>
@@ -512,7 +531,6 @@ const AdminProducts = () => {
                                   <Label>Category</Label>
                                   <CategorySelect
                                     value={editing.category}
-                                    categories={existingCategories}
                                     onChange={(v) => setEditing({ ...editing, category: v || null })}
                                   />
                                 </div>
@@ -525,27 +543,46 @@ const AdminProducts = () => {
                                   <Input type="number" value={editing.stock} onChange={(e) => setEditing({ ...editing, stock: Number(e.target.value || 0) })} />
                                 </div>
                                 <div className="grid gap-2">
-                                  <Label>Image URL</Label>
-                                  <Input value={editing.imageUrl ?? ""} onChange={(e) => setEditing({ ...editing, imageUrl: e.target.value })} />
-                                </div>
-                                {editing.imageUrl && (
-                                  <img
-                                    src={resolveImageUrl(editing.imageUrl)}
-                                    alt="Product"
-                                    className="h-32 w-full rounded-md object-cover border border-border"
+                                  <Label>Images (max 6 URLs, one per line)</Label>
+                                  <Textarea
+                                    value={imageListText(editing)}
+                                    onChange={(e) => {
+                                      const images = e.target.value.split("\n").map((url) => url.trim()).filter(Boolean).slice(0, 6);
+                                      setEditing({ ...editing, imageUrl: images[0] ?? null, imageUrls: images });
+                                    }}
                                   />
+                                </div>
+                                {normalizeProductImages(editing).imageUrls.length > 0 && (
+                                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                    {normalizeProductImages(editing).imageUrls.map((url, index) => (
+                                      <div key={`${url}-${index}`} className="relative overflow-hidden rounded-md border border-border">
+                                        <img src={resolveImageUrl(url)} alt={`Product ${index + 1}`} className="h-24 w-full object-cover" />
+                                        <Button
+                                          type="button"
+                                          variant="destructive"
+                                          size="sm"
+                                          className="absolute right-1 top-1 h-7 px-2"
+                                          onClick={() => setProductImages("edit", normalizeProductImages(editing).imageUrls.filter((_, imageIndex) => imageIndex !== index))}
+                                        >
+                                          Remove
+                                        </Button>
+                                      </div>
+                                    ))}
+                                  </div>
                                 )}
                                 <div className="grid gap-2">
-                                  <Label>Upload Image</Label>
+                                  <Label>Upload Images</Label>
                                   <Input
                                     type="file"
                                     accept="image/*"
+                                    multiple
                                     onChange={(e) => {
-                                      const file = e.target.files?.[0];
-                                      if (file) handleUpload(file, "edit");
+                                      const files = e.target.files;
+                                      if (files) handleUpload(files, "edit");
                                     }}
-                                    disabled={uploading}
+                                    disabled={uploading || normalizeProductImages(editing).imageUrls.length >= 6}
                                   />
+                                  <p className="text-xs text-muted-foreground">{normalizeProductImages(editing).imageUrls.length}/6 images selected.</p>
                                 </div>
                                 <div className="grid gap-2">
                                   <Label>Active</Label>

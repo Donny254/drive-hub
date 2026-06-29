@@ -14,6 +14,7 @@ const toApi = (row) => ({
   imageUrl: row.image_url,
   priceCents: Number(row.price_cents || 0),
   status: row.status,
+  marketingSlot: Number(row.marketing_slot || 0),
   registrationsCount: row.registrations_count ? Number(row.registrations_count) : 0,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -34,7 +35,9 @@ router.get("/", async (req, res, next) => {
        ) AS registrations_count
        FROM events e
        ${whereClause}
-       ORDER BY e.start_date DESC NULLS LAST`,
+       ORDER BY CASE WHEN e.marketing_slot > 0 THEN 0 ELSE 1 END,
+                e.marketing_slot ASC,
+                e.start_date DESC NULLS LAST`,
       params
     );
     res.json(result.rows.map(toApi));
@@ -71,6 +74,7 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
       imageUrl,
       priceCents = 0,
       status = "upcoming",
+      marketingSlot = 0,
     } = req.body;
     if (!title) return res.status(400).json({ error: "Title is required" });
     if (!Number.isInteger(priceCents) || priceCents < 0) {
@@ -79,9 +83,12 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
     if (!["upcoming", "past", "cancelled"].includes(status)) {
       return res.status(400).json({ error: "Invalid status" });
     }
+    if (!Number.isInteger(marketingSlot) || marketingSlot < 0) {
+      return res.status(400).json({ error: "marketingSlot must be a non-negative integer" });
+    }
     const result = await query(
-      `INSERT INTO events (title, description, location, start_date, end_date, image_url, price_cents, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `INSERT INTO events (title, description, location, start_date, end_date, image_url, price_cents, status, marketing_slot)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        RETURNING *`,
       [
         title,
@@ -92,6 +99,7 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
         imageUrl ?? null,
         priceCents,
         status,
+        marketingSlot,
       ]
     );
     res.status(201).json(toApi(result.rows[0]));
@@ -128,6 +136,12 @@ router.put("/:id", requireAuth, requireRole("admin"), async (req, res, next) => 
         return res.status(400).json({ error: "Invalid status" });
       }
       maybeSet("status", req.body.status);
+    }
+    if (req.body.marketingSlot !== undefined) {
+      if (!Number.isInteger(req.body.marketingSlot) || req.body.marketingSlot < 0) {
+        return res.status(400).json({ error: "marketingSlot must be a non-negative integer" });
+      }
+      maybeSet("marketing_slot", req.body.marketingSlot);
     }
 
     if (updates.length === 0) return res.status(400).json({ error: "No fields to update" });

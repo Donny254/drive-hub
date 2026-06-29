@@ -75,7 +75,8 @@ const MarketSlider = () => {
         if (!mounted || !Array.isArray(data) || data.length === 0) return;
         const valid = (data as Record<string, unknown>[])
           .map(normalizeSlide)
-          .filter((s): s is AdvertSlide => s !== null);
+          .filter((s): s is AdvertSlide => s !== null)
+          .filter((slide) => slide.ctaLink === "/market");
         if (valid.length === 0) return;
         setSlides(valid);
         setCurrentSlide(0);

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowDown, ArrowUp, Minus, Plus, ShoppingCart, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Minus, Plus, ShoppingCart, Star, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
@@ -23,11 +23,27 @@ import PagerBar from "@/components/shared/PagerBar";
 interface Product {
   id: string;
   name: string;
+  description: string | null;
   priceCents: number;
   category: string | null;
   imageUrl: string | null;
+  imageUrls?: string[];
   sizes?: string[];
   active: boolean;
+  averageRating?: number;
+  reviewsCount?: number;
+}
+
+interface ProductReview {
+  id: string;
+  userName: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+}
+
+interface ProductDetails extends Product {
+  reviews?: ProductReview[];
 }
 
 interface CartItem extends Product {
@@ -48,6 +64,12 @@ const Store = () => {
   const navigate = useNavigate();
   const { token, user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<ProductDetails | null>(null);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState("All");
@@ -115,12 +137,8 @@ const Store = () => {
   }, []);
 
   const categories = useMemo(() => {
-    const cats = new Set<string>();
-    products.forEach((p) => {
-      if (p.category) cats.add(p.category);
-    });
-    return ["All", ...Array.from(cats)];
-  }, [products]);
+    return ["All", "Merchandise", "Accessories"];
+  }, []);
 
   const filteredProducts = activeCategory === "All"
     ? products
@@ -139,6 +157,50 @@ const Store = () => {
       return [...prev, { ...product, quantity: 1 }];
     });
     toast.success(`${product.name} added to cart.`);
+  };
+
+  const getProductImages = (product: Product | ProductDetails | null) => {
+    if (!product) return [];
+    return Array.from(new Set([product.imageUrl, ...(product.imageUrls || [])].filter(Boolean) as string[]));
+  };
+
+  const openProductDetails = async (product: Product) => {
+    setSelectedProduct(product);
+    setSelectedImageIndex(0);
+    setReviewRating(5);
+    setReviewComment("");
+    setDetailsLoading(true);
+    const resp = await apiFetch(`/api/products/${product.id}`);
+    if (resp.ok) {
+      setSelectedProduct(await resp.json());
+    } else {
+      toast.error(await getApiErrorMessage(resp, "Failed to load product details"));
+    }
+    setDetailsLoading(false);
+  };
+
+  const submitReview = async () => {
+    if (!selectedProduct) return;
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    setReviewSubmitting(true);
+    const resp = await apiFetch(`/api/products/${selectedProduct.id}/reviews`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ rating: reviewRating, comment: reviewComment }),
+    });
+    if (resp.ok) {
+      const detailsResp = await apiFetch(`/api/products/${selectedProduct.id}`);
+      if (detailsResp.ok) setSelectedProduct(await detailsResp.json());
+      setReviewComment("");
+      setReviewRating(5);
+      toast.success("Review added.");
+    } else {
+      toast.error(await getApiErrorMessage(resp, "Failed to add review"));
+    }
+    setReviewSubmitting(false);
   };
 
   const removeFromCart = (productId: string) => {
@@ -347,7 +409,13 @@ const Store = () => {
                 {pagedProducts.map((product, index) => (
                   <div
                     key={product.id}
-                    className="group flex h-full flex-col overflow-hidden rounded-lg border border-border bg-card transition-all duration-500 hover:border-primary/50 animate-fade-in"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => void openProductDetails(product)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") void openProductDetails(product);
+                    }}
+                    className="group flex h-full cursor-pointer flex-col overflow-hidden rounded-lg border border-border bg-card transition-all duration-500 hover:border-primary/50 animate-fade-in"
                     style={{ animationDelay: `${index * 0.05}s` }}
                   >
                     <div className="relative aspect-[4/5] overflow-hidden">
@@ -365,11 +433,30 @@ const Store = () => {
                     </div>
                     <div className="flex flex-1 flex-col p-5">
                       <h3 className="font-display text-xl break-words">{product.name}</h3>
+                      <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-0.5 text-primary">
+                          {Array.from({ length: 5 }).map((_, starIndex) => (
+                            <Star
+                              key={starIndex}
+                              className={`h-4 w-4 ${starIndex < Math.round(product.averageRating || 0) ? "fill-current" : ""}`}
+                            />
+                          ))}
+                        </div>
+                        <span>{product.averageRating ? product.averageRating.toFixed(1) : "No ratings"}</span>
+                      </div>
                       <div className="mt-auto flex flex-col gap-4 pt-4">
                         <span className="font-display text-2xl text-primary break-words">
                           KES {(product.priceCents / 100).toLocaleString()}
                         </span>
-                        <Button variant="hero" size="sm" className="w-full" onClick={() => addToCart(product)}>
+                        <Button
+                          variant="hero"
+                          size="sm"
+                          className="w-full"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            addToCart(product);
+                          }}
+                        >
                           Add to Cart
                         </Button>
                       </div>
@@ -385,6 +472,110 @@ const Store = () => {
         </section>
       </main>
       <Footer />
+
+      <Dialog open={Boolean(selectedProduct)} onOpenChange={(open) => !open && setSelectedProduct(null)}>
+        <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
+          {selectedProduct && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{selectedProduct.name}</DialogTitle>
+                <DialogDescription>
+                  {selectedProduct.category ?? "Store item"} · KES {(selectedProduct.priceCents / 100).toLocaleString()}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                <div className="space-y-3">
+                  <img
+                    src={resolveImageUrl(getProductImages(selectedProduct)[selectedImageIndex]) || "https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=900"}
+                    alt={selectedProduct.name}
+                    className="aspect-[4/3] w-full rounded-lg border border-border object-cover"
+                  />
+                  {getProductImages(selectedProduct).length > 1 && (
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                      {getProductImages(selectedProduct).map((url, index) => (
+                        <button
+                          key={`${url}-${index}`}
+                          type="button"
+                          className={`overflow-hidden rounded-md border ${selectedImageIndex === index ? "border-primary" : "border-border"}`}
+                          onClick={() => setSelectedImageIndex(index)}
+                        >
+                          <img src={resolveImageUrl(url)} alt={`${selectedProduct.name} ${index + 1}`} className="aspect-square w-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-5">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex text-primary">
+                        {Array.from({ length: 5 }).map((_, starIndex) => (
+                          <Star
+                            key={starIndex}
+                            className={`h-5 w-5 ${starIndex < Math.round(selectedProduct.averageRating || 0) ? "fill-current" : ""}`}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        {selectedProduct.averageRating ? selectedProduct.averageRating.toFixed(1) : "No ratings"} ({selectedProduct.reviewsCount || 0})
+                      </span>
+                    </div>
+                    <p className="mt-4 text-muted-foreground">
+                      {selectedProduct.description || "No description has been added for this item yet."}
+                    </p>
+                  </div>
+                  <Button variant="hero" className="w-full" onClick={() => addToCart(selectedProduct)}>
+                    Add to Cart
+                  </Button>
+                  <div className="rounded-lg border border-border p-4">
+                    <h3 className="font-display text-lg">Rate This Item</h3>
+                    <div className="mt-3 flex gap-1 text-primary">
+                      {Array.from({ length: 5 }).map((_, index) => (
+                        <button key={index} type="button" onClick={() => setReviewRating(index + 1)} aria-label={`${index + 1} star rating`}>
+                          <Star className={`h-6 w-6 ${index < reviewRating ? "fill-current" : ""}`} />
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      className="mt-3 min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      placeholder="Share your review..."
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                    />
+                    <Button className="mt-3 w-full" variant="secondary" onClick={submitReview} disabled={reviewSubmitting}>
+                      {reviewSubmitting ? "Submitting..." : "Submit Review"}
+                    </Button>
+                  </div>
+                  <div>
+                    <h3 className="font-display text-lg">Reviews</h3>
+                    {detailsLoading ? (
+                      <p className="mt-3 text-sm text-muted-foreground">Loading reviews...</p>
+                    ) : selectedProduct.reviews?.length ? (
+                      <div className="mt-3 space-y-3">
+                        {selectedProduct.reviews.map((review) => (
+                          <div key={review.id} className="rounded-md border border-border p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="font-medium">{review.userName}</span>
+                              <div className="flex text-primary">
+                                {Array.from({ length: 5 }).map((_, index) => (
+                                  <Star key={index} className={`h-4 w-4 ${index < review.rating ? "fill-current" : ""}`} />
+                                ))}
+                              </div>
+                            </div>
+                            {review.comment && <p className="mt-2 text-sm text-muted-foreground">{review.comment}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-sm text-muted-foreground">No reviews yet.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <button
         onClick={() => setIsCartOpen(true)}
