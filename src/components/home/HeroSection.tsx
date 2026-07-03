@@ -48,7 +48,7 @@ const HeroSection = () => {
           >
             East Africa's exclusive marketplace for performance cars and luxury
             SUVs. BUY, SELL, or RENT high-end vehicles from trusted dealers
-            across Kenya and the continent.
+            across EA.
           </p>
           <div
             className="mt-10 flex flex-col gap-4 animate-fade-in sm:flex-row sm:flex-wrap"
@@ -69,15 +69,15 @@ const HeroSection = () => {
           {/* Stats bar */}
           <div className="mt-16 grid grid-cols-1 gap-6 animate-fade-in sm:grid-cols-3 sm:gap-8" style={{ animationDelay: "0.6s" }}>
             <div className="text-center sm:text-left">
-              <p className="font-display text-3xl text-primary">500+</p>
+              <p className="font-display text-3xl text-primary">250+</p>
               <p className="text-sm text-muted-foreground">Premium Cars</p>
             </div>
             <div className="text-center sm:text-left">
-              <p className="font-display text-3xl text-primary">50+</p>
+              <p className="font-display text-3xl text-primary">10+</p>
               <p className="text-sm text-muted-foreground">Trusted Dealers</p>
             </div>
             <div className="text-center sm:text-left">
-              <p className="font-display text-3xl text-primary">10+</p>
+              <p className="font-display text-3xl text-primary">5+</p>
               <p className="text-sm text-muted-foreground">African Countries</p>
             </div>
           </div>

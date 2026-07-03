@@ -17,6 +17,15 @@ export const useAdminListingEditor = ({ token, authHeaders }: UseAdminListingEdi
   const [editImageUrl, setEditImageUrl] = useState("");
   const [createImageUrl, setCreateImageUrl] = useState("");
 
+  const normalizeCreateImages = (listing: Listing, nextUrls: string[]) => {
+    const urls = Array.from(new Set(nextUrls.filter(Boolean)));
+    return {
+      ...listing,
+      imageUrl: urls[0] ?? null,
+      imageUrls: urls,
+    };
+  };
+
   const loadListingAudit = useCallback(
     async (listingId: string) => {
       setListingAuditLoading(true);
@@ -42,7 +51,9 @@ export const useAdminListingEditor = ({ token, authHeaders }: UseAdminListingEdi
         setUploading(true);
         const result = await uploadImage(file, token);
         if (mode === "create") {
-          setCreatingListing((prev) => (prev ? { ...prev, imageUrl: result.url } : prev));
+          setCreatingListing((prev) =>
+            prev ? normalizeCreateImages(prev, [prev.imageUrl, ...(prev.imageUrls || []), result.url].filter(Boolean) as string[]) : prev
+          );
           return;
         }
         setEditingListing((prev) => (prev ? { ...prev, imageUrl: result.url } : prev));

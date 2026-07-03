@@ -69,7 +69,7 @@ const emptyProduct: Product = {
 };
 
 const normalizeProductImages = (product: Product) => {
-  const images = Array.from(new Set([product.imageUrl, ...(product.imageUrls || [])].filter(Boolean) as string[])).slice(0, 6);
+  const images = Array.from(new Set([product.imageUrl, ...(product.imageUrls || [])].filter(Boolean) as string[])).slice(0, 12);
   return {
     ...product,
     imageUrl: images[0] ?? null,
@@ -124,7 +124,7 @@ const AdminProducts = () => {
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const setProductImages = (mode: "create" | "edit", images: string[]) => {
-    const normalized = Array.from(new Set(images.filter(Boolean))).slice(0, 6);
+    const normalized = Array.from(new Set(images.filter(Boolean))).slice(0, 12);
     const updater = (prev: Product | null) =>
       prev ? { ...prev, imageUrl: normalized[0] ?? null, imageUrls: normalized } : prev;
     if (mode === "create") setCreating(updater);
@@ -136,10 +136,10 @@ const AdminProducts = () => {
       setUploading(true);
       const current = mode === "create" ? creating : editing;
       const currentImages = current ? normalizeProductImages(current).imageUrls : [];
-      const availableSlots = Math.max(0, 6 - currentImages.length);
+      const availableSlots = Math.max(0, 12 - currentImages.length);
       const selectedFiles = Array.from(files).slice(0, availableSlots);
       if (selectedFiles.length === 0) {
-        toast.error("Each product can have a maximum of 6 images.");
+        toast.error("Each product can have a maximum of 12 images.");
         return;
       }
       const uploaded = [];
@@ -361,11 +361,11 @@ const AdminProducts = () => {
                         />
                       </div>
                       <div className="grid gap-2">
-                        <Label>Images (max 6 URLs, one per line)</Label>
+                        <Label>Images (max 12 URLs, one per line)</Label>
                         <Textarea
                           value={imageListText(creating)}
                           onChange={(e) => {
-                            const images = e.target.value.split("\n").map((url) => url.trim()).filter(Boolean).slice(0, 6);
+                            const images = e.target.value.split("\n").map((url) => url.trim()).filter(Boolean).slice(0, 12);
                             setCreating({ ...creating, imageUrl: images[0] ?? null, imageUrls: images });
                           }}
                         />
@@ -400,7 +400,7 @@ const AdminProducts = () => {
                           }}
                           disabled={uploading || normalizeProductImages(creating).imageUrls.length >= 6}
                         />
-                        <p className="text-xs text-muted-foreground">{normalizeProductImages(creating).imageUrls.length}/6 images selected.</p>
+                        <p className="text-xs text-muted-foreground">{normalizeProductImages(creating).imageUrls.length}/12 images selected.</p>
                       </div>
                       <div className="grid gap-2">
                         <Label>Active</Label>
@@ -543,11 +543,11 @@ const AdminProducts = () => {
                                   <Input type="number" value={editing.stock} onChange={(e) => setEditing({ ...editing, stock: Number(e.target.value || 0) })} />
                                 </div>
                                 <div className="grid gap-2">
-                                  <Label>Images (max 6 URLs, one per line)</Label>
+                                  <Label>Images (max 12 URLs, one per line)</Label>
                                   <Textarea
                                     value={imageListText(editing)}
                                     onChange={(e) => {
-                                      const images = e.target.value.split("\n").map((url) => url.trim()).filter(Boolean).slice(0, 6);
+                                      const images = e.target.value.split("\n").map((url) => url.trim()).filter(Boolean).slice(0, 12);
                                       setEditing({ ...editing, imageUrl: images[0] ?? null, imageUrls: images });
                                     }}
                                   />
@@ -582,7 +582,7 @@ const AdminProducts = () => {
                                     }}
                                     disabled={uploading || normalizeProductImages(editing).imageUrls.length >= 6}
                                   />
-                                  <p className="text-xs text-muted-foreground">{normalizeProductImages(editing).imageUrls.length}/6 images selected.</p>
+                                  <p className="text-xs text-muted-foreground">{normalizeProductImages(editing).imageUrls.length}/12 images selected.</p>
                                 </div>
                                 <div className="grid gap-2">
                                   <Label>Active</Label>

@@ -80,6 +80,9 @@ type AdminListingsTabProps = {
   addEditImageUrl: () => Promise<void> | void;
 };
 
+const normalizeListingImageUrls = (listing: Listing) =>
+  Array.from(new Set([listing.imageUrl, ...(listing.imageUrls || [])].filter(Boolean) as string[]));
+
 const AdminListingsTab = ({
   listings,
   listingBids,
@@ -450,18 +453,6 @@ const AdminListingsTab = ({
                                         />
                                       </div>
                                       <div className="grid gap-2">
-                                        <Label>Image URL</Label>
-                                        <Input
-                                          value={creatingListing.imageUrl ?? ""}
-                                          onChange={(e) =>
-                                            setCreatingListing({
-                                              ...creatingListing,
-                                              imageUrl: e.target.value || null,
-                                            })
-                                          }
-                                        />
-                                      </div>
-                                      <div className="grid gap-2">
                                         <Label>Add Image URL</Label>
                                         <div className="flex gap-2">
                                           <Input
@@ -473,25 +464,69 @@ const AdminListingsTab = ({
                                             variant="secondary"
                                             onClick={() => {
                                               if (!createImageUrl.trim()) return;
+                                              const urls = normalizeListingImageUrls(creatingListing);
+                                              const nextUrls = Array.from(new Set([...urls, createImageUrl.trim()]));
                                               setCreatingListing({
                                                 ...creatingListing,
-                                                imageUrl: creatingListing.imageUrl || createImageUrl.trim(),
+                                                imageUrl: nextUrls[0] ?? null,
+                                                imageUrls: nextUrls,
                                               });
                                               setCreateImageUrl("");
                                             }}
                                           >
-                                            Use
+                                            Add
                                           </Button>
                                         </div>
                                       </div>
+                                      {normalizeListingImageUrls(creatingListing).length > 0 && (
+                                        <div className="grid gap-2">
+                                          <Label>Images</Label>
+                                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                            {normalizeListingImageUrls(creatingListing).map((url, index) => (
+                                              <div key={`${url}-${index}`} className="relative overflow-hidden rounded-md border border-border">
+                                                <img
+                                                  src={resolveImageUrl(url)}
+                                                  alt={`Listing ${index + 1}`}
+                                                  className="h-24 w-full object-cover"
+                                                />
+                                                {index === 0 && (
+                                                  <span className="absolute left-1 top-1 rounded bg-background/85 px-2 py-0.5 text-xs">
+                                                    Primary
+                                                  </span>
+                                                )}
+                                                <button
+                                                  type="button"
+                                                  className="absolute right-1 top-1 rounded bg-background/85 px-2 py-0.5 text-xs"
+                                                  onClick={() => {
+                                                    const nextUrls = normalizeListingImageUrls(creatingListing).filter((_, imageIndex) => imageIndex !== index);
+                                                    setCreatingListing({
+                                                      ...creatingListing,
+                                                      imageUrl: nextUrls[0] ?? null,
+                                                      imageUrls: nextUrls,
+                                                    });
+                                                  }}
+                                                >
+                                                  Remove
+                                                </button>
+                                              </div>
+                                            ))}
+                                          </div>
+                                          <p className="text-xs text-muted-foreground">
+                                            {normalizeListingImageUrls(creatingListing).length} image{normalizeListingImageUrls(creatingListing).length === 1 ? "" : "s"} selected.
+                                          </p>
+                                        </div>
+                                      )}
                                       <div className="grid gap-2">
-                                        <Label>Upload Image</Label>
+                                        <Label>Upload Images</Label>
                                         <Input
                                           type="file"
                                           accept="image/*"
-                                          onChange={(e) => {
-                                            const file = e.target.files?.[0];
-                                            if (file) handleUpload(file, "create");
+                                          multiple
+                                          onChange={async (e) => {
+                                            const files = e.target.files ? Array.from(e.target.files) : [];
+                                            for (const file of files) {
+                                              await handleUpload(file, "create");
+                                            }
                                           }}
                                           disabled={uploading}
                                         />

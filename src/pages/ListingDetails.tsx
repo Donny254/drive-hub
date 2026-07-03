@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Car, Fuel, Gauge, MapPin, ShieldCheck, Store } from "lucide-react";
+import { Calendar, Car, Fuel, Gauge, MapPin, ShieldCheck, Store, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/feedback";
 
@@ -101,6 +102,9 @@ const ListingDetails = () => {
   const [bidError, setBidError] = useState<string | null>(null);
   const [summary, setSummary] = useState<BidSummary | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryIndex, setGalleryIndex] = useState(0);
 
   const loadSummary = useCallback(async (listingId: string) => {
     try {
@@ -119,6 +123,7 @@ const ListingDetails = () => {
         const resp = await apiFetch(`/api/listings/${id}`);
         if (!resp.ok) throw new Error("Failed to load listing");
         setListing(await resp.json());
+        setSelectedImageIndex(0);
       } catch (err) {
         setError("Listing not found.");
       } finally {
@@ -272,12 +277,16 @@ const ListingDetails = () => {
             <>
               <div className="grid grid-cols-1 gap-10 lg:grid-cols-2">
                 <div className="space-y-4">
-                  <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-border">
-                    <img
-                      src={resolveImageUrl(listing.imageUrl) || FALLBACK_IMAGE}
-                      alt={listing.title}
-                      className="w-full h-full object-cover"
-                    />
+                                  <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-border">
+                                  <img
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => { setGalleryIndex(selectedImageIndex); setGalleryOpen(true); }}
+                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { setGalleryIndex(selectedImageIndex); setGalleryOpen(true); } }}
+                                    src={galleryImages[selectedImageIndex] || FALLBACK_IMAGE}
+                                    alt={listing.title}
+                                    className="w-full h-full object-cover cursor-zoom-in"
+                                  />
                     <div className="absolute top-4 left-4 flex gap-2">
                       {isAuction && (
                         <Badge className="bg-primary text-primary-foreground">
@@ -294,12 +303,20 @@ const ListingDetails = () => {
                   </div>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     {galleryImages.map((img, idx) => (
-                      <img
+                      <button
                         key={`${img}-${idx}`}
-                        src={img}
-                        alt={`${listing.title} ${idx + 1}`}
-                        className="h-24 w-full rounded-md object-cover border border-border"
-                      />
+                        type="button"
+                        className={`overflow-hidden rounded-md border ${selectedImageIndex === idx ? "border-primary" : "border-border"}`}
+                        onClick={() => setSelectedImageIndex(idx)}
+                        onDoubleClick={() => { setGalleryIndex(idx); setGalleryOpen(true); }}
+                        aria-label={`Open image ${idx + 1} in gallery`}
+                      >
+                        <img
+                          src={img}
+                          alt={`${listing.title} ${idx + 1}`}
+                          className="h-24 w-full object-cover"
+                        />
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -611,6 +628,41 @@ const ListingDetails = () => {
         </div>
       </main>
       <Footer />
+
+      <Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
+        <DialogContent className="max-w-4xl w-full max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>{listing?.title}</DialogTitle>
+          </DialogHeader>
+          <div className="relative flex items-center justify-center">
+            <button
+              type="button"
+              className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-background/80 p-2 shadow"
+              onClick={() => setGalleryIndex((i) => (i - 1 + galleryImages.length) % galleryImages.length)}
+              aria-label="Previous image"
+            >
+              <ChevronLeft />
+            </button>
+            <img src={galleryImages[galleryIndex] || FALLBACK_IMAGE} alt={`${listing?.title} ${galleryIndex + 1}`} className="max-h-[70vh] object-contain" />
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-background/80 p-2 shadow"
+              onClick={() => setGalleryIndex((i) => (i + 1) % galleryImages.length)}
+              aria-label="Next image"
+            >
+              <ChevronRight />
+            </button>
+            <button
+              type="button"
+              className="absolute right-3 top-3 rounded-full bg-background/80 p-2"
+              onClick={() => setGalleryOpen(false)}
+              aria-label="Close gallery"
+            >
+              <X />
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

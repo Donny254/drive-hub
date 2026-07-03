@@ -11,6 +11,7 @@ export type Listing = {
   fuel: string | null;
   powerHp: number | null;
   imageUrl: string | null;
+  imageUrls?: string[];
   description: string | null;
   location: string | null;
   moderationNotes?: string | null;

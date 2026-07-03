@@ -66,6 +66,7 @@ const Store = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<ProductDetails | null>(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [selectedProductQuantity, setSelectedProductQuantity] = useState(1);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
@@ -146,15 +147,16 @@ const Store = () => {
 
   const { pageItems: pagedProducts, page: productsPage, totalPages: productsTotalPages, goTo: goToProductsPage, reset: resetProductsPage } = usePagination(filteredProducts, 12);
 
-  const addToCart = (product: Product) => {
+  const addToCart = (product: Product, quantity = 1) => {
+    const qty = Math.max(1, Math.floor(quantity));
     setCart((prev) => {
       const existing = prev.find((item) => item.id === product.id);
       if (existing) {
         return prev.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.id === product.id ? { ...item, quantity: item.quantity + qty } : item
         );
       }
-      return [...prev, { ...product, quantity: 1 }];
+      return [...prev, { ...product, quantity: qty }];
     });
     toast.success(`${product.name} added to cart.`);
   };
@@ -166,6 +168,7 @@ const Store = () => {
 
   const openProductDetails = async (product: Product) => {
     setSelectedProduct(product);
+    setSelectedProductQuantity(1);
     setSelectedImageIndex(0);
     setReviewRating(5);
     setReviewComment("");
@@ -217,6 +220,15 @@ const Store = () => {
           }
           return item;
         })
+        .filter((item) => item.quantity > 0)
+    );
+  };
+
+  const setCartItemQuantity = (productId: string, quantity: number) => {
+    const nextQuantity = Math.floor(quantity);
+    setCart((prev) =>
+      prev
+        .map((item) => (item.id === productId ? { ...item, quantity: Math.max(0, nextQuantity || 0) } : item))
         .filter((item) => item.quantity > 0)
     );
   };
@@ -524,9 +536,36 @@ const Store = () => {
                       {selectedProduct.description || "No description has been added for this item yet."}
                     </p>
                   </div>
-                  <Button variant="hero" className="w-full" onClick={() => addToCart(selectedProduct)}>
-                    Add to Cart
-                  </Button>
+                  <div className="grid gap-3">
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setSelectedProductQuantity((q) => Math.max(1, q - 1))}
+                        className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors"
+                        aria-label="Decrease quantity"
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <Input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={selectedProductQuantity}
+                        aria-label={`Quantity for ${selectedProduct.name}`}
+                        onChange={(e) => setSelectedProductQuantity(Math.max(1, Number(e.target.value || 1)))}
+                        className="h-9 w-24 text-center"
+                      />
+                      <button
+                        onClick={() => setSelectedProductQuantity((q) => q + 1)}
+                        className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors"
+                        aria-label="Increase quantity"
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
+                    <Button variant="hero" className="w-full" onClick={() => addToCart(selectedProduct, selectedProductQuantity)}>
+                      Add to Cart
+                    </Button>
+                  </div>
                   <div className="rounded-lg border border-border p-4">
                     <h3 className="font-display text-lg">Rate This Item</h3>
                     <div className="mt-3 flex gap-1 text-primary">
@@ -631,7 +670,15 @@ const Store = () => {
                             >
                               <Minus size={14} />
                             </button>
-                            <span>{item.quantity}</span>
+                            <Input
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={item.quantity}
+                              aria-label={`Quantity for ${item.name}`}
+                              onChange={(e) => setCartItemQuantity(item.id, Number(e.target.value))}
+                              className="h-9 w-20 text-center"
+                            />
                             <button
                               onClick={() => updateQuantity(item.id, 1)}
                               className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors"
