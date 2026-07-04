@@ -125,7 +125,7 @@ describe("useAdminListingEditor", () => {
     );
   });
 
-  it("uploads a new image for edited listings, appends it, and refreshes audit", async () => {
+  it("uploads a new image for edited listings, preserves the primary image, and refreshes audit", async () => {
     const { result } = renderHook(() =>
       useAdminListingEditor({
         token: "token-1",
@@ -134,7 +134,11 @@ describe("useAdminListingEditor", () => {
     );
 
     act(() => {
-      result.current.setEditingListing({ ...listingFixture });
+      result.current.setEditingListing({
+        ...listingFixture,
+        imageUrl: "/uploads/original.webp",
+        imageUrls: ["/uploads/original.webp"],
+      });
       result.current.setEditImages([{ id: "img-1", url: "/uploads/original.webp" }]);
     });
 
@@ -143,7 +147,11 @@ describe("useAdminListingEditor", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.editingListing?.imageUrl).toBe("/uploads/new-upload.webp");
+      expect(result.current.editingListing?.imageUrl).toBe("/uploads/original.webp");
+      expect(result.current.editingListing?.imageUrls).toEqual([
+        "/uploads/original.webp",
+        "/uploads/new-upload.webp",
+      ]);
       expect(result.current.editImages).toEqual([
         { id: "img-1", url: "/uploads/original.webp" },
         { id: "img-new", url: "/uploads/new-upload.webp" },

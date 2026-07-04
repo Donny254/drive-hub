@@ -449,8 +449,12 @@ const AdminListingsTab = ({
                                               description: e.target.value || null,
                                             })
                                           }
-                                          rows={5}
+                                          rows={8}
+                                          placeholder="Add detailed specs, ownership notes, service history, and buyer guidance for the public market page."
                                         />
+                                        <p className="text-xs text-muted-foreground">
+                                          This description and the uploaded gallery images will appear on the public market detail page.
+                                        </p>
                                       </div>
                                       <div className="grid gap-2">
                                         <Label>Add Image URL</Label>
@@ -517,7 +521,7 @@ const AdminListingsTab = ({
                                         </div>
                                       )}
                                       <div className="grid gap-2">
-                                        <Label>Upload Images</Label>
+                                        <Label>Upload Gallery Images</Label>
                                         <Input
                                           type="file"
                                           accept="image/*"
@@ -530,6 +534,9 @@ const AdminListingsTab = ({
                                           }}
                                           disabled={uploading}
                                         />
+                                        <p className="text-xs text-muted-foreground">
+                                          Upload multiple images to create a richer gallery for buyers and renters.
+                                        </p>
                                       </div>
                                     </div>
                                   )}
@@ -878,8 +885,12 @@ const AdminListingsTab = ({
                                                         description: e.target.value || null,
                                                       })
                                                     }
-                                                    rows={5}
+                                                    rows={8}
+                                                    placeholder="Add detailed specs, ownership notes, service history, and buyer guidance for the public market page."
                                                   />
+                                                  <p className="text-xs text-muted-foreground">
+                                                    This description and the uploaded gallery images will appear on the public market detail page.
+                                                  </p>
                                                 </div>
                                                 <div className="grid gap-2">
                                                   <Label>Featured</Label>
@@ -1038,7 +1049,7 @@ const AdminListingsTab = ({
                                                   </div>
                                                 )}
                                                 <div className="grid gap-2">
-                                                  <Label>Upload Image</Label>
+                                                  <Label>Upload Gallery Images</Label>
                                                   <Input
                                                     type="file"
                                                     accept="image/*"
@@ -1051,6 +1062,9 @@ const AdminListingsTab = ({
                                                     }}
                                                     disabled={uploading}
                                                   />
+                                                  <p className="text-xs text-muted-foreground">
+                                                    Upload multiple images to create a richer gallery for buyers and renters.
+                                                  </p>
                                                   {uploading && (
                                                     <p className="text-sm text-muted-foreground">Uploading...</p>
                                                   )}

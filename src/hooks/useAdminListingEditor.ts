@@ -17,11 +17,12 @@ export const useAdminListingEditor = ({ token, authHeaders }: UseAdminListingEdi
   const [editImageUrl, setEditImageUrl] = useState("");
   const [createImageUrl, setCreateImageUrl] = useState("");
 
-  const normalizeCreateImages = (listing: Listing, nextUrls: string[]) => {
-    const urls = Array.from(new Set(nextUrls.filter(Boolean)));
+  const normalizeListingImages = (listing: Listing, nextUrls: string[]) => {
+    const urls = Array.from(new Set(nextUrls.filter(Boolean))).slice(0, 12);
+    const primary = listing.imageUrl || urls[0] || null;
     return {
       ...listing,
-      imageUrl: urls[0] ?? null,
+      imageUrl: primary,
       imageUrls: urls,
     };
   };
@@ -52,11 +53,17 @@ export const useAdminListingEditor = ({ token, authHeaders }: UseAdminListingEdi
         const result = await uploadImage(file, token);
         if (mode === "create") {
           setCreatingListing((prev) =>
-            prev ? normalizeCreateImages(prev, [prev.imageUrl, ...(prev.imageUrls || []), result.url].filter(Boolean) as string[]) : prev
+            prev
+              ? normalizeListingImages(prev, [prev.imageUrl, ...(prev.imageUrls || []), result.url].filter(Boolean) as string[])
+              : prev
           );
           return;
         }
-        setEditingListing((prev) => (prev ? { ...prev, imageUrl: result.url } : prev));
+        setEditingListing((prev) =>
+          prev
+            ? normalizeListingImages(prev, [prev.imageUrl, ...(prev.imageUrls || []), result.url].filter(Boolean) as string[])
+            : prev
+        );
         if (editingListing?.id) {
           const addResp = await apiFetch(`/api/listings/${editingListing.id}/images`, {
             method: "POST",
@@ -87,6 +94,11 @@ export const useAdminListingEditor = ({ token, authHeaders }: UseAdminListingEdi
     if (addResp.ok) {
       const added = await addResp.json();
       setEditImages((prev) => [...prev, { id: added.id, url: added.url }]);
+      setEditingListing((prev) =>
+        prev
+          ? normalizeListingImages(prev, [prev.imageUrl, ...(prev.imageUrls || []), added.url].filter(Boolean) as string[])
+          : prev
+      );
       loadListingAudit(editingListing.id);
     }
     setEditImageUrl("");
