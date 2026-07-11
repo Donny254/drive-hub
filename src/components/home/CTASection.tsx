@@ -14,7 +14,7 @@ const CTASection = () => {
           <span className="block text-primary">JOURNEY?</span>
         </h2>
         <p className="mt-6 text-lg text-muted-foreground max-w-2xl mx-auto animate-fade-in" style={{ animationDelay: "0.2s" }}>
-          Whether you're buying your first sports car or adding to your collection, we're here to make it happen.
+          Whether you're buying your First Dream car or adding to your collection, we're here to make it happen.
         </p>
         <div className="flex flex-wrap justify-center gap-4 mt-10 animate-fade-in" style={{ animationDelay: "0.4s" }}>
           <Link to="/market">

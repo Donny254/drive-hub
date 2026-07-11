@@ -24,9 +24,16 @@ export const useAdminListingEditor = ({ token, authHeaders }: UseAdminListingEdi
   const addCreateImage = useCallback((url: string) => {
     const trimmed = url.trim();
     if (!trimmed) return;
-    setCreateImages((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
-    // Auto-select as the cover when it is the first image added.
-    setCreatingListing((prev) => (prev ? { ...prev, imageUrl: prev.imageUrl || trimmed } : prev));
+    setCreateImages((prev) => {
+      const next = prev.includes(trimmed) ? prev : [...prev, trimmed];
+      // Auto-select as the cover when it is the first image added.
+      setCreatingListing((listing) =>
+        listing
+          ? { ...listing, imageUrl: listing.imageUrl || trimmed, imageUrls: next }
+          : listing
+      );
+      return next;
+    });
   }, []);
 
   const addCreateImageUrl = useCallback(() => {
@@ -39,13 +46,26 @@ export const useAdminListingEditor = ({ token, authHeaders }: UseAdminListingEdi
       const next = prev.filter((item) => item !== url);
       // If the removed image was the cover, fall back to the first remaining one.
       setCreatingListing((listing) =>
-        listing && listing.imageUrl === url ? { ...listing, imageUrl: next[0] ?? null } : listing
+        listing && listing.imageUrl === url
+          ? { ...listing, imageUrl: next[0] ?? null, imageUrls: next }
+          : listing
+          ? { ...listing, imageUrls: next }
+          : listing
       );
       return next;
     });
   }, []);
 
   const resetCreateImages = useCallback(() => setCreateImages([]), []);
+
+  const normalizeCreateImages = (listing: Listing, nextUrls: string[]) => {
+    const urls = Array.from(new Set(nextUrls.filter(Boolean)));
+    return {
+      ...listing,
+      imageUrl: urls[0] ?? null,
+      imageUrls: urls,
+    };
+  };
 
   const loadListingAudit = useCallback(
     async (listingId: string) => {
@@ -72,8 +92,16 @@ export const useAdminListingEditor = ({ token, authHeaders }: UseAdminListingEdi
         setUploading(true);
         const result = await uploadImage(file, token);
         if (mode === "create") {
-          setCreateImages((prev) => (prev.includes(result.url) ? prev : [...prev, result.url]));
-          setCreatingListing((prev) => (prev ? { ...prev, imageUrl: prev.imageUrl || result.url } : prev));
+          setCreateImages((prev) => {
+            const next = prev.includes(result.url) ? prev : [...prev, result.url];
+            // Sync imageUrls on the listing object so createListing sends them to the backend.
+            setCreatingListing((listing) =>
+              listing
+                ? { ...listing, imageUrl: listing.imageUrl || result.url, imageUrls: next }
+                : listing
+            );
+            return next;
+          });
           return;
         }
         setEditingListing((prev) => (prev ? { ...prev, imageUrl: result.url } : prev));

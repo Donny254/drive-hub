@@ -24,6 +24,11 @@ type Advert = {
   active: boolean;
 };
 
+const advertPlatformOptions = [
+  { label: "Market Slider", value: "/market" },
+  { label: "Services Slider", value: "/services" },
+];
+
 const emptyAdvert: Advert = {
   id: "",
   title: "",
@@ -135,8 +140,18 @@ const AdminAdverts = () => {
           <Input value={advert.ctaLabel ?? ""} onChange={(e) => setAdvert({ ...advert, ctaLabel: e.target.value })} />
         </div>
         <div className="grid gap-2">
-          <Label>Button Link</Label>
-          <Input value={advert.ctaLink ?? ""} onChange={(e) => setAdvert({ ...advert, ctaLink: e.target.value })} />
+          <Label>Advert Slider Section</Label>
+          <select
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            value={advert.ctaLink === "/services" ? "/services" : "/market"}
+            onChange={(e) => setAdvert({ ...advert, ctaLink: e.target.value })}
+          >
+            {advertPlatformOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
@@ -154,7 +169,7 @@ const AdminAdverts = () => {
             checked={advert.active}
             onChange={(e) => setAdvert({ ...advert, active: e.target.checked })}
           />
-          Active on market slider
+          Active on selected slider
         </label>
       </div>
       <div className="grid gap-2">
@@ -188,7 +203,7 @@ const AdminAdverts = () => {
             <div>
               <h1 className="font-display text-3xl">Admin Adverts</h1>
               <p className="mt-1 text-muted-foreground">
-                Manage the market slider adverts, including title, copy, image, button text, and link.
+                Manage slider adverts for the market and services sections, including title, copy, image, button text, and destination.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">

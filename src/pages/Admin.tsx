@@ -309,6 +309,7 @@ const Admin = () => {
     fuel: null,
     powerHp: null,
     imageUrl: null,
+    imageUrls: [],
     description: null,
     location: null,
     moderationNotes: null,

@@ -92,6 +92,9 @@ type AdminListingsTabProps = {
   addEditImageUrl: () => Promise<void> | void;
 };
 
+const normalizeListingImageUrls = (listing: Listing) =>
+  Array.from(new Set([listing.imageUrl, ...(listing.imageUrls || [])].filter(Boolean) as string[]));
+
 const AdminListingsTab = ({
   listings,
   listingBids,
@@ -494,13 +497,16 @@ const AdminListingsTab = ({
                                         </div>
                                       </div>
                                       <div className="grid gap-2">
-                                        <Label>Upload Image</Label>
+                                        <Label>Upload Images</Label>
                                         <Input
                                           type="file"
                                           accept="image/*"
-                                          onChange={(e) => {
-                                            const file = e.target.files?.[0];
-                                            if (file) handleUpload(file, "create");
+                                          multiple
+                                          onChange={async (e) => {
+                                            const files = e.target.files ? Array.from(e.target.files) : [];
+                                            for (const file of files) {
+                                              await handleUpload(file, "create");
+                                            }
                                             e.target.value = "";
                                           }}
                                           disabled={uploading}

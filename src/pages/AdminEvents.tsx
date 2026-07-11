@@ -28,6 +28,7 @@ type EventItem = {
   imageUrl: string | null;
   priceCents: number;
   status: "upcoming" | "past" | "cancelled";
+  marketingSlot: number;
 };
 
 const formatDate = (value?: string | null) => {
@@ -52,6 +53,7 @@ const emptyEvent: EventItem = {
   imageUrl: null,
   priceCents: 0,
   status: "upcoming",
+  marketingSlot: 0,
 };
 
 const formatCurrency = (amountCents?: number) =>
@@ -139,8 +141,9 @@ const AdminEvents = () => {
       imageUrl: event.imageUrl ?? "",
       priceCents: event.priceCents,
       status: event.status,
+      marketingSlot: event.marketingSlot,
     }));
-    const csv = toCsv(rows, ["title", "description", "location", "startDate", "endDate", "imageUrl", "priceCents", "status"]);
+    const csv = toCsv(rows, ["title", "description", "location", "startDate", "endDate", "imageUrl", "priceCents", "status", "marketingSlot"]);
     downloadCsv("events.csv", csv);
   };
 
@@ -156,9 +159,10 @@ const AdminEvents = () => {
           imageUrl: "/placeholder.svg",
           priceCents: "250000",
           status: "upcoming",
+          marketingSlot: "1",
         },
       ],
-      ["title", "description", "location", "startDate", "endDate", "imageUrl", "priceCents", "status"]
+      ["title", "description", "location", "startDate", "endDate", "imageUrl", "priceCents", "status", "marketingSlot"]
     );
     downloadCsv("events_template.csv", csv);
   };
@@ -178,6 +182,7 @@ const AdminEvents = () => {
           imageUrl: row.imageUrl || null,
           priceCents: Number.parseInt(row.priceCents || "0", 10) || 0,
           status: row.status || "upcoming",
+          marketingSlot: Number.parseInt(row.marketingSlot || "0", 10) || 0,
         }),
       });
       if (!resp.ok) {
@@ -488,6 +493,22 @@ const AdminEvents = () => {
                           }
                         />
                       </div>
+                      <div className="grid gap-2">
+                        <Label>Marketing Slot</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={creating.marketingSlot}
+                          onChange={(e) =>
+                            setCreating({
+                              ...creating,
+                              marketingSlot: Math.max(0, Number.parseInt(e.target.value || "0", 10) || 0),
+                            })
+                          }
+                        />
+                        <p className="text-xs text-muted-foreground">Lower numbers appear first on the public events page. Use 0 for normal placement.</p>
+                      </div>
                       {creating.imageUrl && (
                         <img
                           src={resolveImageUrl(creating.imageUrl)}
@@ -627,6 +648,7 @@ const AdminEvents = () => {
                   <TableHead>Title</TableHead>
                   <TableHead>Start</TableHead>
                   <TableHead>Ticket Price</TableHead>
+                  <TableHead>Slot</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -637,6 +659,7 @@ const AdminEvents = () => {
                     <TableCell>{event.title}</TableCell>
                     <TableCell>{formatDate(event.startDate)}</TableCell>
                     <TableCell>{event.priceCents > 0 ? formatCurrency(event.priceCents) : "Free"}</TableCell>
+                    <TableCell>{event.marketingSlot || "Normal"}</TableCell>
                     <TableCell>
                       <Badge variant={statusVariant(event.status)} className="capitalize">
                         {event.status}
@@ -722,6 +745,22 @@ const AdminEvents = () => {
                                       })
                                     }
                                   />
+                                </div>
+                                <div className="grid gap-2">
+                                  <Label>Marketing Slot</Label>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    step={1}
+                                    value={editing.marketingSlot}
+                                    onChange={(e) =>
+                                      setEditing({
+                                        ...editing,
+                                        marketingSlot: Math.max(0, Number.parseInt(e.target.value || "0", 10) || 0),
+                                      })
+                                    }
+                                  />
+                                  <p className="text-xs text-muted-foreground">Lower numbers appear first on the public events page. Use 0 for normal placement.</p>
                                 </div>
                                 {editing.imageUrl && (
                                   <img

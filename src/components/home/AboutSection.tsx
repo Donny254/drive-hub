@@ -14,15 +14,14 @@ const AboutSection = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
           {/* Image */}
           <div className="relative animate-fade-in pb-10">
-            <div className="relative rounded-lg overflow-hidden">
+            <div className="about-image-shell relative overflow-hidden rounded-lg">
               <img
                 src={carInterior}
                 alt="Luxury car interior"
-                className="w-full h-[400px] object-cover"
+                className="about-image-visual h-[400px] w-full object-cover"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/10 to-transparent" />
             </div>
-                        
           </div>
 
           {/* Content */}

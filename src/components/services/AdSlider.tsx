@@ -1,170 +1,183 @@
-import { useState, useEffect, useCallback } from "react";
-import { ChevronLeft, ChevronRight, ShoppingBag } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
 
-type Product = {
+type AdvertSlide = {
   id: string;
-  name: string;
-  priceCents: number;
-  category: string | null;
+  title: string;
+  subtitle: string | null;
+  description: string | null;
+  ctaLabel: string | null;
+  ctaLink: string | null;
   imageUrl: string | null;
 };
 
-const formatPrice = (cents: number) =>
-  `KES ${(cents / 100).toLocaleString("en-KE")}`;
-
-const SLIDE_INTERVAL = 5000;
-
-const GRADIENTS = [
-  "from-primary/15 via-primary/5 to-transparent",
-  "from-blue-500/15 via-blue-500/5 to-transparent",
-  "from-purple-500/15 via-purple-500/5 to-transparent",
-  "from-orange-500/15 via-orange-500/5 to-transparent",
-  "from-rose-500/15 via-rose-500/5 to-transparent",
-  "from-cyan-500/15 via-cyan-500/5 to-transparent",
-  "from-emerald-500/15 via-emerald-500/5 to-transparent",
-  "from-yellow-500/15 via-yellow-500/5 to-transparent",
+const fallbackSlides: AdvertSlide[] = [
+  {
+    id: "fallback-service-advert",
+    title: "SERVICE SUPPORT",
+    subtitle: "Maintenance & Repairs",
+    description:
+      "Keep your vehicle in top condition with our certified service specialists and premium aftercare support.",
+    ctaLabel: "Book a Service",
+    ctaLink: "/services",
+    imageUrl: "https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=1200",
+  },
 ];
 
+const normalizeSlide = (raw: Record<string, unknown>): AdvertSlide | null => {
+  const id = String(raw.id ?? "");
+  const title = String(raw.title ?? raw.name ?? "").trim();
+  const subtitle = String(raw.subtitle ?? raw.sub_title ?? "").trim() || null;
+  const description = String(raw.description ?? raw.body ?? "").trim() || null;
+  const ctaLabel = String(raw.ctaLabel ?? raw.cta_label ?? "").trim() || null;
+  const ctaLink = String(raw.ctaLink ?? raw.cta_link ?? "").trim() || null;
+  const imageUrl = String(raw.imageUrl ?? raw.image_url ?? "").trim() || null;
+
+  if (!id || title.length < 2 || !description) return null;
+
+  return { id, title, subtitle, description, ctaLabel, ctaLink, imageUrl };
+};
+
 const AdSlider = () => {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [current, setCurrent] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [slides, setSlides] = useState<AdvertSlide[]>(fallbackSlides);
 
   useEffect(() => {
-    apiFetch("/api/products?active=true")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data: Product[]) => setProducts(data.slice(0, 8)))
-      .catch(() => setProducts([]))
-      .finally(() => setLoading(false));
+    let mounted = true;
+
+    apiFetch("/api/adverts")
+      .then((resp) => (resp.ok ? resp.json() : []))
+      .then((data: unknown) => {
+        if (!mounted || !Array.isArray(data)) return;
+
+        const valid = (data as Record<string, unknown>[])
+          .map(normalizeSlide)
+          .filter((slide): slide is AdvertSlide => slide !== null)
+          .filter((slide) => slide.ctaLink === "/services");
+
+        if (valid.length > 0) {
+          setSlides(valid);
+          setCurrentSlide(0);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const total = products.length;
-  const next = useCallback(() => setCurrent((p) => (p + 1) % total), [total]);
-  const prev = useCallback(() => setCurrent((p) => (p - 1 + total) % total), [total]);
-
   useEffect(() => {
-    if (total < 2) return;
-    const id = setInterval(next, SLIDE_INTERVAL);
-    return () => clearInterval(id);
-  }, [next, total]);
+    if (slides.length <= 1) return undefined;
+    const timer = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % slides.length);
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [slides.length]);
 
-  if (loading) {
-    return (
-      <div className="w-full h-24 bg-card border-b border-border flex items-center justify-center gap-4 px-8">
-        <div className="h-10 w-10 rounded-lg bg-muted animate-pulse" />
-        <div className="flex flex-col gap-2 flex-1 max-w-xs">
-          <div className="h-3 w-20 bg-muted animate-pulse rounded" />
-          <div className="h-4 w-40 bg-muted animate-pulse rounded" />
-        </div>
-      </div>
-    );
-  }
+  const activeSlides = slides.length > 0 ? slides : fallbackSlides;
+  const nextSlide = () => setCurrentSlide((prev) => (prev + 1) % activeSlides.length);
+  const prevSlide = () => setCurrentSlide((prev) => (prev - 1 + activeSlides.length) % activeSlides.length);
 
-  if (total === 0) return null;
+  const renderTitle = (title: string) =>
+    title.split("").map((char, index) => (
+      <span key={`${title}-${index}`} className={char === "O" || char === "A" ? "text-primary" : ""}>
+        {char}
+      </span>
+    ));
 
   return (
-    <div className="relative w-full overflow-hidden border-b border-border bg-card">
-      {/* Slides */}
-      <div
-        className="flex transition-transform duration-700 ease-in-out"
-        style={{ transform: `translateX(-${current * 100}%)` }}
-      >
-        {products.map((product, i) => (
+    <div className="relative w-full border-b border-border overflow-hidden bg-card">
+      <div className="relative h-[260px] md:h-[340px]">
+        {activeSlides.map((slide, index) => (
           <div
-            key={product.id}
-            className={`min-w-full bg-gradient-to-r ${GRADIENTS[i % GRADIENTS.length]}`}
+            key={slide.id}
+            className={`absolute inset-0 transition-all duration-700 ease-in-out ${
+              index === currentSlide
+                ? "opacity-100 translate-x-0"
+                : index < currentSlide
+                  ? "opacity-0 -translate-x-full"
+                  : "opacity-0 translate-x-full"
+            }`}
           >
-            {/* Content row — padded clear of arrows */}
-            <div className="flex items-center gap-4 px-14 md:px-16 py-3 md:py-4">
-
-              {/* Image */}
-              <div className="flex-shrink-0 w-14 h-14 md:w-20 md:h-20 rounded-xl overflow-hidden border border-border bg-muted flex items-center justify-center">
-                {product.imageUrl ? (
-                  <img
-                    src={resolveImageUrl(product.imageUrl)}
-                    alt={product.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <ShoppingBag className="w-6 h-6 text-muted-foreground" />
-                )}
-              </div>
-
-              {/* Text */}
-              <div className="flex-1 min-w-0">
-                {product.category && (
-                  <span className="inline-block text-[10px] font-semibold uppercase tracking-widest text-primary bg-primary/10 px-2 py-0.5 rounded-full mb-1">
-                    {product.category}
-                  </span>
-                )}
-                <h3 className="font-display text-base md:text-xl text-foreground leading-tight line-clamp-1">
-                  {product.name}
-                </h3>
-                <p className="text-primary font-semibold text-sm md:text-base mt-0.5">
-                  {formatPrice(product.priceCents)}
-                </p>
-              </div>
-
-              {/* CTA */}
-              <Link
-                to="/store"
-                className="flex-shrink-0 hidden sm:flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground font-semibold text-sm rounded-xl hover:bg-primary/90 hover:scale-105 transition-all duration-200 cursor-pointer"
-              >
-                <ShoppingBag className="w-4 h-4" />
-                Shop Now
-              </Link>
-              {/* Mobile CTA */}
-              <Link
-                to="/store"
-                className="flex-shrink-0 sm:hidden flex items-center justify-center w-9 h-9 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors cursor-pointer"
-                aria-label="Shop Now"
-              >
-                <ShoppingBag className="w-4 h-4" />
-              </Link>
+            <div className="absolute inset-0 bg-[hsl(180_10%_6%)]">
+              {slide.imageUrl && (
+                <div
+                  className="absolute inset-0 bg-cover bg-center opacity-60"
+                  style={{ backgroundImage: `url(${resolveImageUrl(slide.imageUrl)})` }}
+                />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-r from-[hsl(180_10%_6%)] via-[hsl(180_10%_6%)/85%] to-transparent" />
             </div>
 
-            {/* Bottom dots row */}
-            {total > 1 && (
-              <div className="flex justify-center gap-1.5 pb-2">
-                {products.map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setCurrent(idx)}
-                    className={`h-1 rounded-full transition-all duration-300 cursor-pointer ${
-                      current === idx
-                        ? "bg-primary w-5"
-                        : "bg-muted-foreground/30 w-1 hover:bg-muted-foreground/60"
-                    }`}
-                    aria-label={`Go to product ${idx + 1}`}
-                  />
-                ))}
+            <div className="relative h-full flex items-center px-6 md:px-12">
+              <div className="max-w-xl">
+                {slide.subtitle && (
+                  <p className="text-primary uppercase tracking-[0.3em] text-xs md:text-sm mb-2">
+                    {slide.subtitle}
+                  </p>
+                )}
+                <h2 className="font-display text-3xl md:text-5xl mb-3 text-white leading-tight break-words">
+                  {renderTitle(slide.title)}
+                </h2>
+                <p className="text-white/70 text-sm max-w-lg mb-5 line-clamp-2">
+                  {slide.description}
+                </p>
+                {slide.ctaLink?.startsWith("/") ? (
+                  <Link to={slide.ctaLink}>
+                    <Button variant="hero" size="default" className="shadow-[0_0_30px_hsl(var(--primary)/0.3)]">
+                      {slide.ctaLabel || "Learn More"}
+                    </Button>
+                  </Link>
+                ) : (
+                  <a href={slide.ctaLink || "#"} target="_blank" rel="noreferrer">
+                    <Button variant="hero" size="default" className="shadow-[0_0_30px_hsl(var(--primary)/0.3)]">
+                      {slide.ctaLabel || "Learn More"}
+                    </Button>
+                  </a>
+                )}
               </div>
-            )}
+            </div>
           </div>
         ))}
       </div>
 
-      {/* Arrows — fixed to sides, clear of text */}
-      {total > 1 && (
+      {activeSlides.length > 1 && (
         <>
           <button
-            onClick={prev}
-            className="absolute left-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-background/80 backdrop-blur-sm border border-border flex items-center justify-center text-foreground hover:bg-background hover:text-primary transition-colors cursor-pointer z-10"
-            aria-label="Previous product"
+            onClick={prevSlide}
+            className="absolute left-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-black/40 border border-white/20 hover:border-primary hover:bg-primary/10 transition-all duration-300 z-10 text-white"
+            aria-label="Previous slide"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-5 h-5" />
           </button>
           <button
-            onClick={next}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-background/80 backdrop-blur-sm border border-border flex items-center justify-center text-foreground hover:bg-background hover:text-primary transition-colors cursor-pointer z-10"
-            aria-label="Next product"
+            onClick={nextSlide}
+            className="absolute right-4 top-1/2 -translate-y-1/2 p-3 rounded-full bg-black/40 border border-white/20 hover:border-primary hover:bg-primary/10 transition-all duration-300 z-10 text-white"
+            aria-label="Next slide"
           >
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-5 h-5" />
           </button>
         </>
       )}
+
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-3 z-10">
+        {activeSlides.map((_, index) => (
+          <button
+            key={index}
+            onClick={() => setCurrentSlide(index)}
+            className={`h-1.5 rounded-full transition-all duration-300 ${
+              index === currentSlide
+                ? "w-8 bg-primary"
+                : "w-1.5 bg-white/30 hover:bg-white/60"
+            }`}
+            aria-label={`Go to slide ${index + 1}`}
+          />
+        ))}
+      </div>
     </div>
   );
 };
