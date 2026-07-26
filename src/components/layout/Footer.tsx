@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Facebook, Instagram, Twitter, Youtube, Phone, Mail, MapPin } from "lucide-react";
+import { Facebook, Instagram, Twitter, Youtube, Video, Pin, Phone, Mail, MapPin } from "lucide-react";
 import BrandLogo from "@/components/branding/BrandLogo";
 import { apiFetch } from "@/lib/api";
 
@@ -11,7 +11,9 @@ type Settings = {
   address: string | null;
   socialFacebook: string | null;
   socialInstagram: string | null;
+  socialPinterest: string | null;
   socialTwitter: string | null;
+  socialTikTok: string | null;
   socialYoutube: string | null;
 };
 
@@ -32,7 +34,9 @@ const Footer = () => {
   const socialPlatforms = [
     { name: "Facebook", icon: Facebook, href: settings?.socialFacebook || null },
     { name: "Instagram", icon: Instagram, href: settings?.socialInstagram || null },
+    { name: "Pinterest", icon: Pin, href: settings?.socialPinterest || null },
     { name: "X", icon: Twitter, href: settings?.socialTwitter || null },
+    { name: "TikTok", icon: Video, href: settings?.socialTikTok || null },
     { name: "YouTube", icon: Youtube, href: settings?.socialYoutube || null },
   ];
 

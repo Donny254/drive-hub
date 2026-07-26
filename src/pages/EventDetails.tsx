@@ -348,9 +348,9 @@ const EventDetails = () => {
                       </div>
                       <p className="mt-2 font-medium">{event.location ?? "TBA"}</p>
                     </div>
-                    <div className="rounded-xl border border-border bg-card p-4">
-                      <p className="text-sm text-muted-foreground">Registrations</p>
-                      <p className="mt-2 font-medium">{event.registrationsCount ?? 0}</p>
+                    <div className="rounded-xl border border-border bg-card p-4 sm:col-span-2">
+                      <p className="text-sm text-muted-foreground">Description</p>
+                      <p className="mt-2 font-medium whitespace-pre-line">{event.description ?? "Details coming soon."}</p>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-3">

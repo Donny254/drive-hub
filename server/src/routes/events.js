@@ -20,8 +20,21 @@ const toApi = (row) => ({
   updatedAt: row.updated_at,
 });
 
+const expirePastEvents = async () => {
+  await query(`
+    UPDATE events
+    SET status = 'past'
+    WHERE status = 'upcoming'
+      AND (
+        (end_date IS NOT NULL AND end_date < CURRENT_DATE)
+        OR (end_date IS NULL AND start_date IS NOT NULL AND start_date < CURRENT_DATE)
+      )
+  `);
+};
+
 router.get("/", async (req, res, next) => {
   try {
+    await expirePastEvents();
     const where = [];
     const params = [];
     if (req.query.status) {
@@ -48,6 +61,7 @@ router.get("/", async (req, res, next) => {
 
 router.get("/:id", async (req, res, next) => {
   try {
+    await expirePastEvents();
     const result = await query(
       `SELECT e.*, (
          SELECT COUNT(*) FROM event_registrations WHERE event_id = e.id

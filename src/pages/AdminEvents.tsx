@@ -645,7 +645,7 @@ const AdminEvents = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Title</TableHead>
+                  <TableHead>Event</TableHead>
                   <TableHead>Start</TableHead>
                   <TableHead>Ticket Price</TableHead>
                   <TableHead>Slot</TableHead>
@@ -656,7 +656,14 @@ const AdminEvents = () => {
               <TableBody>
                 {paginated.map((event) => (
                   <TableRow key={event.id}>
-                    <TableCell>{event.title}</TableCell>
+                    <TableCell>
+                      <div className="max-w-[260px]">
+                        <p className="font-medium">{event.title}</p>
+                        <p className="mt-1 text-sm text-muted-foreground break-words">
+                          {event.description ? event.description : "No description yet."}
+                        </p>
+                      </div>
+                    </TableCell>
                     <TableCell>{formatDate(event.startDate)}</TableCell>
                     <TableCell>{event.priceCents > 0 ? formatCurrency(event.priceCents) : "Free"}</TableCell>
                     <TableCell>{event.marketingSlot || "Normal"}</TableCell>

@@ -79,10 +79,24 @@ const AdminSettingsTab = ({ settings, setSettings, saveSettings }: AdminSettings
                       />
                     </div>
                     <div className="grid gap-2">
+                      <Label>Pinterest URL</Label>
+                      <Input
+                        value={settings.socialPinterest ?? ""}
+                        onChange={(e) => setSettings((prev) => (prev ? { ...prev, socialPinterest: e.target.value } : prev))}
+                      />
+                    </div>
+                    <div className="grid gap-2">
                       <Label>X URL</Label>
                       <Input
                         value={settings.socialTwitter ?? ""}
                         onChange={(e) => setSettings((prev) => (prev ? { ...prev, socialTwitter: e.target.value } : prev))}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>TikTok URL</Label>
+                      <Input
+                        value={settings.socialTikTok ?? ""}
+                        onChange={(e) => setSettings((prev) => (prev ? { ...prev, socialTikTok: e.target.value } : prev))}
                       />
                     </div>
                     <div className="grid gap-2">

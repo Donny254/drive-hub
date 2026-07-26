@@ -3,6 +3,7 @@ import {
   formatDateButtonLabel,
   getTodayDateValue,
   isEndBeforeStart,
+  isEventExpired,
   isPastDateTimeLocalValue,
   isPastDateValue,
   parseDateInputValue,
@@ -35,6 +36,10 @@ describe("date helpers", () => {
     expect(isPastDateValue("2026-04-11")).toBe(false);
     expect(isPastDateTimeLocalValue("2026-04-10T09:30")).toBe(true);
     expect(isPastDateTimeLocalValue("2026-04-10T10:30")).toBe(false);
+    expect(isEventExpired("2026-04-09")).toBe(true);
+    expect(isEventExpired("2026-04-10")).toBe(false);
+    expect(isEventExpired(null, "2026-04-09")).toBe(true);
+    expect(isEventExpired(null, "2026-04-10")).toBe(false);
 
     vi.useRealTimers();
   });
