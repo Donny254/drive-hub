@@ -1252,51 +1252,107 @@ router.post("/mpesa/callback", async (req, res, next) => {
     const resultCode = callback.ResultCode;
     const status = resultCode === 0 ? "paid" : "failed";
 
-    const txResult = await query(
-      `UPDATE mpesa_transactions
-       SET status = $1,
-           response = $2
-       WHERE checkout_request_id = $3
-       RETURNING order_id, booking_id, event_registration_id`,
-      [status, callback, checkoutRequestId]
-    );
+    await withTransaction(async (client) => {
+      const txResult = await client.query(
+        `UPDATE mpesa_transactions
+         SET status = $1,
+             response = $2
+         WHERE checkout_request_id = $3
+         RETURNING order_id, booking_id, event_registration_id`,
+        [status, callback, checkoutRequestId]
+      );
 
-    if (txResult.rowCount > 0) {
+      if (txResult.rowCount === 0) {
+        return;
+      }
+
       const {
         order_id: orderId,
         booking_id: bookingId,
         event_registration_id: eventRegistrationId,
       } = txResult.rows[0];
+
       if (orderId) {
-        const orderStatus = status === "paid" ? "paid" : "cancelled";
-        await query("UPDATE orders SET status = $1 WHERE id = $2", [orderStatus, orderId]);
+        const orderSelect = await client.query(
+          "SELECT status FROM orders WHERE id = $1 FOR UPDATE",
+          [orderId]
+        );
+
+        if (orderSelect.rowCount > 0) {
+          const currentStatus = orderSelect.rows[0].status;
+          const paidAt = status === "paid" ? new Date().toISOString() : null;
+
+          if (status === "paid" && currentStatus !== "paid") {
+            const insufficientResult = await client.query(
+              `SELECT p.id, p.name, p.stock, SUM(oi.quantity) AS required_quantity
+               FROM order_items oi
+               JOIN products p ON p.id = oi.product_id
+               WHERE oi.order_id = $1
+               GROUP BY p.id, p.name, p.stock
+               HAVING SUM(oi.quantity) > p.stock`,
+              [orderId]
+            );
+
+            if (insufficientResult.rowCount > 0) {
+              await client.query(
+                `UPDATE orders
+                 SET status = 'cancelled', payment_status = 'failed', paid_at = NULL
+                 WHERE id = $1`,
+                [orderId]
+              );
+            } else {
+              await client.query(
+                `UPDATE orders
+                 SET status = 'paid', payment_status = 'paid', paid_at = $1
+                 WHERE id = $2`,
+                [paidAt, orderId]
+              );
+
+              await client.query(
+                `UPDATE products
+                 SET stock = stock - oi.quantity
+                 FROM order_items oi
+                 WHERE oi.order_id = $1
+                   AND products.id = oi.product_id
+                   AND oi.product_id IS NOT NULL`,
+                [orderId]
+              );
+            }
+          } else if (status !== "paid" && currentStatus !== "cancelled") {
+            await client.query(
+              "UPDATE orders SET status = $1, payment_status = $2 WHERE id = $3",
+              [status === "failed" ? "cancelled" : status, status, orderId]
+            );
+          }
+        }
       }
+
       if (bookingId) {
         const paymentStatus = status === "paid" ? "paid" : "failed";
         const paidAt = status === "paid" ? new Date().toISOString() : null;
-        await query(
+        await client.query(
           "UPDATE bookings SET payment_status = $1, paid_at = $2 WHERE id = $3",
           [paymentStatus, paidAt, bookingId]
         );
       }
+
       if (eventRegistrationId) {
         const paymentStatus = status === "paid" ? "paid" : "failed";
         const paidAt = status === "paid" ? new Date().toISOString() : null;
         const registrationStatus = status === "paid" ? "confirmed" : "pending";
-        await query(
+        await client.query(
           `UPDATE event_registrations
            SET payment_status = $1,
                paid_at = $2,
                status = CASE WHEN status = 'cancelled' THEN status ELSE $3 END
-           WHERE id = $4
-           RETURNING *`,
+           WHERE id = $4`,
           [paymentStatus, paidAt, registrationStatus, eventRegistrationId]
         );
         if (status === "paid") {
           await notifyPaidRegistration(eventRegistrationId);
         }
       }
-    }
+    });
 
     return res.json({ resultCode: 0, resultDesc: "Accepted" });
   } catch (error) {
