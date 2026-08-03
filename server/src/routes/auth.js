@@ -69,6 +69,7 @@ const toAuthUser = (row) => ({
   email: row.email,
   name: row.name,
   phone: row.phone || null,
+  address: row.address || null,
   role: row.role,
   authTokenVersion: row.auth_token_version ?? 0,
   createdAt: row.created_at,
@@ -76,7 +77,7 @@ const toAuthUser = (row) => ({
 
 router.post("/register", async (req, res, next) => {
   try {
-    const { email, password, name, phone } = req.body;
+    const { email, password, name, phone, address } = req.body;
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password are required" });
     }
@@ -92,10 +93,10 @@ router.post("/register", async (req, res, next) => {
     const passwordHash = await hashPassword(password);
 
     const result = await query(
-      `INSERT INTO users (email, name, phone, role, password_hash)
-       VALUES ($1, $2, $3, 'user', $4)
-       RETURNING id, email, name, phone, role, auth_token_version, created_at`,
-      [email.toLowerCase(), name ?? null, normalizedPhone, passwordHash]
+      `INSERT INTO users (email, name, phone, address, role, password_hash)
+       VALUES ($1, $2, $3, $4, 'user', $5)
+       RETURNING id, email, name, phone, address, role, auth_token_version, created_at`,
+      [email.toLowerCase(), name ?? null, normalizedPhone, address ?? null, passwordHash]
     );
 
     const user = toAuthUser(result.rows[0]);
@@ -117,7 +118,7 @@ router.post("/login", loginRateLimit, async (req, res, next) => {
     }
 
     const result = await query(
-      "SELECT id, email, name, phone, role, password_hash, auth_token_version, created_at FROM users WHERE email = $1",
+      "SELECT id, email, name, phone, address, role, password_hash, auth_token_version, created_at FROM users WHERE email = $1",
       [email.toLowerCase()]
     );
 

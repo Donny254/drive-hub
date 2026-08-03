@@ -816,7 +816,7 @@ const Market = () => {
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                       />
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 py-3 text-sm font-medium text-white">
-                        View details
+                        Buy or bid
                       </div>
                       {listing.featured && (
                         <Badge className="absolute top-4 left-4 bg-primary text-primary-foreground">
@@ -907,29 +907,29 @@ const Market = () => {
                         </div>
                         <div className="flex flex-col gap-2 sm:flex-row">
                           <Button
-                            variant="secondary"
+                          variant="secondary"
+                          size="sm"
+                          className="w-full sm:flex-1"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            navigate(`/market/${listing.id}`);
+                          }}
+                        >
+                          Bid
+                        </Button>
+                        {(listing.listingType === "rent" || listing.listingType === "buy" || listing.listingType === "sell") && (
+                          <Button
+                            variant="hero"
                             size="sm"
                             className="w-full sm:flex-1"
                             onClick={(event) => {
                               event.stopPropagation();
-                              navigate(`/market/${listing.id}`);
+                              openBooking(listing);
                             }}
                           >
-                            View Details
+                            {listing.listingType === "rent" ? "Rent Now" : "Buy Now"}
                           </Button>
-                          {(listing.listingType === "rent" || listing.listingType === "buy" || listing.listingType === "sell") && (
-                            <Button
-                              variant="hero"
-                              size="sm"
-                              className="w-full sm:flex-1"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openBooking(listing);
-                              }}
-                            >
-                              {listing.listingType === "rent" ? "Rent Now" : "Buy Now"}
-                            </Button>
-                          )}
+                        )}
                         </div>
                       </div>
                     </div>

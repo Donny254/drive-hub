@@ -13,6 +13,7 @@ type Profile = {
   email: string;
   name: string | null;
   phone: string | null;
+  address: string | null;
   role: string;
   createdAt: string;
 };
@@ -30,6 +31,7 @@ const MyProfile = () => {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [address, setAddress] = useState("");
 
   useEffect(() => {
     if (!token) return;
@@ -41,6 +43,7 @@ const MyProfile = () => {
         setProfile(data);
         setName(data.name ?? "");
         setPhone(data.phone ?? "");
+        setAddress(data.address ?? "");
       })
       .catch((err) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
@@ -58,7 +61,7 @@ const MyProfile = () => {
     }
     setSaving(true);
     try {
-      const body: Record<string, string> = { name, phone };
+      const body: Record<string, string> = { name, phone, address };
       if (newPassword) {
         body.currentPassword = currentPassword;
         body.newPassword = newPassword;
@@ -109,6 +112,10 @@ const MyProfile = () => {
                 <div className="grid gap-1.5">
                   <Label>Phone</Label>
                   <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>Delivery address</Label>
+                  <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="e.g. 123 Main St, Nairobi" />
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
                   <span className="capitalize rounded-full bg-secondary px-2 py-0.5">{profile.role}</span>

@@ -1,8 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Facebook, Instagram, Twitter, Youtube, Video, Pin, Phone, Mail, MapPin } from "lucide-react";
+import { Facebook, Instagram, Twitter, Youtube, Pin, Phone, Mail, MapPin } from "lucide-react";
 import BrandLogo from "@/components/branding/BrandLogo";
 import { apiFetch } from "@/lib/api";
+
+const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
+    <path
+      fill="currentColor"
+      d="M12.75 0v5.18a3.83 3.83 0 0 0-3.82-3.82 3.83 3.83 0 0 0-3.81 3.82 3.87 3.87 0 0 0 3.82 3.83 3.8 3.8 0 0 0 2.61-1.05v3.91a7.66 7.66 0 1 1 7.66-7.67V0h-3.86Z"
+    />
+  </svg>
+);
 
 type Settings = {
   companyName: string | null;
@@ -36,7 +45,7 @@ const Footer = () => {
     { name: "Instagram", icon: Instagram, href: settings?.socialInstagram || null },
     { name: "Pinterest", icon: Pin, href: settings?.socialPinterest || null },
     { name: "X", icon: Twitter, href: settings?.socialTwitter || null },
-    { name: "TikTok", icon: Video, href: settings?.socialTikTok || null },
+    { name: "TikTok", icon: TikTokIcon, href: settings?.socialTikTok || null },
     { name: "YouTube", icon: Youtube, href: settings?.socialYoutube || null },
   ];
 
@@ -62,8 +71,9 @@ const Footer = () => {
                 : "Official social channels coming online"}
             </p>
             <div className="mt-4 flex flex-wrap gap-4">
-              {socialPlatforms.map((platform) => (
-                platform.href ? (
+              {socialPlatforms.map((platform) => {
+                const Icon = platform.icon as any;
+                return platform.href ? (
                   <a
                     key={platform.name}
                     href={platform.href}
@@ -72,7 +82,7 @@ const Footer = () => {
                     className="inline-flex items-center justify-center rounded-full border border-border p-2 text-muted-foreground transition-colors hover:text-primary"
                     aria-label={platform.name}
                   >
-                    <platform.icon size={18} />
+                    <Icon size={18} />
                   </a>
                 ) : (
                   <span
@@ -81,10 +91,10 @@ const Footer = () => {
                     title={`${platform.name} link not configured yet`}
                     aria-label={`${platform.name} link not configured yet`}
                   >
-                    <platform.icon size={18} />
+                    <Icon size={18} />
                   </span>
-                )
-              ))}
+                );
+              })}
             </div>
           </div>
 
