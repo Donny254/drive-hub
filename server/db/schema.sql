@@ -40,6 +40,14 @@ CREATE TABLE IF NOT EXISTS site_settings (
   crypto_instructions text,
   crypto_network_evm text,
   crypto_wallet_address_evm text,
+  mpesa_shortcode text,
+  mpesa_partyb text,
+  mpesa_account_reference text,
+  mpesa_transaction_desc text,
+  -- Daraja secrets, AES-256-GCM encrypted via utils/secrets.js
+  mpesa_consumer_key_enc text,
+  mpesa_consumer_secret_enc text,
+  mpesa_passkey_enc text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -371,6 +379,25 @@ CREATE TABLE IF NOT EXISTS crypto_transactions (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+-- Manual paybill payments, from C2B confirmation webhooks and Pull
+-- Transactions queries. Deduped by Safaricom's TransID.
+CREATE TABLE IF NOT EXISTS mpesa_c2b_transactions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  trans_id text NOT NULL UNIQUE,
+  transaction_type text,
+  trans_time text,
+  amount_cents integer,
+  business_short_code text,
+  bill_ref_number text,
+  msisdn text,
+  org_account_balance text,
+  source text NOT NULL DEFAULT 'c2b',
+  raw jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mpesa_c2b_created_at ON mpesa_c2b_transactions(created_at DESC);
+
 ALTER TABLE bookings
   ADD COLUMN IF NOT EXISTS amount_cents integer;
 
@@ -412,6 +439,33 @@ ALTER TABLE mpesa_transactions
 
 ALTER TABLE mpesa_transactions
   ADD COLUMN IF NOT EXISTS event_registration_id uuid REFERENCES event_registrations(id) ON DELETE SET NULL;
+
+ALTER TABLE mpesa_transactions
+  ADD COLUMN IF NOT EXISTS result_code text;
+
+ALTER TABLE mpesa_transactions
+  ADD COLUMN IF NOT EXISTS mpesa_receipt_number text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_shortcode text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_partyb text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_account_reference text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_transaction_desc text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_consumer_key_enc text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_consumer_secret_enc text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_passkey_enc text;
 
 ALTER TABLE site_settings
   ADD COLUMN IF NOT EXISTS social_pinterest text;
