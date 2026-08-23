@@ -257,6 +257,69 @@ const AdminSettingsTab = ({ settings, setSettings, saveSettings }: AdminSettings
                   </div>
                 </div>
               </div>
+
+              <div className="rounded-2xl border border-border bg-background/50 p-5">
+                <h3 className="font-medium">M-Pesa (Daraja) Credentials</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Values saved here override the server environment variables. Secrets are encrypted at rest —
+                  leave a secret blank to keep the stored one.
+                </p>
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-2">
+                    <Label>Business Shortcode</Label>
+                    <Input
+                      value={settings.mpesaShortcode ?? ""}
+                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, mpesaShortcode: e.target.value } : prev))}
+                      placeholder="e.g. 174379"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Account Reference</Label>
+                    <Input
+                      value={settings.mpesaAccountReference ?? ""}
+                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, mpesaAccountReference: e.target.value } : prev))}
+                      placeholder="Brand label on the STK prompt, max 12 chars — e.g. WHEELSNATION"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Transaction Description</Label>
+                    <Input
+                      value={settings.mpesaTransactionDesc ?? ""}
+                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, mpesaTransactionDesc: e.target.value } : prev))}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Consumer Key {settings.mpesaConsumerKeySet ? "✓ saved" : ""}</Label>
+                    <Input
+                      type="password"
+                      autoComplete="off"
+                      value={settings.mpesaConsumerKey ?? ""}
+                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, mpesaConsumerKey: e.target.value } : prev))}
+                      placeholder={settings.mpesaConsumerKeySet ? "Saved — leave blank to keep" : "Not set"}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Consumer Secret {settings.mpesaConsumerSecretSet ? "✓ saved" : ""}</Label>
+                    <Input
+                      type="password"
+                      autoComplete="off"
+                      value={settings.mpesaConsumerSecret ?? ""}
+                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, mpesaConsumerSecret: e.target.value } : prev))}
+                      placeholder={settings.mpesaConsumerSecretSet ? "Saved — leave blank to keep" : "Not set"}
+                    />
+                  </div>
+                  <div className="grid gap-2 md:col-span-2">
+                    <Label>Passkey {settings.mpesaPasskeySet ? "✓ saved" : ""}</Label>
+                    <Input
+                      type="password"
+                      autoComplete="off"
+                      value={settings.mpesaPasskey ?? ""}
+                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, mpesaPasskey: e.target.value } : prev))}
+                      placeholder={settings.mpesaPasskeySet ? "Saved — leave blank to keep" : "Not set"}
+                    />
+                  </div>
+                </div>
+              </div>
             </>
           )}
           <div className="flex justify-end">

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { query, withTransaction } from "../db.js";
-import { optionalAuth, requireAuth } from "../middleware/auth.js";
+import { requireAuth } from "../middleware/auth.js";
 import { sendListingBidEmail } from "../email.js";
 import { sendListingBidMessage } from "../notifications.js";
 import { minNextBidCents, closeAuctionById } from "../auctions.js";
@@ -76,9 +76,9 @@ router.get("/", requireAuth, async (req, res, next) => {
   }
 });
 
-router.post("/", optionalAuth, async (req, res, next) => {
+router.post("/", requireAuth, async (req, res, next) => {
   try {
-    const { listingId, amountCents, bidderName, bidderEmail, bidderPhone, message } = req.body;
+    const { listingId, amountCents, bidderPhone, message } = req.body;
     const parsedAmount = parseAmountCents(amountCents);
 
     if (!listingId) {
@@ -87,12 +87,17 @@ router.post("/", optionalAuth, async (req, res, next) => {
     if (!parsedAmount || parsedAmount <= 0) {
       return res.status(400).json({ error: "Bid amount must be greater than zero" });
     }
-    if (!bidderName || !String(bidderName).trim()) {
-      return res.status(400).json({ error: "Name is required" });
+
+    // Bidder identity comes from the signed-in account, not the request body, so
+    // a winner can later be matched to their login.
+    const bidderResult = await query("SELECT name, email, phone FROM users WHERE id = $1", [req.user.id]);
+    if (bidderResult.rowCount === 0) {
+      return res.status(401).json({ error: "Account not found" });
     }
-    if (!bidderEmail && !bidderPhone) {
-      return res.status(400).json({ error: "Email or phone is required" });
-    }
+    const account = bidderResult.rows[0];
+    const bidderName = account.name || account.email;
+    const bidderEmail = account.email;
+    const resolvedPhone = (bidderPhone && String(bidderPhone).trim()) || account.phone || null;
 
     // Lock the listing row so two simultaneous bids can't both clear the same
     // minimum and tie for the lead.
@@ -105,7 +110,7 @@ router.post("/", optionalAuth, async (req, res, next) => {
          FROM listings l
          LEFT JOIN users u ON u.id = l.user_id
          WHERE l.id = $1
-         FOR UPDATE`,
+         FOR UPDATE OF l`,
         [listingId]
       );
       if (listingResult.rowCount === 0) {
@@ -149,10 +154,10 @@ router.post("/", optionalAuth, async (req, res, next) => {
          RETURNING *`,
         [
           listingId,
-          req.user?.id || null,
+          req.user.id,
           String(bidderName).trim(),
           bidderEmail ? String(bidderEmail).trim() : null,
-          bidderPhone ? String(bidderPhone).trim() : null,
+          resolvedPhone,
           parsedAmount,
           message ? String(message).trim() : null,
         ]
@@ -183,7 +188,7 @@ router.post("/", optionalAuth, async (req, res, next) => {
         listingTitle: listing.title,
         amountCents: parsedAmount,
         bidderName,
-        bidderPhone,
+        bidderPhone: resolvedPhone,
       });
     } catch (error) {
       console.warn("Bid notification failed:", error);
@@ -238,6 +243,75 @@ router.get("/listing/:listingId/summary", async (req, res, next) => {
       minBidIncrementCents: row.min_bid_increment_cents == null ? null : Number(row.min_bid_increment_cents),
       minNextBidCents: minNextBidCents(row, high),
       winningBidId: row.winning_bid_id || null,
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// The signed-in user's outcome for an auction. Only reveals seller contact
+// details to the winning bidder so they can arrange payment offline.
+router.get("/listing/:listingId/my-result", requireAuth, async (req, res, next) => {
+  try {
+    // Resolve the auction first if its timer has elapsed.
+    const pre = await query(
+      "SELECT id, is_auction, status, auction_ends_at FROM listings WHERE id = $1",
+      [req.params.listingId]
+    );
+    if (pre.rowCount === 0) {
+      return res.status(404).json({ error: "Listing not found" });
+    }
+    const preRow = pre.rows[0];
+    if (
+      preRow.is_auction &&
+      preRow.status === "active" &&
+      preRow.auction_ends_at &&
+      new Date(preRow.auction_ends_at) <= new Date()
+    ) {
+      await closeAuctionById(req.params.listingId).catch(() => undefined);
+    }
+
+    const result = await query(
+      `SELECT l.id, l.title, l.is_auction, l.status, l.auction_ends_at, l.winning_bid_id,
+              lb.id AS bid_id, lb.amount_cents, lb.status AS bid_status,
+              u.name AS seller_name, u.email AS seller_email, u.phone AS seller_phone
+       FROM listings l
+       LEFT JOIN listing_bids lb ON lb.id = l.winning_bid_id
+       LEFT JOIN users u ON u.id = l.user_id
+       WHERE l.id = $1`,
+      [req.params.listingId]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Listing not found" });
+    }
+    const row = result.rows[0];
+    const ended =
+      row.is_auction &&
+      (row.status !== "active" || (row.auction_ends_at && new Date(row.auction_ends_at) <= new Date()));
+
+    // Did this user place the winning bid?
+    let won = false;
+    if (ended && row.winning_bid_id) {
+      const winnerCheck = await query(
+        "SELECT user_id FROM listing_bids WHERE id = $1",
+        [row.winning_bid_id]
+      );
+      won = winnerCheck.rowCount > 0 && winnerCheck.rows[0].user_id === req.user.id;
+    }
+
+    return res.json({
+      listingId: row.id,
+      isAuction: row.is_auction ?? false,
+      ended: Boolean(ended),
+      won,
+      amountCents: won ? Number(row.amount_cents || 0) : null,
+      seller: won
+        ? {
+            name: row.seller_name || null,
+            email: row.seller_email || null,
+            phone: row.seller_phone || null,
+          }
+        : null,
     });
   } catch (error) {
     return next(error);

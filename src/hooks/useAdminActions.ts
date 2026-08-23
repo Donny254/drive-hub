@@ -36,7 +36,10 @@ type UseAdminActionsParams = {
   setEditingListing: (value: Listing | null | ((prev: Listing | null) => Listing | null)) => void;
   creatingListing: Listing | null;
   setCreatingListing: (value: Listing | null) => void;
+  createImageUrl: string;
   setCreateImageUrl: (value: string) => void;
+  createImages: string[];
+  setCreateImages: (value: string[]) => void;
   setEditImages: (value: Array<{ id: string; url: string }> | ((prev: Array<{ id: string; url: string }>) => Array<{ id: string; url: string }>)) => void;
   setEditImageUrl: (value: string) => void;
   setListingAudit: (value: []) => void;
@@ -99,7 +102,10 @@ export const useAdminActions = ({
   setEditingListing,
   creatingListing,
   setCreatingListing,
+  createImageUrl,
   setCreateImageUrl,
+  createImages,
+  setCreateImages,
   setEditImages,
   setEditImageUrl,
   setListingAudit,
@@ -165,7 +171,16 @@ export const useAdminActions = ({
 
   const createListing = useCallback(async () => {
     if (!creatingListing) return;
-    const payload = { ...creatingListing };
+    // Fold in a URL still sitting in the "Add Image URL" box that the admin
+    // didn't click "Use" on, so a single image just works.
+    const pendingUrl = createImageUrl.trim();
+    const allImages = pendingUrl && !createImages.includes(pendingUrl)
+      ? [...createImages, pendingUrl]
+      : createImages;
+    // Cover image is creatingListing.imageUrl; the remaining gallery images are
+    // sent as imageUrls so they persist alongside the new listing.
+    const cover = creatingListing.imageUrl ?? allImages[0] ?? null;
+    const payload = { ...creatingListing, imageUrl: cover, imageUrls: allImages };
     delete (payload as Partial<Listing>).id;
     try {
       const resp = await apiFetch("/api/listings", {
@@ -176,13 +191,14 @@ export const useAdminActions = ({
       if (!resp.ok) throw new Error("Failed to create listing");
       setCreatingListing(null);
       setCreateImageUrl("");
+      setCreateImages([]);
       await fetchAll();
       notifySuccess("Listing created", "The new listing has been added.");
     } catch (error) {
       console.error(error);
       notifyError("Create failed", "The listing could not be created.");
     }
-  }, [authHeaders, creatingListing, fetchAll, notifyError, notifySuccess, setCreateImageUrl, setCreatingListing]);
+  }, [authHeaders, createImageUrl, createImages, creatingListing, fetchAll, notifyError, notifySuccess, setCreateImageUrl, setCreateImages, setCreatingListing]);
 
   const approveListing = useCallback(async (listing: Listing) => {
     try {

@@ -261,16 +261,19 @@ const SellerListingDialog = ({
           ) : null}
         </div>
         <div className="grid gap-2">
-          <Label>Image URL</Label>
-          <Input
-            value={listing.imageUrl ?? ""}
-            onChange={(e) => setListing((prev) => (prev ? { ...prev, imageUrl: e.target.value } : prev))}
-          />
-        </div>
-        <div className="grid gap-2">
           <Label>Add Image URL</Label>
           <div className="flex gap-2">
-            <Input value={imageUrlValue} onChange={(e) => setImageUrlValue(e.target.value)} />
+            <Input
+              value={imageUrlValue}
+              placeholder="https://..."
+              onChange={(e) => setImageUrlValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addImageUrl();
+                }
+              }}
+            />
             <Button type="button" variant="secondary" onClick={addImageUrl}>
               Add
             </Button>
@@ -278,45 +281,76 @@ const SellerListingDialog = ({
         </div>
         {normalizedImages.length > 0 ? (
           <div className="grid gap-2">
-            <Label>Images</Label>
+            <Label>
+              Images ({normalizedImages.length})
+              {normalizedImages.length === 1 ? (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">used as cover automatically</span>
+              ) : null}
+            </Label>
             <div className="grid grid-cols-3 gap-2">
-              {normalizedImages.map((image, index) => (
-                <div key={image.id ?? image.url} className="relative">
-                  <img
-                    src={resolveImageUrl(image.url)}
-                    alt="Listing"
-                    className="h-20 w-full rounded-md border border-border object-cover"
-                  />
-                  {reorderImages ? (
+              {normalizedImages.map((image, index) => {
+                const isCover = listing.imageUrl === image.url;
+                return (
+                  <div key={image.id ?? image.url} className="relative">
+                    <img
+                      src={resolveImageUrl(image.url)}
+                      alt="Listing"
+                      className={`h-20 w-full rounded-md border-2 object-cover ${
+                        isCover ? "border-primary" : "border-border"
+                      }`}
+                    />
+                    {isCover ? (
+                      <span className="absolute bottom-1 left-1 rounded bg-primary px-1.5 text-[10px] font-medium text-primary-foreground">
+                        Cover
+                      </span>
+                    ) : null}
+                    {reorderImages ? (
+                      <button
+                        type="button"
+                        className="absolute top-1 left-1 rounded-full bg-background/80 px-2 text-xs"
+                        draggable
+                        onDragStart={(e) => e.dataTransfer.setData("text/plain", String(index))}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const from = Number(e.dataTransfer.getData("text/plain"));
+                          if (Number.isNaN(from) || from === index) return;
+                          const next = [...normalizedImages];
+                          const [moved] = next.splice(from, 1);
+                          next.splice(index, 0, moved);
+                          reorderImages(next.map((item) => ({ id: item.id!, url: item.url })));
+                        }}
+                      >
+                        ↕
+                      </button>
+                    ) : null}
                     <button
                       type="button"
-                      className="absolute top-1 left-1 rounded-full bg-background/80 px-2 text-xs"
-                      draggable
-                      onDragStart={(e) => e.dataTransfer.setData("text/plain", String(index))}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        const from = Number(e.dataTransfer.getData("text/plain"));
-                        if (Number.isNaN(from) || from === index) return;
-                        const next = [...normalizedImages];
-                        const [moved] = next.splice(from, 1);
-                        next.splice(index, 0, moved);
-                        reorderImages(next.map((item) => ({ id: item.id!, url: item.url })));
-                      }}
+                      className="absolute top-1 right-1 rounded-full bg-background/80 px-2 text-xs"
+                      onClick={() => removeImage(typeof images[index] === "string" ? image.url : images[index])}
                     >
-                      ↕
+                      ✕
                     </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="absolute top-1 right-1 rounded-full bg-background/80 px-2 text-xs"
-                    onClick={() => removeImage(typeof images[index] === "string" ? image.url : images[index])}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
+          </div>
+        ) : null}
+        {normalizedImages.length > 1 ? (
+          <div className="grid gap-2">
+            <Label>Cover Image</Label>
+            <select
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              value={listing.imageUrl ?? ""}
+              onChange={(e) => setListing((prev) => (prev ? { ...prev, imageUrl: e.target.value } : prev))}
+            >
+              {normalizedImages.map((image, index) => (
+                <option key={image.id ?? image.url} value={image.url}>
+                  Image {index + 1}
+                </option>
+              ))}
+            </select>
           </div>
         ) : null}
         <div className="rounded-md border border-border bg-background/60 p-3 text-sm">

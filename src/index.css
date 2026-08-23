@@ -261,7 +261,9 @@
   }
 
   .hero-image-visual {
-    filter: brightness(0.68) contrast(0.92) saturate(0.95);
+    /* Brighter than before so the smoky ::before screen-blend is visible,
+       like the About section image. Darkness comes from the overlay layers. */
+    filter: brightness(0.92) contrast(1.0) saturate(0.9);
   }
 
   .dark .hero-image-visual {
@@ -271,9 +273,9 @@
   .hero-scene-depth {
     z-index: 3;
     background:
-      radial-gradient(circle at 50% 35%, rgba(255,255,255,0.1), transparent 18%),
-      linear-gradient(to right, rgba(4,8,12,0.72), rgba(4,8,12,0.18), transparent 55%),
-      linear-gradient(to bottom, rgba(4,8,12,0.72), rgba(4,8,12,0.16), rgba(4,8,12,0.52));
+      radial-gradient(circle at 50% 35%, rgba(0,0,0,0.22), transparent 25%),
+      linear-gradient(to right, rgba(4,8,12,0.94), rgba(4,8,12,0.45), transparent 65%),
+      linear-gradient(to bottom, rgba(4,8,12,0.94), rgba(4,8,12,0.40), rgba(4,8,12,0.80));
     transition: background 0.3s ease;
   }
 
@@ -286,7 +288,7 @@
 
   .hero-scene-vignette {
     z-index: 4;
-    background: linear-gradient(to top, rgba(4,8,12,0.78), rgba(4,8,12,0.08), rgba(4,8,12,0.34));
+    background: linear-gradient(to top, rgba(4,8,12,0.95), rgba(4,8,12,0.30), rgba(4,8,12,0.68));
     transition: background 0.3s ease;
   }
 

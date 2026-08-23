@@ -213,16 +213,22 @@ export const useMyListingsManager = ({ token }: UseMyListingsManagerParams) => {
       }
       const payload = { ...listing };
       delete (payload as Partial<Listing>).id;
-      if (!payload.imageUrl && createImages.length > 0) {
-        payload.imageUrl = createImages[0];
+      // Fold in a URL still sitting in the "Add Image URL" box that the seller
+      // didn't explicitly click "Add" on, so a single image just works.
+      const pendingUrl = createImageUrl.trim();
+      const allImages = pendingUrl && !createImages.includes(pendingUrl)
+        ? [...createImages, pendingUrl]
+        : createImages;
+      if (!payload.imageUrl && allImages.length > 0) {
+        payload.imageUrl = allImages[0];
       }
-      const validationError = validateListingDraft({ ...listing, imageUrl: payload.imageUrl }, createImages);
+      const validationError = validateListingDraft({ ...listing, imageUrl: payload.imageUrl }, allImages);
       if (validationError) {
         setFormError(validationError);
         toast.error(validationError);
         throw new Error(validationError);
       }
-      (payload as typeof payload & { imageUrls?: string[] }).imageUrls = createImages;
+      (payload as typeof payload & { imageUrls?: string[] }).imageUrls = allImages;
       const resp = await apiFetch("/api/listings", {
         method: "POST",
         headers: authHeaders,
@@ -238,10 +244,11 @@ export const useMyListingsManager = ({ token }: UseMyListingsManagerParams) => {
 
       setCreatingListing(null);
       setCreateImages([]);
+      setCreateImageUrl("");
       await fetchListings();
       toast.success("Listing created and submitted for review.");
     },
-    [authHeaders, createImages, fetchListings, uploading]
+    [authHeaders, createImageUrl, createImages, fetchListings, uploading]
   );
 
   const handleUpload = useCallback(
@@ -255,7 +262,7 @@ export const useMyListingsManager = ({ token }: UseMyListingsManagerParams) => {
         }
         const result = await uploadImage(file, token);
         if (mode === "create") {
-          setCreatingListing((prev) => (prev ? { ...prev, imageUrl: result.url } : prev));
+          setCreatingListing((prev) => (prev ? { ...prev, imageUrl: prev.imageUrl || result.url } : prev));
           setCreateImages((prev) => [...prev, result.url]);
         } else {
           setEditingListing((prev) => (prev ? { ...prev, imageUrl: result.url } : prev));

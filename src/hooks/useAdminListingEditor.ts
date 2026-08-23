@@ -16,6 +16,47 @@ export const useAdminListingEditor = ({ token, authHeaders }: UseAdminListingEdi
   const [editImages, setEditImages] = useState<Array<{ id: string; url: string }>>([]);
   const [editImageUrl, setEditImageUrl] = useState("");
   const [createImageUrl, setCreateImageUrl] = useState("");
+  // Candidate images for the (not-yet-saved) new listing. The cover image is
+  // kept in creatingListing.imageUrl; when there are several the admin picks
+  // the cover.
+  const [createImages, setCreateImages] = useState<string[]>([]);
+
+  const addCreateImage = useCallback((url: string) => {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    setCreateImages((prev) => {
+      const next = prev.includes(trimmed) ? prev : [...prev, trimmed];
+      // Auto-select as the cover when it is the first image added.
+      setCreatingListing((listing) =>
+        listing
+          ? { ...listing, imageUrl: listing.imageUrl || trimmed, imageUrls: next }
+          : listing
+      );
+      return next;
+    });
+  }, []);
+
+  const addCreateImageUrl = useCallback(() => {
+    addCreateImage(createImageUrl);
+    setCreateImageUrl("");
+  }, [addCreateImage, createImageUrl]);
+
+  const removeCreateImage = useCallback((url: string) => {
+    setCreateImages((prev) => {
+      const next = prev.filter((item) => item !== url);
+      // If the removed image was the cover, fall back to the first remaining one.
+      setCreatingListing((listing) =>
+        listing && listing.imageUrl === url
+          ? { ...listing, imageUrl: next[0] ?? null, imageUrls: next }
+          : listing
+          ? { ...listing, imageUrls: next }
+          : listing
+      );
+      return next;
+    });
+  }, []);
+
+  const resetCreateImages = useCallback(() => setCreateImages([]), []);
 
   const normalizeListingImages = (listing: Listing, nextUrls: string[]) => {
     const urls = Array.from(new Set(nextUrls.filter(Boolean))).slice(0, 12);
@@ -157,9 +198,14 @@ export const useAdminListingEditor = ({ token, authHeaders }: UseAdminListingEdi
   );
 
   return {
+    addCreateImageUrl,
     addEditImageUrl,
     createImageUrl,
+    createImages,
     creatingListing,
+    removeCreateImage,
+    resetCreateImages,
+    setCreateImages,
     editImageUrl,
     editImages,
     editingListing,

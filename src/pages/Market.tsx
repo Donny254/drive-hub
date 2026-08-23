@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowDown, ArrowUp, BookmarkPlus, Calendar, Car, DollarSign, Fuel, Gauge, MapPin, Scale, X } from "lucide-react";
+import { ArrowDown, ArrowUp, BookmarkPlus, Calendar, Car, DollarSign, Fuel, Gauge, Gavel, MapPin, Scale, X } from "lucide-react";
 import MarketSlider from "@/components/market/MarketSlider";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
@@ -41,6 +41,10 @@ type Listing = {
   featured: boolean;
   status?: "active" | "sold" | "inactive";
   location?: string | null;
+  isAuction?: boolean;
+  auctionEndsAt?: string | null;
+  highestBidCents?: number;
+  bidCount?: number;
   seller?: {
     id: string;
     name: string;
@@ -899,9 +903,27 @@ const Market = () => {
                         <div className="flex items-start gap-2">
                           <DollarSign className="text-primary" size={20} />
                           <span className="font-display text-2xl leading-tight break-words">
-                            KES {(listing.priceCents / 100).toLocaleString()}
-                            {listing.listingType === "rent" && (
-                              <span className="text-sm text-muted-foreground">/day</span>
+                            {listing.isAuction ? (
+                              <>
+                                KES{" "}
+                                {(
+                                  (listing.highestBidCents && listing.highestBidCents > 0
+                                    ? listing.highestBidCents
+                                    : listing.priceCents) / 100
+                                ).toLocaleString()}
+                                <span className="block text-sm font-normal text-muted-foreground">
+                                  {listing.highestBidCents && listing.highestBidCents > 0
+                                    ? `Current bid • ${listing.bidCount ?? 0} bid${listing.bidCount === 1 ? "" : "s"}`
+                                    : "Starting bid"}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                KES {(listing.priceCents / 100).toLocaleString()}
+                                {listing.listingType === "rent" && (
+                                  <span className="text-sm text-muted-foreground">/day</span>
+                                )}
+                              </>
                             )}
                           </span>
                         </div>
