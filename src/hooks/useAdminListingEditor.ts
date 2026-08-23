@@ -16,53 +16,13 @@ export const useAdminListingEditor = ({ token, authHeaders }: UseAdminListingEdi
   const [editImages, setEditImages] = useState<Array<{ id: string; url: string }>>([]);
   const [editImageUrl, setEditImageUrl] = useState("");
   const [createImageUrl, setCreateImageUrl] = useState("");
-  // Candidate images for the (not-yet-saved) new listing. The cover image is
-  // kept in creatingListing.imageUrl; when there is only one candidate it is the
-  // cover automatically, when there are several the admin picks the cover.
-  const [createImages, setCreateImages] = useState<string[]>([]);
 
-  const addCreateImage = useCallback((url: string) => {
-    const trimmed = url.trim();
-    if (!trimmed) return;
-    setCreateImages((prev) => {
-      const next = prev.includes(trimmed) ? prev : [...prev, trimmed];
-      // Auto-select as the cover when it is the first image added.
-      setCreatingListing((listing) =>
-        listing
-          ? { ...listing, imageUrl: listing.imageUrl || trimmed, imageUrls: next }
-          : listing
-      );
-      return next;
-    });
-  }, []);
-
-  const addCreateImageUrl = useCallback(() => {
-    addCreateImage(createImageUrl);
-    setCreateImageUrl("");
-  }, [addCreateImage, createImageUrl]);
-
-  const removeCreateImage = useCallback((url: string) => {
-    setCreateImages((prev) => {
-      const next = prev.filter((item) => item !== url);
-      // If the removed image was the cover, fall back to the first remaining one.
-      setCreatingListing((listing) =>
-        listing && listing.imageUrl === url
-          ? { ...listing, imageUrl: next[0] ?? null, imageUrls: next }
-          : listing
-          ? { ...listing, imageUrls: next }
-          : listing
-      );
-      return next;
-    });
-  }, []);
-
-  const resetCreateImages = useCallback(() => setCreateImages([]), []);
-
-  const normalizeCreateImages = (listing: Listing, nextUrls: string[]) => {
-    const urls = Array.from(new Set(nextUrls.filter(Boolean)));
+  const normalizeListingImages = (listing: Listing, nextUrls: string[]) => {
+    const urls = Array.from(new Set(nextUrls.filter(Boolean))).slice(0, 12);
+    const primary = listing.imageUrl || urls[0] || null;
     return {
       ...listing,
-      imageUrl: urls[0] ?? null,
+      imageUrl: primary,
       imageUrls: urls,
     };
   };
@@ -92,19 +52,18 @@ export const useAdminListingEditor = ({ token, authHeaders }: UseAdminListingEdi
         setUploading(true);
         const result = await uploadImage(file, token);
         if (mode === "create") {
-          setCreateImages((prev) => {
-            const next = prev.includes(result.url) ? prev : [...prev, result.url];
-            // Sync imageUrls on the listing object so createListing sends them to the backend.
-            setCreatingListing((listing) =>
-              listing
-                ? { ...listing, imageUrl: listing.imageUrl || result.url, imageUrls: next }
-                : listing
-            );
-            return next;
-          });
+          setCreatingListing((prev) =>
+            prev
+              ? normalizeListingImages(prev, [prev.imageUrl, ...(prev.imageUrls || []), result.url].filter(Boolean) as string[])
+              : prev
+          );
           return;
         }
-        setEditingListing((prev) => (prev ? { ...prev, imageUrl: result.url } : prev));
+        setEditingListing((prev) =>
+          prev
+            ? normalizeListingImages(prev, [prev.imageUrl, ...(prev.imageUrls || []), result.url].filter(Boolean) as string[])
+            : prev
+        );
         if (editingListing?.id) {
           const addResp = await apiFetch(`/api/listings/${editingListing.id}/images`, {
             method: "POST",
@@ -135,6 +94,11 @@ export const useAdminListingEditor = ({ token, authHeaders }: UseAdminListingEdi
     if (addResp.ok) {
       const added = await addResp.json();
       setEditImages((prev) => [...prev, { id: added.id, url: added.url }]);
+      setEditingListing((prev) =>
+        prev
+          ? normalizeListingImages(prev, [prev.imageUrl, ...(prev.imageUrls || []), added.url].filter(Boolean) as string[])
+          : prev
+      );
       loadListingAudit(editingListing.id);
     }
     setEditImageUrl("");

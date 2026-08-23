@@ -606,6 +606,13 @@ const Market = () => {
     });
   };
 
+  const generateUuid = () => {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+    return `uid-${Date.now()}-${Math.floor(Math.random() * 1000000000)}`;
+  };
+
   const saveCurrentSearch = () => {
     const hasFilters =
       activeTab !== "all" || search.trim() || year.trim() || minPrice.trim() || maxPrice.trim() || sort !== "newest";
@@ -618,7 +625,7 @@ const Market = () => {
       `Search ${savedSearches.length + 1}`;
 
     const next: SavedSearch = {
-      id: crypto.randomUUID(),
+      id: generateUuid(),
       name,
       filters: { activeTab, search, year, minPrice, maxPrice, sort },
     };
@@ -786,28 +793,39 @@ const Market = () => {
                 {pagedListings.map((listing, index) => (
                   <div
                     key={listing.id}
-                    className="group flex h-full flex-col rounded-lg border border-border bg-card transition-all duration-500 hover:border-primary/50 animate-fade-in"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(`/market/${listing.id}`)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        navigate(`/market/${listing.id}`);
+                      }
+                    }}
+                    className="group flex h-full cursor-pointer flex-col rounded-lg border border-border bg-card transition-all duration-500 hover:border-primary/50 animate-fade-in"
                     style={{ animationDelay: `${index * 0.1}s` }}
                   >
                     {/* Image */}
-                    <div className="relative aspect-[4/3] overflow-hidden">
+                    <div
+                      className="relative aspect-[4/3] overflow-hidden"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        navigate(`/market/${listing.id}`);
+                      }}
+                    >
                       <img
                         src={resolveImageUrl(listing.imageUrl) || FALLBACK_IMAGE}
                         alt={listing.title}
                         loading="lazy"
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                       />
-                      {listing.isAuction ? (
-                        <Badge className="absolute top-4 left-4 gap-1 bg-amber-500 text-black hover:bg-amber-500">
-                          <Gavel className="h-3.5 w-3.5" />
-                          Auction
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 py-3 text-sm font-medium text-white">
+                        Buy or bid
+                      </div>
+                      {listing.featured && (
+                        <Badge className="absolute top-4 left-4 bg-primary text-primary-foreground">
+                          Featured
                         </Badge>
-                      ) : (
-                        listing.featured && (
-                          <Badge className="absolute top-4 left-4 bg-primary text-primary-foreground">
-                            Featured
-                          </Badge>
-                        )
                       )}
                       <Badge
                         className="absolute top-4 right-4 capitalize"
@@ -824,7 +842,10 @@ const Market = () => {
                         variant="secondary"
                         size="sm"
                         className="absolute bottom-4 right-4"
-                        onClick={() => toggleShortlist(listing)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleShortlist(listing);
+                        }}
                       >
                         <BookmarkPlus className="mr-2 h-4 w-4" />
                         {shortlistIds.has(listing.id) ? "Shortlisted" : "Shortlist"}
@@ -871,6 +892,7 @@ const Market = () => {
                           <Link
                             to={`/sellers/${listing.seller.id}`}
                             className="min-w-0 break-words text-muted-foreground hover:text-primary"
+                            onClick={(event) => event.stopPropagation()}
                           >
                             {listing.seller.name} • {listing.seller.activeListingsCount} active listing{listing.seller.activeListingsCount === 1 ? "" : "s"}
                           </Link>
@@ -907,35 +929,29 @@ const Market = () => {
                         </div>
                         <div className="flex flex-col gap-2 sm:flex-row">
                           <Button
-                            variant="secondary"
+                          variant="secondary"
+                          size="sm"
+                          className="w-full sm:flex-1"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            navigate(`/market/${listing.id}`);
+                          }}
+                        >
+                          Bid
+                        </Button>
+                        {(listing.listingType === "rent" || listing.listingType === "buy" || listing.listingType === "sell") && (
+                          <Button
+                            variant="hero"
                             size="sm"
                             className="w-full sm:flex-1"
-                            onClick={() => navigate(`/market/${listing.id}`)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openBooking(listing);
+                            }}
                           >
-                            View Details
+                            {listing.listingType === "rent" ? "Rent Now" : "Buy Now"}
                           </Button>
-                          {listing.isAuction ? (
-                            <Button
-                              variant="hero"
-                              size="sm"
-                              className="w-full gap-1 sm:flex-1"
-                              onClick={() => navigate(`/market/${listing.id}`)}
-                            >
-                              <Gavel className="h-4 w-4" />
-                              Place Bid
-                            </Button>
-                          ) : (
-                            (listing.listingType === "rent" || listing.listingType === "buy" || listing.listingType === "sell") && (
-                              <Button
-                                variant="hero"
-                                size="sm"
-                                className="w-full sm:flex-1"
-                                onClick={() => openBooking(listing)}
-                              >
-                                {listing.listingType === "rent" ? "Rent Now" : "Buy Now"}
-                              </Button>
-                            )
-                          )}
+                        )}
                         </div>
                       </div>
                     </div>

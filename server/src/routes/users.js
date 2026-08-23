@@ -11,6 +11,7 @@ const toApi = (row) => ({
   email: row.email,
   name: row.name,
   phone: row.phone || null,
+  address: row.address || null,
   role: row.role,
   sellerVerificationStatus: row.seller_verification_status || "unverified",
   sellerVerifiedAt: row.seller_verified_at || null,
@@ -120,7 +121,7 @@ router.get("/public/:id", async (req, res, next) => {
 router.get("/me", requireAuth, async (req, res, next) => {
   try {
     const result = await query(
-      "SELECT id, email, name, phone, role, seller_verification_status, seller_verified_at, created_at FROM users WHERE id = $1",
+      "SELECT id, email, name, phone, address, role, seller_verification_status, seller_verified_at, created_at FROM users WHERE id = $1",
       [req.user.id]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: "User not found" });
@@ -148,6 +149,12 @@ router.put("/me", requireAuth, async (req, res, next) => {
       updates.push(`phone = $${values.length}`);
     }
 
+    if (req.body.address !== undefined) {
+      const addressValue = req.body.address ? String(req.body.address).trim() : null;
+      values.push(addressValue);
+      updates.push(`address = $${values.length}`);
+    }
+
     if (newPassword) {
       if (!currentPassword) return res.status(400).json({ error: "Current password is required to set a new password" });
       const userResult = await query("SELECT password_hash FROM users WHERE id = $1", [req.user.id]);
@@ -162,7 +169,7 @@ router.put("/me", requireAuth, async (req, res, next) => {
 
     values.push(req.user.id);
     const result = await query(
-      `UPDATE users SET ${updates.join(", ")} WHERE id = $${values.length} RETURNING id, email, name, phone, role, seller_verification_status, seller_verified_at, created_at`,
+      `UPDATE users SET ${updates.join(", ")} WHERE id = $${values.length} RETURNING id, email, name, phone, address, role, seller_verification_status, seller_verified_at, created_at`,
       values
     );
     res.json(toApi(result.rows[0]));

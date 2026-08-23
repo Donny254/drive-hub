@@ -21,6 +21,7 @@ import CryptoPaymentDetails from "@/components/shared/CryptoPaymentDetails";
 import useCryptoPaymentStatus from "@/hooks/useCryptoPaymentStatus";
 import { usePagination } from "@/hooks/usePagination";
 import PagerBar from "@/components/shared/PagerBar";
+import { isEventExpired } from "@/lib/date";
 
 type EventItem = {
   id: string;
@@ -65,7 +66,13 @@ type CryptoDetails = {
 const formatDate = (value?: string | null) => {
   if (!value) return "TBA";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+  if (Number.isNaN(date.getTime())) return value;
+
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = String(date.getFullYear());
+
+  return `${day}/${month}/${year}`;
 };
 
 const formatDateRange = (start?: string | null, end?: string | null) => {
@@ -80,6 +87,15 @@ const formatCurrency = (amountCents?: number) =>
     currency: "KES",
     maximumFractionDigits: 0,
   }).format((amountCents || 0) / 100);
+
+const compareEventDatesDesc = (a?: string | null, b?: string | null) => {
+  const aTime = a ? Date.parse(a) : NaN;
+  const bTime = b ? Date.parse(b) : NaN;
+  if (Number.isFinite(aTime) && Number.isFinite(bTime)) return bTime - aTime;
+  if (Number.isFinite(aTime)) return -1;
+  if (Number.isFinite(bTime)) return 1;
+  return 0;
+};
 
 const statusBadgeVariant = (status: EventItem["status"]) => {
   if (status === "cancelled") return "destructive" as const;
@@ -367,8 +383,18 @@ const Events = () => {
     }
   };
 
-  const featuredEvent = events[0];
-  const otherEvents = events.slice(1);
+  const visibleEvents = useMemo(() => {
+    return events
+      .filter((event) => !isEventExpired(event.endDate, event.startDate) && event.status === "upcoming")
+      .slice()
+      .sort((a, b) => {
+        const dateComparison = compareEventDatesDesc(a.startDate, b.startDate);
+        if (dateComparison !== 0) return dateComparison;
+        return compareEventDatesDesc(a.endDate, b.endDate);
+      });
+  }, [events]);
+  const featuredEvent = visibleEvents[0];
+  const otherEvents = visibleEvents.slice(1);
   const featuredPost = posts[0];
   const otherPosts = posts.slice(1);
 

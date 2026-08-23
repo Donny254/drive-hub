@@ -93,6 +93,7 @@ const Store = () => {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
+  const [profileAddress, setProfileAddress] = useState<string | null>(null);
   const [cryptoDetails, setCryptoDetails] = useState<CryptoDetails | null>(null);
   const isAdmin = user?.role === "admin";
   const [transactionHash, setTransactionHash] = useState("");
@@ -236,6 +237,32 @@ const Store = () => {
   const cartTotal = cart.reduce((sum, item) => sum + (item.priceCents / 100) * item.quantity, 0);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const cartTotalCents = Math.round(cartTotal * 100);
+  const freeDeliveryThreshold = 2500;
+  const isFreeDelivery = cartTotal >= freeDeliveryThreshold;
+
+  useEffect(() => {
+    if (!checkoutOpen || customerAddress || !token) return;
+
+    if (user?.address) {
+      setCustomerAddress(user.address);
+      setProfileAddress(user.address);
+      return;
+    }
+
+    const controller = new AbortController();
+    void apiFetch("/api/users/me", { headers: authHeaders, signal: controller.signal })
+      .then(async (resp) => {
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.address) {
+          setCustomerAddress(data.address);
+          setProfileAddress(data.address);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => controller.abort();
+  }, [checkoutOpen, customerAddress, token, authHeaders, user?.address]);
 
   const openCheckout = () => {
     if (!user) {
@@ -331,6 +358,7 @@ const Store = () => {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: JSON.stringify({
           phoneNumber: customerPhone,
+          deliveryAddress: customerAddress || null,
           items: orderItems,
           transactionHash,
           payerWallet,
@@ -698,7 +726,16 @@ const Store = () => {
                   </div>
 
                   <div className="mt-8 pt-6 border-t border-border">
-                    <div className="flex items-center justify-between mb-6">
+                    {isFreeDelivery ? (
+                      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-700">
+                        Purchase above KES {freeDeliveryThreshold.toLocaleString()} automatically qualifies for free delivery.
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-muted-foreground/10 bg-muted/5 p-4 text-sm text-muted-foreground">
+                        Spend KES {Math.max(0, freeDeliveryThreshold - cartTotal).toLocaleString()} more to get free delivery.
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between mb-6 mt-4">
                       <span className="text-lg">Total</span>
                       <span className="font-display text-3xl text-primary">
                         KES {cartTotal.toLocaleString()}
@@ -763,6 +800,21 @@ const Store = () => {
             <div className="grid gap-2">
               <Label>Delivery Address (optional)</Label>
               <Input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} />
+              {user?.address && user.address !== customerAddress && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setCustomerAddress(user.address ?? "")}
+                >
+                  Use saved address
+                </Button>
+              )}
+              {!user?.address && (
+                <p className="text-xs text-muted-foreground">
+                  Save your delivery address in My Profile for faster checkout.
+                </p>
+              )}
             </div>
             <div className="rounded-md border border-border bg-card p-4 text-sm">
               <div className="flex items-center justify-between gap-3">
@@ -781,6 +833,11 @@ const Store = () => {
                 <span className="font-medium">Total</span>
                 <span className="font-semibold text-primary">KES {(checkoutSuccess ? submittedOrderTotalCents / 100 : cartTotal).toLocaleString()}</span>
               </div>
+            </div>
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-700">
+              {isFreeDelivery
+                ? `Purchase above KES ${freeDeliveryThreshold.toLocaleString()} automatically qualifies for free delivery.`
+                : `Spend KES ${Math.max(0, freeDeliveryThreshold - cartTotal).toLocaleString()} more to get free delivery.`}
             </div>
             {paymentMethod === "crypto" && (
               <CryptoPaymentDetails

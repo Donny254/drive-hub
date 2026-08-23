@@ -23,7 +23,9 @@ CREATE TABLE IF NOT EXISTS site_settings (
   address text,
   social_facebook text,
   social_instagram text,
+  social_pinterest text,
   social_twitter text,
+  social_tiktok text,
   social_youtube text,
   bank_name text,
   bank_account_name text,
@@ -412,6 +414,12 @@ ALTER TABLE mpesa_transactions
   ADD COLUMN IF NOT EXISTS event_registration_id uuid REFERENCES event_registrations(id) ON DELETE SET NULL;
 
 ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS social_pinterest text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS social_tiktok text;
+
+ALTER TABLE site_settings
   ADD COLUMN IF NOT EXISTS crypto_currency text;
 
 ALTER TABLE site_settings
@@ -539,6 +547,9 @@ ALTER TABLE users
 
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS phone text;
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS address text;
 
 ALTER TABLE listings
   ADD COLUMN IF NOT EXISTS moderation_notes text;

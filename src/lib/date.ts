@@ -21,6 +21,14 @@ export const isPastDateValue = (value?: string | null) => {
   return selected.getTime() < today.getTime();
 };
 
+export const isEventExpired = (endDate?: string | null, startDate?: string | null) => {
+  const compareDate = parseDateInputValue(endDate) ?? parseDateInputValue(startDate);
+  if (!compareDate) return false;
+  const today = parseDateInputValue(getTodayDateValue());
+  if (!today) return false;
+  return compareDate.getTime() < today.getTime();
+};
+
 export const isEndBeforeStart = (start?: string | null, end?: string | null) => {
   const startDate = parseDateInputValue(start);
   const endDate = parseDateInputValue(end);

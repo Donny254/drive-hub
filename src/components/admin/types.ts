@@ -228,6 +228,8 @@ export type SiteSettings = {
   socialInstagram: string | null;
   socialTwitter: string | null;
   socialYoutube: string | null;
+  socialPinterest: string | null;
+  socialTikTok: string | null;
   bankName: string | null;
   bankAccountName: string | null;
   bankAccountNumber: string | null;

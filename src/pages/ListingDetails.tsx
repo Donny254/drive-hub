@@ -159,12 +159,19 @@ const ListingDetails = () => {
     loadSimilar();
   }, [listing]);
 
+  const generateUuid = () => {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+    return `uid-${Date.now()}-${Math.floor(Math.random() * 1000000000)}`;
+  };
+
   useEffect(() => {
     if (!listing?.id || typeof window === "undefined") return;
 
     let viewerKey = window.localStorage.getItem(LISTING_VIEWER_KEY_STORAGE);
     if (!viewerKey) {
-      viewerKey = crypto.randomUUID();
+      viewerKey = generateUuid();
       window.localStorage.setItem(LISTING_VIEWER_KEY_STORAGE, viewerKey);
     }
 
@@ -403,7 +410,7 @@ const ListingDetails = () => {
 
                   <div className="bg-card border border-border rounded-xl p-5">
                     <h3 className="font-display text-lg">Description</h3>
-                    <p className="text-muted-foreground mt-2">
+                    <p className="mt-2 whitespace-pre-line text-muted-foreground">
                       {listing.description ?? "No description provided yet."}
                     </p>
                   </div>
