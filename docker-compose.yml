@@ -1,4 +1,19 @@
 services:
+  db:
+    image: postgres:16-alpine
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: drivehub
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me_in_production}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d drivehub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api:
     build:
       context: ./server
@@ -9,6 +24,12 @@ services:
     environment:
       NODE_ENV: production
       PORT: 8080
+      DATABASE_URL: postgresql://app:${DB_PASSWORD:-change_me_in_production}@db:5432/drivehub
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
 
   web:
     build:
@@ -19,3 +40,7 @@ services:
       - "4173:80"
     depends_on:
       - api
+
+volumes:
+  pgdata:
+  uploads:

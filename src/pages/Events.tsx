@@ -88,10 +88,10 @@ const formatCurrency = (amountCents?: number) =>
     maximumFractionDigits: 0,
   }).format((amountCents || 0) / 100);
 
-const compareEventDatesDesc = (a?: string | null, b?: string | null) => {
+const compareEventDatesAsc = (a?: string | null, b?: string | null) => {
   const aTime = a ? Date.parse(a) : NaN;
   const bTime = b ? Date.parse(b) : NaN;
-  if (Number.isFinite(aTime) && Number.isFinite(bTime)) return bTime - aTime;
+  if (Number.isFinite(aTime) && Number.isFinite(bTime)) return aTime - bTime;
   if (Number.isFinite(aTime)) return -1;
   if (Number.isFinite(bTime)) return 1;
   return 0;
@@ -388,9 +388,9 @@ const Events = () => {
       .filter((event) => !isEventExpired(event.endDate, event.startDate) && event.status === "upcoming")
       .slice()
       .sort((a, b) => {
-        const dateComparison = compareEventDatesDesc(a.startDate, b.startDate);
+        const dateComparison = compareEventDatesAsc(a.startDate, b.startDate);
         if (dateComparison !== 0) return dateComparison;
-        return compareEventDatesDesc(a.endDate, b.endDate);
+        return compareEventDatesAsc(a.endDate, b.endDate);
       });
   }, [events]);
   const featuredEvent = visibleEvents[0];

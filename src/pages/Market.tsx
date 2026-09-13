@@ -252,38 +252,16 @@ const Market = () => {
   const { pageItems: pagedListings, page: listingsPage, totalPages: listingsTotalPages, goTo: goToListingsPage, reset: resetListingsPage } = usePagination(filteredListings, 12);
   const shortlistIds = useMemo(() => new Set(shortlist.map((item) => item.id)), [shortlist]);
 
-  const buildSellerEmailLink = useCallback(
+  const openListingSubmission = useCallback(
     (listingType: "sell" | "rent" = "sell") => {
-      const subject =
-        listingType === "rent"
-          ? "Vehicle Rental Listing Submission"
-          : "Vehicle Sale Listing Submission";
-      const bodyLines = [
-        "Hello WheelsnationKe team,",
-        "",
-        `I would like to upload a vehicle for ${listingType === "rent" ? "rental" : "sale"} on the marketplace.`,
-        "",
-        "Vehicle details:",
-        "Make and model:",
-        "Year:",
-        "Mileage:",
-        "Price (KES):",
-        "Location:",
-        "Description:",
-        "",
-        "Please advise on the next step.",
-      ];
-
-      return `mailto:${supportEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines.join("\n"))}`;
+      if (!user) {
+        navigate("/login");
+        return;
+      }
+      const params = new URLSearchParams({ new: "1", type: listingType, source: "market" });
+      navigate(`/my-listings?${params.toString()}`);
     },
-    [supportEmail]
-  );
-
-  const openSellerEmail = useCallback(
-    (listingType: "sell" | "rent" = "sell") => {
-      window.location.href = buildSellerEmailLink(listingType);
-    },
-    [buildSellerEmailLink]
+    [navigate, user]
   );
 
   const openBooking = (listing: Listing) => {
@@ -950,14 +928,14 @@ const Market = () => {
               WANT TO <span className="text-primary">SELL YOUR CAR?</span>
             </h2>
             <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
-              Reach buyers and renters without mixing your vehicle submission with service requests. Contact the admin team and they will assist with onboarding your car for sale or rent.
+              Upload the vehicle details you want to offer on the marketplace. Every new sale or rental submission is routed to the admin moderation queue before it becomes visible to buyers.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              <Button variant="secondary" size="xl" onClick={() => openSellerEmail("sell")}>
-                Contact Admin for Sale
+              <Button variant="hero" size="xl" onClick={() => openListingSubmission("sell")}>
+                Upload Car Details
               </Button>
-              <Button variant="hero" size="xl" onClick={() => openSellerEmail("rent")}>
-                Contact Admin for Rent
+              <Button variant="secondary" size="xl" onClick={() => openListingSubmission("rent")}>
+                Upload Rental Details
               </Button>
             </div>
           </div>
