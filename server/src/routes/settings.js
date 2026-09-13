@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { query } from "../db.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
+import { encryptSecret } from "../utils/secrets.js";
 
 const router = Router();
 
@@ -31,6 +32,27 @@ const toApi = (row) => ({
   updatedAt: row.updated_at || null,
 });
 
+// Admin-only view: adds M-Pesa configuration. Secrets are never returned —
+// only a boolean saying whether one is stored (UI shows "saved, blank keeps").
+const toAdminApi = (row) => ({
+  ...toApi(row),
+  mpesaShortcode: row.mpesa_shortcode || null,
+  mpesaPartyb: row.mpesa_partyb || null,
+  mpesaAccountReference: row.mpesa_account_reference || null,
+  mpesaTransactionDesc: row.mpesa_transaction_desc || null,
+  mpesaConsumerKeySet: Boolean(row.mpesa_consumer_key_enc),
+  mpesaConsumerSecretSet: Boolean(row.mpesa_consumer_secret_enc),
+  mpesaPasskeySet: Boolean(row.mpesa_passkey_enc),
+});
+
+// Secret fields: only written when the admin typed a new value; empty string
+// means "keep the stored one". Values are encrypted before touching the DB.
+const MPESA_SECRET_FIELDS = {
+  mpesa_consumer_key_enc: "mpesaConsumerKey",
+  mpesa_consumer_secret_enc: "mpesaConsumerSecret",
+  mpesa_passkey_enc: "mpesaPasskey",
+};
+
 const loadSettings = async () => {
   const result = await query("SELECT * FROM site_settings WHERE id = true");
   if (result.rowCount > 0) return result.rows[0];
@@ -50,7 +72,7 @@ router.get("/public", async (req, res, next) => {
 router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const row = await loadSettings();
-    res.json(toApi(row));
+    res.json(toAdminApi(row));
   } catch (error) {
     next(error);
   }
@@ -88,6 +110,10 @@ router.put("/", requireAuth, requireRole("admin"), async (req, res, next) => {
       crypto_instructions: req.body.cryptoInstructions,
       crypto_network_evm: req.body.cryptoNetworkEvm,
       crypto_wallet_address_evm: req.body.cryptoWalletAddressEvm,
+      mpesa_shortcode: req.body.mpesaShortcode,
+      mpesa_partyb: req.body.mpesaPartyb,
+      mpesa_account_reference: req.body.mpesaAccountReference,
+      mpesa_transaction_desc: req.body.mpesaTransactionDesc,
     };
 
     Object.entries(fields).forEach(([column, value]) => {
@@ -96,6 +122,20 @@ router.put("/", requireAuth, requireRole("admin"), async (req, res, next) => {
         updates.push(`${column} = $${values.length}`);
       }
     });
+
+    for (const [column, bodyKey] of Object.entries(MPESA_SECRET_FIELDS)) {
+      const value = req.body[bodyKey];
+      if (typeof value === "string" && value.trim()) {
+        const encrypted = encryptSecret(value.trim());
+        if (!encrypted) {
+          return res.status(400).json({
+            error: "Server is missing SETTINGS_ENCRYPTION_KEY — cannot store credentials securely",
+          });
+        }
+        values.push(encrypted);
+        updates.push(`${column} = $${values.length}`);
+      }
+    }
 
     if (updates.length === 0) {
       return res.status(400).json({ error: "No fields to update" });
@@ -110,7 +150,7 @@ router.put("/", requireAuth, requireRole("admin"), async (req, res, next) => {
     );
 
     const row = result.rowCount > 0 ? result.rows[0] : await loadSettings();
-    res.json(toApi(row));
+    res.json(toAdminApi(row));
   } catch (error) {
     next(error);
   }

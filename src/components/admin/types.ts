@@ -20,6 +20,9 @@ export type Listing = {
   approvedAt?: string | null;
   approvedBy?: string | null;
   images?: Array<{ id: string; url: string }>;
+  isAuction?: boolean;
+  auctionEndsAt?: string | null;
+  minBidIncrementCents?: number | null;
 };
 
 export type ListingAuditEntry = {
@@ -240,6 +243,17 @@ export type SiteSettings = {
   cryptoInstructions: string | null;
   cryptoNetworkEvm: string | null;
   cryptoWalletAddressEvm: string | null;
+  mpesaShortcode?: string | null;
+  mpesaPartyb?: string | null;
+  mpesaAccountReference?: string | null;
+  mpesaTransactionDesc?: string | null;
+  // Secrets are never returned by the API — only whether one is stored.
+  mpesaConsumerKeySet?: boolean;
+  mpesaConsumerSecretSet?: boolean;
+  mpesaPasskeySet?: boolean;
+  mpesaConsumerKey?: string | null;
+  mpesaConsumerSecret?: string | null;
+  mpesaPasskey?: string | null;
 };
 
 export type AdminAnalytics = {

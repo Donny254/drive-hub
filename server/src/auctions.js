@@ -31,7 +31,7 @@ export const closeAuctionById = async (listingId) => {
        FROM listings l
        LEFT JOIN users u ON u.id = l.user_id
        WHERE l.id = $1
-       FOR UPDATE`,
+       FOR UPDATE OF l`,
       [listingId]
     );
     if (lr.rowCount === 0) return null;
