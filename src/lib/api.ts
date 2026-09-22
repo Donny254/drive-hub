@@ -1,18 +1,23 @@
 import { getApiErrorMessage } from "@/lib/feedback";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "https://api.wheelsnation.co.ke";
 
 export const getApiBaseUrl = () => API_BASE_URL;
 
 export const apiFetch = async (path: string, options: RequestInit = {}) => {
   const url = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
+
   const headers = new Headers(options.headers || {});
 
   if (!headers.has("Content-Type") && options.body) {
     headers.set("Content-Type", "application/json");
   }
 
-  const resp = await fetch(url, { ...options, headers });
+  const resp = await fetch(url, {
+    ...options,
+    headers,
+  });
 
   if (resp.status === 401) {
     window.dispatchEvent(new CustomEvent("auth:expired"));
@@ -23,8 +28,13 @@ export const apiFetch = async (path: string, options: RequestInit = {}) => {
 
 export const resolveImageUrl = (url?: string | null) => {
   if (!url) return "";
+
   if (url.startsWith("http")) return url;
-  if (url.startsWith("/")) return `${API_BASE_URL}${url}`;
+
+  if (url.startsWith("/")) {
+    return `${API_BASE_URL}${url}`;
+  }
+
   return `${API_BASE_URL}/${url}`;
 };
 
@@ -33,6 +43,7 @@ export const uploadImage = async (file: File, token?: string | null) => {
   formData.append("image", file);
 
   const headers = new Headers();
+
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
