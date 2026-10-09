@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import MyListings from "@/pages/MyListings";
+import { apiFetch } from "@/lib/api";
 import { useMyListingsManager, type Listing } from "@/hooks/useMyListingsManager";
 
 vi.mock("@/components/layout/Navbar", () => ({
@@ -17,6 +18,7 @@ vi.mock("@/context/AuthContext", () => ({
 }));
 
 vi.mock("@/lib/api", () => ({
+  apiFetch: vi.fn(),
   resolveImageUrl: (url: string) => url,
 }));
 
@@ -41,6 +43,7 @@ vi.mock("@/hooks/useMyListingsManager", () => ({
 }));
 
 const mockedUseMyListingsManager = vi.mocked(useMyListingsManager);
+const mockedApiFetch = vi.mocked(apiFetch);
 
 const listingFixture: Listing = {
   id: "listing-1",
@@ -61,6 +64,10 @@ const listingFixture: Listing = {
 describe("MyListings", () => {
   beforeEach(() => {
     mockedUseMyListingsManager.mockReset();
+    mockedApiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => [],
+    } as Response);
   });
 
   it("opens a delete confirmation dialog and deletes the selected listing", async () => {
