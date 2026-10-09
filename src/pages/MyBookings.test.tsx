@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import MyBookings from "@/pages/MyBookings";
 import { apiFetch } from "@/lib/api";
@@ -69,7 +70,11 @@ describe("MyBookings", () => {
   });
 
   it("opens a confirmation dialog and cancels a booking after confirmation", async () => {
-    render(<MyBookings />);
+    render(
+      <MemoryRouter>
+        <MyBookings />
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(screen.getAllByRole("button", { name: "Cancel" })).toHaveLength(2);
