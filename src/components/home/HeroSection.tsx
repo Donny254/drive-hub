@@ -1,10 +1,13 @@
 import { lazy, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
+import usePublicSiteStats from "@/hooks/usePublicSiteStats";
 
 const DriveScene3D = lazy(() => import("./DriveScene3D"));
 
 const HeroSection = () => {
+  const stats = usePublicSiteStats();
+
   return (
     <section className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[hsl(180_10%_4%)]">
       {/* 3D Driving Scene */}
@@ -69,15 +72,19 @@ const HeroSection = () => {
           {/* Stats bar */}
           <div className="mt-16 grid grid-cols-1 gap-6 animate-fade-in sm:grid-cols-3 sm:gap-8" style={{ animationDelay: "0.6s" }}>
             <div className="text-center sm:text-left">
-              <p className="font-display text-3xl text-primary">250+</p>
-              <p className="text-sm text-muted-foreground">Premium Cars</p>
+              <p className="font-display text-3xl text-primary">{stats?.totalCars.toLocaleString() ?? "—"}</p>
+              <p className="text-sm text-muted-foreground">Cars Uploaded</p>
             </div>
             <div className="text-center sm:text-left">
-              <p className="font-display text-3xl text-primary">10+</p>
+              <p className="font-display text-3xl text-primary">
+                {stats ? `${stats.trustedDealers.toLocaleString()}+` : "—"}
+              </p>
               <p className="text-sm text-muted-foreground">Trusted Dealers</p>
             </div>
             <div className="text-center sm:text-left">
-              <p className="font-display text-3xl text-primary">5+</p>
+              <p className="font-display text-3xl text-primary">
+                {stats ? `${stats.countriesEstablished.toLocaleString()}+` : "—"}
+              </p>
               <p className="text-sm text-muted-foreground">African Countries</p>
             </div>
           </div>

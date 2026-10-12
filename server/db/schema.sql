@@ -34,6 +34,12 @@ CREATE TABLE IF NOT EXISTS site_settings (
   bank_swift text,
   bank_instructions text,
   seller_commission_rate integer NOT NULL DEFAULT 0 CHECK (seller_commission_rate >= 0 AND seller_commission_rate <= 100),
+  trusted_dealers integer NOT NULL DEFAULT 10 CHECK (trusted_dealers >= 0),
+  countries_established integer NOT NULL DEFAULT 5 CHECK (countries_established >= 0),
+  cars_sold integer NOT NULL DEFAULT 500 CHECK (cars_sold >= 0),
+  happy_clients integer NOT NULL DEFAULT 10000 CHECK (happy_clients >= 0),
+  events_hosted integer NOT NULL DEFAULT 50 CHECK (events_hosted >= 0),
+  years_experience integer NOT NULL DEFAULT 15 CHECK (years_experience >= 0),
   crypto_currency text,
   crypto_network text,
   crypto_wallet_address text,
@@ -493,6 +499,24 @@ ALTER TABLE site_settings
 
 ALTER TABLE site_settings
   ADD COLUMN IF NOT EXISTS seller_commission_rate integer NOT NULL DEFAULT 0 CHECK (seller_commission_rate >= 0 AND seller_commission_rate <= 100);
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS trusted_dealers integer NOT NULL DEFAULT 10 CHECK (trusted_dealers >= 0);
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS countries_established integer NOT NULL DEFAULT 5 CHECK (countries_established >= 0);
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS cars_sold integer NOT NULL DEFAULT 500 CHECK (cars_sold >= 0);
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS happy_clients integer NOT NULL DEFAULT 10000 CHECK (happy_clients >= 0);
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS events_hosted integer NOT NULL DEFAULT 50 CHECK (events_hosted >= 0);
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS years_experience integer NOT NULL DEFAULT 15 CHECK (years_experience >= 0);
 
 ALTER TABLE crypto_transactions
   ADD COLUMN IF NOT EXISTS proof_image_url text;

@@ -23,6 +23,12 @@ const toApi = (row) => ({
   bankSwift: row.bank_swift || null,
   bankInstructions: row.bank_instructions || null,
   sellerCommissionRate: row.seller_commission_rate ?? 0,
+  trustedDealers: row.trusted_dealers ?? 10,
+  countriesEstablished: row.countries_established ?? 5,
+  carsSold: row.cars_sold ?? 500,
+  happyClients: row.happy_clients ?? 10000,
+  eventsHosted: row.events_hosted ?? 50,
+  yearsExperience: row.years_experience ?? 15,
   cryptoCurrency: row.crypto_currency || null,
   cryptoNetwork: row.crypto_network || null,
   cryptoWalletAddress: row.crypto_wallet_address || null,
@@ -63,7 +69,10 @@ const loadSettings = async () => {
 router.get("/public", async (req, res, next) => {
   try {
     const row = await loadSettings();
-    res.json(toApi(row));
+    const countResult = await query(
+      "SELECT COUNT(*)::int AS total_cars FROM listings WHERE deleted_at IS NULL"
+    );
+    res.json({ ...toApi(row), totalCars: countResult.rows[0].total_cars });
   } catch (error) {
     next(error);
   }
@@ -80,6 +89,26 @@ router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
 
 router.put("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
+    const statisticFields = {
+      trusted_dealers: "trustedDealers",
+      countries_established: "countriesEstablished",
+      cars_sold: "carsSold",
+      happy_clients: "happyClients",
+      events_hosted: "eventsHosted",
+      years_experience: "yearsExperience",
+    };
+    const statisticValues = {};
+
+    for (const [column, bodyKey] of Object.entries(statisticFields)) {
+      const value = req.body[bodyKey];
+      if (value === undefined) continue;
+      const parsed = Number(value);
+      if (!Number.isSafeInteger(parsed) || parsed < 0) {
+        return res.status(400).json({ error: `${bodyKey} must be a non-negative whole number` });
+      }
+      statisticValues[column] = parsed;
+    }
+
     const updates = [];
     const values = [];
 
@@ -100,6 +129,7 @@ router.put("/", requireAuth, requireRole("admin"), async (req, res, next) => {
       bank_branch: req.body.bankBranch,
       bank_swift: req.body.bankSwift,
       bank_instructions: req.body.bankInstructions,
+      ...statisticValues,
       seller_commission_rate:
         req.body.sellerCommissionRate !== undefined
           ? Number.parseInt(req.body.sellerCommissionRate, 10)

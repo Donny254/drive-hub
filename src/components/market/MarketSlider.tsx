@@ -47,6 +47,12 @@ const fallbackSlides: AdvertSlide[] = [
   },
 ];
 
+const restoreOriginalImage = (imageUrl: string | null, fallbackUrl: string) => {
+  if (!imageUrl) return fallbackUrl;
+  const normalized = imageUrl.trim();
+  return normalized.includes("/uploads/") ? fallbackUrl : normalized;
+};
+
 // Normalize raw API record to AdvertSlide (handles both camelCase and snake_case)
 const normalizeSlide = (raw: Record<string, unknown>): AdvertSlide | null => {
   const id = String(raw.id ?? "");
@@ -94,7 +100,14 @@ const MarketSlider = () => {
     return () => clearInterval(timer);
   }, [slides.length]);
 
-  const activeSlides = useMemo(() => (slides.length > 0 ? slides : fallbackSlides), [slides]);
+  const activeSlides = useMemo(
+    () =>
+      (slides.length > 0 ? slides : fallbackSlides).map((slide, index) => ({
+        ...slide,
+        imageUrl: restoreOriginalImage(slide.imageUrl, fallbackSlides[index % fallbackSlides.length].imageUrl ?? null),
+      })),
+    [slides],
+  );
 
   const nextSlide = () => setCurrentSlide((prev) => (prev + 1) % activeSlides.length);
   const prevSlide = () => setCurrentSlide((prev) => (prev - 1 + activeSlides.length) % activeSlides.length);
