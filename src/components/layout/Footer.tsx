@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Facebook, Instagram, Twitter, Youtube, Pin, Phone, Mail, MapPin } from "lucide-react";
+import { Facebook, Instagram, Twitter, Youtube, Pin, Phone, Mail, MapPin, type LucideIcon } from "lucide-react";
 import BrandLogo from "@/components/branding/BrandLogo";
 import { apiFetch } from "@/lib/api";
 
@@ -26,6 +26,12 @@ type Settings = {
   socialYoutube: string | null;
 };
 
+type SocialPlatform = {
+  name: string;
+  icon: LucideIcon | ((props: React.SVGProps<SVGSVGElement>) => JSX.Element);
+  href: string | null;
+};
+
 const Footer = () => {
   const [settings, setSettings] = useState<Settings | null>(null);
 
@@ -40,7 +46,7 @@ const Footer = () => {
     return () => { controller.abort(); clearTimeout(timeout); };
   }, []);
 
-  const socialPlatforms = [
+  const socialPlatforms: SocialPlatform[] = [
     { name: "Facebook", icon: Facebook, href: settings?.socialFacebook || null },
     { name: "Instagram", icon: Instagram, href: settings?.socialInstagram || null },
     { name: "Pinterest", icon: Pin, href: settings?.socialPinterest || null },
@@ -72,7 +78,7 @@ const Footer = () => {
             </p>
             <div className="mt-4 flex flex-wrap gap-4">
               {socialPlatforms.map((platform) => {
-                const Icon = platform.icon as any;
+                const Icon = platform.icon;
                 return platform.href ? (
                   <a
                     key={platform.name}

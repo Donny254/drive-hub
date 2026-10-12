@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AdminEvents from "@/pages/AdminEvents";
 import { apiFetch } from "@/lib/api";
@@ -38,8 +39,8 @@ const eventsFixture = [
     title: "Cars and Coffee",
     description: "Saturday meetup",
     location: "Nairobi",
-    startDate: "2026-04-05",
-    endDate: "2026-04-05",
+    startDate: "2027-04-05",
+    endDate: "2027-04-05",
     imageUrl: null,
     priceCents: 0,
     status: "upcoming",
@@ -65,7 +66,11 @@ describe("AdminEvents", () => {
   });
 
   it("saves an edited event and shows success feedback", async () => {
-    render(<AdminEvents />);
+    render(
+      <MemoryRouter>
+        <AdminEvents />
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Cars and Coffee")).toBeInTheDocument();

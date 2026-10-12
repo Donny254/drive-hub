@@ -24,7 +24,7 @@ const start = async () => {
   logMailHealth();
 
   const server = app.listen(port, () => {
-    console.log(`API listening on http://localhost:${port}`);
+    console.log(`API listening on port ${port}`);
   });
 
   const stopDigestScheduler = startDigestScheduler();
