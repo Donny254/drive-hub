@@ -3,6 +3,8 @@ import { apiFetch } from "@/lib/api";
 
 export type PublicSiteStats = {
   totalCars: number;
+  carsForSale: number;
+  carsForRent: number;
   trustedDealers: number;
   countriesEstablished: number;
   carsSold: number;
@@ -32,7 +34,18 @@ const usePublicSiteStats = () => {
     };
 
     void loadStats();
-    return () => controller.abort();
+    const refreshInterval = window.setInterval(() => void loadStats(), 30_000);
+    const refreshOnFocus = () => {
+      if (document.visibilityState === "visible") void loadStats();
+    };
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnFocus);
+    return () => {
+      window.clearInterval(refreshInterval);
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
+      controller.abort();
+    };
   }, []);
 
   return stats;

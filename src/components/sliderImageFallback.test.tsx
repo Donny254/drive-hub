@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import MarketSlider from "@/components/market/MarketSlider";
@@ -38,7 +38,7 @@ describe("slider image fallbacks", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("MARKET")).toBeInTheDocument();
+      expect(container.querySelector("h2")?.textContent).toBe("MARKET");
     });
 
     expect(container.innerHTML).not.toContain("/uploads/");
@@ -66,7 +66,7 @@ describe("slider image fallbacks", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("SERVICE SUPPORT")).toBeInTheDocument();
+      expect(container.querySelector("h2")?.textContent).toBe("SERVICE SUPPORT");
     });
 
     expect(container.innerHTML).not.toContain("/uploads/");

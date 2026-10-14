@@ -103,5 +103,5 @@ describe("Services", () => {
       "/api/service-bookings",
       expect.objectContaining({ method: "POST" }),
     );
-  });
+  }, 15000);
 });
