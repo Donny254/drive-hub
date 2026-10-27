@@ -74,9 +74,6 @@ const HeroSection = () => {
             <div className="text-center sm:text-left">
               <p className="font-display text-3xl text-primary">{stats?.totalCars.toLocaleString() ?? "—"}</p>
               <p className="text-sm text-muted-foreground">Cars Uploaded</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                For sale: {stats?.carsForSale.toLocaleString() ?? "—"} <span aria-hidden="true">·</span> For rent: {stats?.carsForRent.toLocaleString() ?? "—"}
-              </p>
             </div>
             <div className="text-center sm:text-left">
               <p className="font-display text-3xl text-primary">

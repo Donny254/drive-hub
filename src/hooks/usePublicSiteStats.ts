@@ -3,8 +3,6 @@ import { apiFetch } from "@/lib/api";
 
 export type PublicSiteStats = {
   totalCars: number;
-  carsForSale: number;
-  carsForRent: number;
   trustedDealers: number;
   countriesEstablished: number;
   carsSold: number;

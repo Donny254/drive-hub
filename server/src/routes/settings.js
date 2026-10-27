@@ -70,10 +70,7 @@ router.get("/public", async (req, res, next) => {
   try {
     const row = await loadSettings();
     const countResult = await query(
-      `SELECT
-         COUNT(*) FILTER (WHERE status = 'active')::int AS total_cars,
-         COUNT(*) FILTER (WHERE status = 'active' AND listing_type IN ('buy', 'sell'))::int AS cars_for_sale,
-         COUNT(*) FILTER (WHERE status = 'active' AND listing_type = 'rent')::int AS cars_for_rent
+      `SELECT COUNT(*)::int AS total_cars
        FROM listings
        WHERE deleted_at IS NULL`
     );
@@ -81,8 +78,6 @@ router.get("/public", async (req, res, next) => {
     res.json({
       ...toApi(row),
       totalCars: counts.total_cars,
-      carsForSale: counts.cars_for_sale,
-      carsForRent: counts.cars_for_rent,
     });
   } catch (error) {
     next(error);
