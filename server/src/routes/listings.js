@@ -294,12 +294,12 @@ router.get("/", optionalAuth, async (req, res, next) => {
 
     const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const sort = req.query.sort === "price_asc"
-      ? "price_cents ASC"
+      ? "l.price_cents ASC"
       : req.query.sort === "price_desc"
-        ? "price_cents DESC"
+        ? "l.price_cents DESC"
         : req.query.sort === "year_desc"
-          ? "year DESC NULLS LAST"
-          : "created_at DESC";
+          ? "l.year DESC NULLS LAST"
+          : "l.created_at DESC";
 
     const result = await query(
       `SELECT l.*,
