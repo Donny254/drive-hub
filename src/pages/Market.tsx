@@ -85,7 +85,6 @@ const tabs = [
   { id: "all", label: "All Cars" },
   { id: "buy", label: "Buy" },
   { id: "rent", label: "Rent" },
-  { id: "sell", label: "Sell Yours" },
 ] as const;
 
 const formatMileage = (listing: Listing) => {
@@ -681,8 +680,8 @@ const Market = () => {
                     </span>
                   )}
                 </Button>
-                <Button variant="hero" size="sm" onClick={() => openSellerEmail("sell")}>
-                  Sell Yours
+                <Button variant="hero" size="sm" onClick={() => openListingSubmission("sell")}>
+                  Sell
                 </Button>
               </div>
             </div>

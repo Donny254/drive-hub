@@ -17,9 +17,9 @@ const HeroSection = () => {
         </Suspense>
       </div>
 
-      {/* Dark gradient overlays — left side anchors text, bottom fade adds depth. */}
+      {/* Themed overlays keep the text readable and add a light-mode smoke fade. */}
       <div className="absolute inset-0 bg-gradient-to-r from-[hsl(180_10%_4%)] via-[hsl(180_10%_4%)/90%] to-transparent pointer-events-none" />
-      <div className="absolute inset-0 bg-gradient-to-t from-[hsl(180_10%_4%)] via-[hsl(180_10%_4%)/45%] to-transparent pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/10 to-transparent dark:from-[hsl(180_10%_4%)] dark:via-[hsl(180_10%_4%)/45%] pointer-events-none" />
 
       {/* Static accent lines */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
