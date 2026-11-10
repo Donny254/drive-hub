@@ -4,8 +4,18 @@ import { Facebook, Instagram, Twitter, Youtube, Pin, Phone, Mail, MapPin, type L
 import BrandLogo from "@/components/branding/BrandLogo";
 import { apiFetch } from "@/lib/api";
 
-const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+const TikTokIcon = ({
+  size = 18,
+  ...props
+}: React.SVGProps<SVGSVGElement> & { size?: number | string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    width={size}
+    height={size}
+    fill="currentColor"
+    aria-hidden="true"
+    {...props}
+  >
     <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.59 4.24 1.75v4.02c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.23-1.38.04-2.76-.34-3.93-1.08-1.94-1.24-3.31-3.5-3.1-5.84.13-2.36 1.59-4.57 3.71-5.64 1.2-.64 2.6-.91 3.95-.73.02 1.48-.04 2.96-.04 4.44-.99-.32-2.17-.23-3.02.39-.62.45-1.07 1.16-1.19 1.92-.1.58.05 1.2.35 1.7.63 1.12 2.04 1.7 3.29 1.36.84-.24 1.55-.86 1.9-1.66.11-.27.18-.55.2-.84.04-3.32.02-6.64.03-9.96 0-1.98-.01-3.97.01-5.95Z" />
   </svg>
 );
