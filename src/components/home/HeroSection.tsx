@@ -49,8 +49,8 @@ const HeroSection = () => {
             className="mt-6 max-w-xl text-base text-white/70 animate-fade-in md:text-xl"
             style={{ animationDelay: "0.2s" }}
           >
-            East Africa's exclusive marketplace for performance cars and luxury
-            SUVs. BUY, SELL, or RENT high-end vehicles from trusted dealers
+            East Africa's exclusive marketplace for Crazy Builds,Performance cars and Luxury
+            SUVs. BUY, SELL, or RENT your vehicles of choice from trusted dealers
             across EA.
           </p>
           <div
