@@ -16,7 +16,8 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: [self-hosted, wheelsnation]
+    name: Deploy to Production
+    runs-on: [self-hosted, linux, x64]
     environment: production
     timeout-minutes: 45
 
