@@ -1,3 +1,4 @@
+
 name: Deploy
 
 on:
@@ -15,23 +16,43 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, wheelsnation]
     environment: production
-    steps:
-      - name: Install SSH key
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.PRODUCTION_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.PRODUCTION_HOST }}" >> ~/.ssh/known_hosts
+    timeout-minutes: 45
 
-      - name: Deploy on server
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify deployment tools
+        run: |
+          set -Eeuo pipefail
+          node --version
+          npm --version
+          git --version
+          docker --version
+          docker compose version
+
+      - name: Deploy application
         env:
-          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
-          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
-          PRODUCTION_APP_DIR: ${{ secrets.PRODUCTION_APP_DIR }}
           VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
           DEPLOY_BRANCH: ${{ github.ref_name }}
         run: |
-          ssh -i ~/.ssh/deploy_key "${PRODUCTION_USER}@${PRODUCTION_HOST}" \
-            "cd '${PRODUCTION_APP_DIR}' && VITE_API_BASE_URL='${VITE_API_BASE_URL}' DEPLOY_BRANCH='${DEPLOY_BRANCH}' ./scripts/deploy.sh"
+          set -Eeuo pipefail
+
+          if [[ -z "${VITE_API_BASE_URL}" ]]; then
+            echo "Missing production secret: VITE_API_BASE_URL" >&2
+            exit 1
+          fi
+
+          chmod +x scripts/deploy.sh
+          ./scripts/deploy.sh
