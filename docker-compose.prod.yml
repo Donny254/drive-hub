@@ -8,6 +8,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 8080
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be supplied during deployment}
     ports:
       - "${API_PORT:-8080}:8080"
     volumes:
@@ -22,7 +23,7 @@ services:
     build:
       context: .
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:?Set VITE_API_BASE_URL for production builds}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-https://wheelsnation.co.ke}
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-4173}:80"
