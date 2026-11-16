@@ -34,6 +34,20 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Prepare production environment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ ! -f /opt/drive-hub/shared/server.env ]]; then
+            echo "Production environment file is missing."
+            exit 1
+          fi
+
+          install -m 600 \
+            /opt/drive-hub/shared/server.env \
+            server/.env
+
       - name: Verify deployment tools
         run: |
           set -Eeuo pipefail
@@ -42,6 +56,8 @@ jobs:
           git --version
           docker --version
           docker compose version
+
+          
 
       - name: Deploy application
         env:
