@@ -56,4 +56,4 @@ jobs:
              git reset --hard 'origin/${DEPLOY_BRANCH}' && \
              VITE_API_BASE_URL='${VITE_API_BASE_URL}' \
              DEPLOY_BRANCH='${DEPLOY_BRANCH}' \
-             ./scripts/deploy.sh"
+             bash ./scripts/deploy.sh"
