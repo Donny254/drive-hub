@@ -34,7 +34,7 @@ npm run check --prefix server
 npm test --prefix server
 
 docker compose -f "$COMPOSE_FILE" build --pull
-docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
+docker compose -f "$COMPOSE_FILE" up -d
 docker compose -f "$COMPOSE_FILE" ps
 
 echo "Deployment complete."
