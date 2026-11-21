@@ -5,12 +5,8 @@ import { issueTicketsForRegistration } from "../utils/eventTickets.js";
 import { sendEventTicketEmail } from "../email.js";
 import { sendEventTicketMessage } from "../notifications.js";
 import { decryptSecret } from "../utils/secrets.js";
-
+import { createHash } from "node:crypto";
 const router = Router();
-
-const mpesaEnv = process.env.MPESA_ENV || "sandbox";
-const mpesaBaseUrl =
-  mpesaEnv === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
 
 const DARAJA_TIMEOUT_MS = 20_000;
 const TOKEN_TTL_SKEW_SECONDS = 60;
@@ -58,24 +54,75 @@ const formatTimestampEAT = () => {
   return `${byType.year}${byType.month}${byType.day}${byType.hour}${byType.minute}${byType.second}`;
 };
 
-// Daraja rate-limits OAuth token issuance, so cache the token in memory and
-// de-duplicate concurrent refreshes (single flight).
-let cachedToken = null;
-let tokenInflight = null;
+const tokenCache = new Map();
+const tokenInflight = new Map();
 
-// Credentials resolve from site_settings (admin UI, encrypted at rest) first,
-// falling back to environment variables. The token cache below is shared by
-// whichever source is active — a credential change takes effect when the
-// cached token expires (≤1h); restart to rotate immediately.
-const getMpesaCredentials = async () => {
+const getMpesaCredentials = async ({ environment: requestedEnvironment } = {}) => {
   const row = await loadSettingsRow().catch(() => null);
-  const secret = (enc, envName) => (enc ? decryptSecret(enc) : null) || process.env[envName] || null;
+
+  const configuredEnvironment =
+    row?.mpesa_environment ||
+    (String(process.env.MPESA_ENV || "sandbox").toLowerCase() === "production"
+      ? "production"
+      : "sandbox");
+
+  const environment =
+    requestedEnvironment === "sandbox" || requestedEnvironment === "production"
+      ? requestedEnvironment
+      : configuredEnvironment;
+  const prefix = environment === "production" ? "MPESA_PRODUCTION" : "MPESA_SANDBOX";
+  const dbPrefix = environment === "production" ? "mpesa_production" : "mpesa_sandbox";
+
+  const envValue = (suffix, legacyName = null) =>
+    process.env[`${prefix}_${suffix}`] ||
+    (legacyName ? process.env[legacyName] : null) ||
+    null;
+
+  const encryptedSecret = (column, suffix, legacyColumn = null, legacyName = null) => {
+    const encrypted = row?.[column] || (legacyColumn ? row?.[legacyColumn] : null);
+    return (
+      (encrypted ? decryptSecret(encrypted) : null) ||
+      envValue(suffix, legacyName)
+    );
+  };
+
+  const shortcode =
+    row?.[`${dbPrefix}_shortcode`] ||
+    (environment === "sandbox" ? row?.mpesa_shortcode : null) ||
+    envValue("SHORTCODE", environment === "sandbox" ? "MPESA_SHORTCODE" : null);
+
+  const partyB =
+    row?.[`${dbPrefix}_partyb`] ||
+    (environment === "sandbox" ? row?.mpesa_partyb : null) ||
+    envValue("PARTYB", environment === "sandbox" ? "MPESA_PARTYB" : null);
+
   return {
-    consumerKey: secret(row?.mpesa_consumer_key_enc, "MPESA_CONSUMER_KEY"),
-    consumerSecret: secret(row?.mpesa_consumer_secret_enc, "MPESA_CONSUMER_SECRET"),
-    shortcode: row?.mpesa_shortcode || process.env.MPESA_SHORTCODE || null,
-    passkey: secret(row?.mpesa_passkey_enc, "MPESA_PASSKEY"),
-    partyB: row?.mpesa_partyb || process.env.MPESA_PARTYB || null,
+    environment,
+    baseUrl:
+      environment === "production"
+        ? "https://api.safaricom.co.ke"
+        : "https://sandbox.safaricom.co.ke",
+
+    consumerKey: encryptedSecret(
+      `${dbPrefix}_consumer_key_enc`,
+      "CONSUMER_KEY",
+      environment === "sandbox" ? "mpesa_consumer_key_enc" : null,
+      environment === "sandbox" ? "MPESA_CONSUMER_KEY" : null
+    ),
+    consumerSecret: encryptedSecret(
+      `${dbPrefix}_consumer_secret_enc`,
+      "CONSUMER_SECRET",
+      environment === "sandbox" ? "mpesa_consumer_secret_enc" : null,
+      environment === "sandbox" ? "MPESA_CONSUMER_SECRET" : null
+    ),
+    passkey: encryptedSecret(
+      `${dbPrefix}_passkey_enc`,
+      "PASSKEY",
+      environment === "sandbox" ? "mpesa_passkey_enc" : null,
+      environment === "sandbox" ? "MPESA_PASSKEY" : null
+    ),
+    shortcode,
+    partyB,
     accountReference:
       row?.mpesa_account_reference || process.env.MPESA_ACCOUNT_REFERENCE || "WheelsnationKe Order",
     transactionDesc:
@@ -83,47 +130,86 @@ const getMpesaCredentials = async () => {
   };
 };
 
-const darajaFetch = async (path, options = {}) => {
+const darajaFetch = async (path, options = {}, baseUrl) => {
+  if (!baseUrl) throw new Error("M-Pesa Daraja environment URL is not configured");
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DARAJA_TIMEOUT_MS);
+
   try {
-    return await fetch(`${mpesaBaseUrl}${path}`, { ...options, signal: controller.signal });
+    return await fetch(`${baseUrl}${path}`, {
+      ...options,
+      signal: controller.signal,
+    });
   } finally {
     clearTimeout(timer);
   }
 };
 
-const getAccessToken = async ({ consumerKey, consumerSecret }) => {
+const getAccessToken = async (creds) => {
+  const { consumerKey, consumerSecret, environment, baseUrl } = creds;
+
   if (!consumerKey || !consumerSecret) {
-    throw new Error("Missing M-Pesa consumer key/secret");
+    throw new Error(
+      `M-Pesa ${environment} credentials are incomplete: consumer key and consumer secret are required. Configure them for this environment in Admin Settings.`
+    );
   }
-  if (cachedToken && cachedToken.expiresAtMs > Date.now()) return cachedToken.token;
-  if (tokenInflight) return tokenInflight;
 
-  const credentials = Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64");
+  // Hash the environment and credentials: never store plaintext secrets as map keys.
+  const cacheKey = createHash("sha256")
+    .update(`${environment}\0${baseUrl}\0${consumerKey}\0${consumerSecret}`)
+    .digest("hex");
 
-  tokenInflight = (async () => {
-    const response = await darajaFetch("/oauth/v1/generate?grant_type=client_credentials", {
-      headers: { Authorization: `Basic ${credentials}` },
-    });
+  const cached = tokenCache.get(cacheKey);
+  if (cached && cached.expiresAtMs > Date.now()) return cached.token;
+
+  if (tokenInflight.has(cacheKey)) return tokenInflight.get(cacheKey);
+
+  const basicAuth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64");
+
+  const pending = (async () => {
+    const response = await darajaFetch(
+      "/oauth/v1/generate?grant_type=client_credentials",
+      {
+        headers: { Authorization: `Basic ${basicAuth}` },
+      },
+      baseUrl
+    );
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`Failed to get M-Pesa token: ${text}`);
+      throw new Error(
+        `Failed to get M-Pesa ${environment} token (HTTP ${response.status}): ${text || "Daraja returned an empty response"}`
+      );
     }
 
     const data = await response.json();
     if (!data.access_token) {
-      throw new Error("M-Pesa token response missing access_token");
+      throw new Error(`M-Pesa ${environment} token response missing access_token`);
     }
-    const ttlSeconds = Math.max(60, Number(data.expires_in || 3599) - TOKEN_TTL_SKEW_SECONDS);
-    cachedToken = { token: data.access_token, expiresAtMs: Date.now() + ttlSeconds * 1000 };
-    return cachedToken.token;
-  })().finally(() => {
-    tokenInflight = null;
-  });
 
-  return tokenInflight;
+    const ttlSeconds = Math.max(
+      60,
+      Number(data.expires_in || 3599) - TOKEN_TTL_SKEW_SECONDS
+    );
+
+    tokenCache.set(cacheKey, {
+      token: data.access_token,
+      expiresAtMs: Date.now() + ttlSeconds * 1000,
+    });
+
+    return data.access_token;
+  })();
+
+  tokenInflight.set(cacheKey, pending);
+
+  try {
+    return await pending;
+  } finally {
+    if (tokenInflight.get(cacheKey) === pending) {
+      tokenInflight.delete(cacheKey);
+    }
+  }
 };
 
 const buildStkPayload = ({ phoneNumber, amount, creds }) => {
@@ -155,6 +241,19 @@ const buildStkPayload = ({ phoneNumber, amount, creds }) => {
   };
 };
 
+const prepareStkPayment = async ({ phoneNumber, amount }) => {
+  const creds = await getMpesaCredentials();
+
+  // Validate shortcode, passkey and callback URL before creating records.
+  buildStkPayload({ phoneNumber, amount, creds });
+
+  // Authenticate with the selected Daraja environment before creating records.
+  // sendStkPush will reuse the cached token.
+  await getAccessToken(creds);
+
+  return creds;
+};
+
 // Flattens Body.stkCallback.CallbackMetadata.Item (or the identical structure
 // returned by stkpushquery) into { amount, mpesaReceiptNumber, ... }.
 export const parseCallbackItems = (callback) => {
@@ -169,22 +268,26 @@ export const parseCallbackItems = (callback) => {
   };
 };
 
-const sendStkPush = async ({ phoneNumber, amount, accountReference, transactionDesc }) => {
-  const creds = await getMpesaCredentials();
+const sendStkPush = async ({ phoneNumber, amount, accountReference, transactionDesc, creds: suppliedCreds }) => {
+  const creds = suppliedCreds || await getMpesaCredentials();
   const accessToken = await getAccessToken(creds);
   const payload = buildStkPayload({ phoneNumber, amount, creds });
   // Daraja caps these fields in production (12 and 13 chars).
   if (accountReference) payload.AccountReference = String(accountReference).slice(0, 12);
   if (transactionDesc) payload.TransactionDesc = String(transactionDesc).slice(0, 13);
 
-  const response = await darajaFetch("/mpesa/stkpush/v1/processrequest", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
+  const response = await darajaFetch(
+    "/mpesa/stkpush/v1/processrequest",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  });
+    creds.baseUrl
+  );
   return response.json().catch(() => ({}));
 };
 
@@ -212,26 +315,30 @@ const recordStkResponse = async (transactionId, responseData) => {
 // Probes Daraja for a transaction whose callback may have been lost.
 // Returns { status: 'paid'|'failed'|null, raw, amount, mpesaReceiptNumber } —
 // status null means "still in flight / unknown", leave it pending.
-export const queryCheckoutStatus = async (checkoutRequestId) => {
+export const queryCheckoutStatus = async (checkoutRequestId, environment = null) => {
   if (!checkoutRequestId) return null;
-  const creds = await getMpesaCredentials();
+  const creds = await getMpesaCredentials({ environment });
   if (!creds.shortcode || !creds.passkey) return null;
 
   const timestamp = formatTimestampEAT();
   const accessToken = await getAccessToken(creds);
-  const response = await darajaFetch("/mpesa/stkpushquery/v1/query", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
+  const response = await darajaFetch(
+    "/mpesa/stkpushquery/v1/query",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        BusinessShortCode: creds.shortcode,
+        Password: Buffer.from(`${creds.shortcode}${creds.passkey}${timestamp}`).toString("base64"),
+        Timestamp: timestamp,
+        CheckoutRequestID: checkoutRequestId,
+      }),
     },
-    body: JSON.stringify({
-      BusinessShortCode: creds.shortcode,
-      Password: Buffer.from(`${creds.shortcode}${creds.passkey}${timestamp}`).toString("base64"),
-      Timestamp: timestamp,
-      CheckoutRequestID: checkoutRequestId,
-    }),
-  });
+    creds.baseUrl
+  );
 
   const data = await response.json().catch(() => ({}));
   if (data.ResultCode == null) return null;
@@ -396,7 +503,10 @@ const reconcilePendingTransaction = async (transaction) => {
     return transaction;
   }
   try {
-    const result = await queryCheckoutStatus(transaction.checkout_request_id);
+    const result = await queryCheckoutStatus(
+      transaction.checkout_request_id,
+      transaction.mpesa_environment || null
+    );
     if (!result?.status) return transaction;
     await finalizeTx(transaction, result);
     const refreshed = await query("SELECT * FROM mpesa_transactions WHERE id = $1", [
@@ -503,14 +613,20 @@ const callbackBaseUrl = () => {
 const darajaAdminPost = async (path, body) => {
   const creds = await getMpesaCredentials();
   const accessToken = await getAccessToken(creds);
-  const response = await darajaFetch(path, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
+
+  const response = await darajaFetch(
+    path,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-  });
+    creds.baseUrl
+  );
+
   return response.json().catch(() => ({}));
 };
 
@@ -887,6 +1003,10 @@ router.post("/mpesa/stkpush", requireAuth, async (req, res, next) => {
     }
 
     const amount = Math.max(1, Math.round(totalCents / 100));
+    const mpesaCreds = await prepareStkPayment({
+      phoneNumber: normalizedPhone,
+      amount,
+    });
 
     const orderResult = await query(
       `INSERT INTO orders (user_id, total_cents, status)
@@ -899,14 +1019,19 @@ router.post("/mpesa/stkpush", requireAuth, async (req, res, next) => {
     await insertOrderItems(order.id, safeItems);
 
     const txResult = await query(
-      `INSERT INTO mpesa_transactions (order_id, phone_number, amount_cents, status)
-       VALUES ($1, $2, $3, 'pending')
+      `INSERT INTO mpesa_transactions
+         (order_id, phone_number, amount_cents, status, mpesa_environment)
+       VALUES ($1, $2, $3, 'pending', $4)
        RETURNING *`,
-      [order.id, normalizedPhone, totalCents]
+      [order.id, normalizedPhone, totalCents, mpesaCreds.environment]
     );
     const transaction = txResult.rows[0];
 
-    const responseData = await sendStkPush({ phoneNumber: normalizedPhone, amount });
+    const responseData = await sendStkPush({
+      phoneNumber: normalizedPhone,
+      amount,
+      creds: mpesaCreds,
+    });
     const newStatus = await recordStkResponse(transaction.id, responseData);
 
     if (newStatus === "failed") {
@@ -959,6 +1084,12 @@ router.post("/mpesa/stkpush-booking", requireAuth, async (req, res, next) => {
       return res.status(400).json({ error: "Invalid listing price" });
     }
 
+    const amount = Math.max(1, Math.round(totalCents / 100));
+    const mpesaCreds = await prepareStkPayment({
+      phoneNumber: normalizedPhone,
+      amount,
+    });
+
     const bookingResult = await query(
       `INSERT INTO bookings (user_id, listing_id, start_date, end_date, status, payment_method, payment_status, amount_cents)
        VALUES ($1, $2, $3, $4, 'pending', 'mpesa', 'pending', $5)
@@ -968,15 +1099,19 @@ router.post("/mpesa/stkpush-booking", requireAuth, async (req, res, next) => {
     const booking = bookingResult.rows[0];
 
     const txResult = await query(
-      `INSERT INTO mpesa_transactions (booking_id, phone_number, amount_cents, status)
-       VALUES ($1, $2, $3, 'pending')
+      `INSERT INTO mpesa_transactions
+         (booking_id, phone_number, amount_cents, status, mpesa_environment)
+       VALUES ($1, $2, $3, 'pending', $4)
        RETURNING *`,
-      [booking.id, normalizedPhone, totalCents]
+      [booking.id, normalizedPhone, totalCents, mpesaCreds.environment]
     );
     const transaction = txResult.rows[0];
 
-    const amount = Math.max(1, Math.round(totalCents / 100));
-    const responseData = await sendStkPush({ phoneNumber: normalizedPhone, amount });
+    const responseData = await sendStkPush({
+      phoneNumber: normalizedPhone,
+      amount,
+      creds: mpesaCreds,
+    });
     const newStatus = await recordStkResponse(transaction.id, responseData);
 
     if (newStatus === "failed") {
@@ -1042,6 +1177,11 @@ router.post("/mpesa/stkpush-event-registration", requireAuth, async (req, res, n
     }
 
     const amount = Math.max(1, Math.round(totalCents / 100));
+    const mpesaCreds = await prepareStkPayment({
+      phoneNumber: normalizedPhone,
+      amount,
+    });
+
     await query(
       `UPDATE event_registrations
        SET contact_phone = COALESCE($1, contact_phone),
@@ -1052,10 +1192,11 @@ router.post("/mpesa/stkpush-event-registration", requireAuth, async (req, res, n
     );
 
     const txResult = await query(
-      `INSERT INTO mpesa_transactions (event_registration_id, phone_number, amount_cents, status)
-       VALUES ($1, $2, $3, 'pending')
+      `INSERT INTO mpesa_transactions
+         (event_registration_id, phone_number, amount_cents, status, mpesa_environment)
+       VALUES ($1, $2, $3, 'pending', $4)
        RETURNING *`,
-      [registration.id, normalizedPhone, totalCents]
+      [registration.id, normalizedPhone, totalCents, mpesaCreds.environment]
     );
     const transaction = txResult.rows[0];
 
@@ -1064,6 +1205,7 @@ router.post("/mpesa/stkpush-event-registration", requireAuth, async (req, res, n
       amount,
       accountReference: registration.event_title || undefined,
       transactionDesc: `Event ${registration.event_title || registration.id}`,
+      creds: mpesaCreds,
     });
     const newStatus = await recordStkResponse(transaction.id, responseData);
 

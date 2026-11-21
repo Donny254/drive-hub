@@ -48,6 +48,23 @@ CREATE TABLE IF NOT EXISTS site_settings (
   mpesa_consumer_key_enc text,
   mpesa_consumer_secret_enc text,
   mpesa_passkey_enc text,
+
+  -- Nullable: NULL means use MPESA_ENV as the server default.
+  mpesa_environment text CHECK (mpesa_environment IN ('sandbox', 'production')),
+
+  -- Independent Daraja credentials for each environment.
+  mpesa_sandbox_shortcode text,
+  mpesa_sandbox_partyb text,
+  mpesa_sandbox_consumer_key_enc text,
+  mpesa_sandbox_consumer_secret_enc text,
+  mpesa_sandbox_passkey_enc text,
+
+  mpesa_production_shortcode text,
+  mpesa_production_partyb text,
+  mpesa_production_consumer_key_enc text,
+  mpesa_production_consumer_secret_enc text,
+  mpesa_production_passkey_enc text,
+
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -355,6 +372,7 @@ CREATE TABLE IF NOT EXISTS mpesa_transactions (
   checkout_request_id text,
   merchant_request_id text,
   status text NOT NULL DEFAULT 'pending',
+  mpesa_environment text CHECK (mpesa_environment IN ('sandbox', 'production')),
   response jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
@@ -446,6 +464,10 @@ ALTER TABLE mpesa_transactions
 ALTER TABLE mpesa_transactions
   ADD COLUMN IF NOT EXISTS mpesa_receipt_number text;
 
+ALTER TABLE mpesa_transactions
+  ADD COLUMN IF NOT EXISTS mpesa_environment text
+  CHECK (mpesa_environment IN ('sandbox', 'production'));
+
 ALTER TABLE site_settings
   ADD COLUMN IF NOT EXISTS mpesa_shortcode text;
 
@@ -466,6 +488,51 @@ ALTER TABLE site_settings
 
 ALTER TABLE site_settings
   ADD COLUMN IF NOT EXISTS mpesa_passkey_enc text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_environment text
+  CHECK (mpesa_environment IN ('sandbox', 'production'));
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_sandbox_shortcode text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_sandbox_partyb text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_sandbox_consumer_key_enc text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_sandbox_consumer_secret_enc text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_sandbox_passkey_enc text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_production_shortcode text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_production_partyb text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_production_consumer_key_enc text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_production_consumer_secret_enc text;
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_production_passkey_enc text;
+
+-- Preserve existing generic credentials by copying them into Sandbox.
+-- COALESCE makes this safe to execute on every application startup.
+UPDATE site_settings
+SET
+  mpesa_sandbox_shortcode = COALESCE(mpesa_sandbox_shortcode, mpesa_shortcode),
+  mpesa_sandbox_partyb = COALESCE(mpesa_sandbox_partyb, mpesa_partyb),
+  mpesa_sandbox_consumer_key_enc = COALESCE(mpesa_sandbox_consumer_key_enc, mpesa_consumer_key_enc),
+  mpesa_sandbox_consumer_secret_enc = COALESCE(mpesa_sandbox_consumer_secret_enc, mpesa_consumer_secret_enc),
+  mpesa_sandbox_passkey_enc = COALESCE(mpesa_sandbox_passkey_enc, mpesa_passkey_enc)
+WHERE id = true;
 
 ALTER TABLE site_settings
   ADD COLUMN IF NOT EXISTS social_pinterest text;
