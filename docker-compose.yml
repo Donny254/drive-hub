@@ -1,14 +1,15 @@
 services:
   db:
     image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: wheelsnationke
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
     volumes:
-      - drive-hub-postgres:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: drivehub
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me_in_production}
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d wheelsnationke"]
+      test: ["CMD-SHELL", "pg_isready -U app -d drivehub"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -18,16 +19,14 @@ services:
       context: ./server
     ports:
       - "8080:8080"
+    env_file:
+      - ./server/.env
     environment:
       NODE_ENV: production
       PORT: 8080
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/wheelsnationke
-      JWT_SECRET: local-docker-change-me
-      CORS_ORIGIN: http://localhost:4173
-      FRONTEND_URL: http://localhost:4173
-      PGSSL: "false"
+      DATABASE_URL: postgresql://app:${DB_PASSWORD:-change_me_in_production}@db:5432/drivehub
     volumes:
-      - drive-hub-uploads:/app/uploads
+      - uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -49,5 +48,5 @@ services:
         condition: service_healthy
 
 volumes:
-  drive-hub-postgres:
-  drive-hub-uploads:
+  pgdata:
+  uploads:

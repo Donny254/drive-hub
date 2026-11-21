@@ -1,0 +1,377 @@
+================================================================================
+  DRIVE HUB (WHEELSNATIONKE) — DEPLOYMENT & PAYMENT INTEGRATION GUIDE
+================================================================================
+
+This guide covers: domain setup → hosting → deployment → M-Pesa → crypto payments
+Your app is Docker-ready with both payment methods already built in.
+
+================================================================================
+  1. DOMAIN & DNS SETUP
+================================================================================
+
+1.1 Buy a domain
+  Recommended registrars (pick one):
+  - Namecheap (namecheap.com) — cheap .com/.co.ke, free WHOIS privacy
+  - Kenic (kenic.or.ke) — for .co.ke domains directly
+  - Cloudflare Registrar (cloudflare.com) — at-cost pricing, built-in DNS
+
+  Suggested domains for wheelsnationke:
+  - wheelsnationke.co.ke
+  - wheelsnationke.com
+  - drivehub.co.ke
+
+1.2 DNS configuration
+  After buying, point your domain to your VPS IP:
+  - Create an A record:  @  →  <your-server-ip>
+  - Create a CNAME record:  www  →  @  (or yourdomain)
+
+  If using Cloudflare (recommended — free CDN + DDoS protection):
+  - Change nameservers to Cloudflare's at your registrar
+  - Enable "Full (strict)" SSL mode
+  - Orange-cloud (proxy) the A and CNAME records
+
+================================================================================
+  2. HOSTING PLATFORM (RECOMMENDED: VPS)
+================================================================================
+
+2.1 Why a VPS?
+  Your app is Dockerized (3 containers: PostgreSQL + Express API + Nginx/React).
+  A VPS gives you full control. Shared hosting won't run Docker.
+
+  Recommended providers (cheapest to most managed):
+  ┌─────────────────────┬───────────┬────────────────────────────────┐
+  │ Provider            │ From/mo   │ Best for                       │
+  ├─────────────────────┼───────────┼────────────────────────────────┤
+  │ Hetzner (CX22)      │ ~$4       │ Best value, EU/US datacenters  │
+  │ DigitalOcean        │ $6        │ Easiest, great docs, Nairobi   │
+  │                     │           │ latency ~80ms from Frankfurt    │
+  │ Linode (Akamai)     │ $5        │ Solid, good support            │
+  │ Vultr                │ $6        │ Good global coverage           │
+  │ AWS Lightsail       │ $5        │ AWS infra, simpler UX          │
+  └─────────────────────┴───────────┴────────────────────────────────┘
+
+  Minimum specs: 2 vCPU, 2GB RAM, 40GB SSD (Docker + DB + uploads)
+  OS: Ubuntu 22.04 or 24.04 LTS
+
+2.2 Alternative: managed platforms (less control, easier)
+  - Railway (railway.app) — Docker-native, auto-deploy from GitHub
+  - Fly.io — edge deployment, generous free tier
+  - Render — $7/mo web service + $0 for Postgres starter
+
+================================================================================
+  3. SERVER SETUP (Ubuntu VPS)
+================================================================================
+
+3.1 SSH into your server and update
+  ssh root@<your-server-ip>
+  apt update && apt upgrade -y
+  timedatectl set-timezone Africa/Nairobi
+
+3.2 Install Docker & Docker Compose
+  curl -fsSL https://get.docker.com | sh
+  usermod -aG docker $USER
+  # Log out and back in for group to apply
+
+3.3 Set up firewall
+  ufw allow 22/tcp      # SSH
+  ufw allow 80/tcp      # HTTP
+  ufw allow 443/tcp     # HTTPS
+  ufw enable
+
+3.4 Clone & configure the app
+  cd /opt
+  git clone <your-repo-url> drivehub
+  cd drivehub
+
+3.5 Configure environment (see sections 4 & 5 for payment env vars)
+  cp server/.env.example server/.env   # if example exists, or create from scratch
+  # Edit server/.env — see full template in Section 4 & 5 below
+  nano server/.env
+
+================================================================================
+  4. M-PESA INTEGRATION (ALREADY BUILT IN THE CODE)
+================================================================================
+
+The app already has full Daraja STK Push integration. You just need API keys.
+
+4.1 Get M-Pesa API credentials
+  a) Go to https://developer.safaricom.co.ke
+  b) Create an account (use the wheelsnationke business details)
+  c) Create a new app → select "Lipa Na M-Pesa Online" (STK Push)
+  d) You'll get:
+     - Consumer Key
+     - Consumer Secret
+     - Passkey (for STK Push)
+  e) Note: sandbox uses shortcode 174379. For production you'll need
+     a real Paybill/Till number from Safaricom.
+
+4.2 Server .env — M-Pesa section
+  Add these to server/.env:
+
+  # M-Pesa Daraja API
+  MPESA_ENV=sandbox                          # change to "production" when live
+  MPESA_CONSUMER_KEY=your_consumer_key
+  MPESA_CONSUMER_SECRET=your_consumer_secret
+  MPESA_SHORTCODE=174379                     # sandbox: 174379, prod: your paybill
+  MPESA_PASSKEY=your_passkey
+  MPESA_CALLBACK_URL=https://wheelsnationke.co.ke/api/payments/mpesa/callback
+  MPESA_PARTYB=174379                        # same as shortcode unless B2B
+  MPESA_ACCOUNT_REFERENCE=WheelsnationKe Order
+  MPESA_TRANSACTION_DESC=WheelsnationKe Checkout
+
+  IMPORTANT: The callback URL MUST be publicly reachable. Safaricom sends
+  payment confirmation to this URL. It must use HTTPS in production.
+
+4.3 Going live with M-Pesa
+  a) Apply for a Paybill or Till number from Safaricom (Lipa Na M-Pesa Online)
+  b) In the Daraja portal, submit your app for production approval
+  c) Once approved, update server/.env:
+     MPESA_ENV=production
+     MPESA_SHORTCODE=<your-paybill-number>
+     MPESA_PASSKEY=<production-passkey>
+     MPESA_CALLBACK_URL=https://your-domain.com/api/payments/mpesa/callback
+
+4.4 How M-Pesa payments work in the app (already implemented):
+  - User checks out → frontend sends phone number + cart items to /api/payments/mpesa/stkpush
+  - Backend normalizes phone to 2547XXXXXXXX format
+  - Backend gets OAuth token from Safaricom
+  - Backend sends STK Push to user's phone (M-Pesa popup)
+  - User enters PIN on phone
+  - Safaricom POSTs callback to MPESA_CALLBACK_URL
+  - Backend marks order as paid, decrements stock, issues event tickets if applicable
+  - Don't touch any code — just configure the env vars above.
+
+================================================================================
+  5. CRYPTO PAYMENT INTEGRATION (ALREADY BUILT IN THE CODE)
+================================================================================
+
+The app supports manual-review crypto payments (USDT on EVM chains, Tron, Solana).
+Users send crypto → submit transaction hash + proof image → admin reviews & confirms.
+
+5.1 Server .env — Crypto section
+  Add these to server/.env:
+
+  # Crypto Payments
+  CRYPTO_CURRENCY=USDT
+  CRYPTO_NETWORK=TRC20                           # network for non-EVM (e.g. TRC20, SOL)
+  CRYPTO_WALLET_ADDRESS=your_tron_wallet_address
+  CRYPTO_NETWORK_EVM=Ethereum                    # EVM-compatible network (ETH, BSC, Polygon)
+  CRYPTO_WALLET_ADDRESS_EVM=0xyour_eth_wallet_address
+  CRYPTO_INSTRUCTIONS=Send USDT to the address below. Submit the TX hash + a screenshot of the payment confirmation for review.
+
+5.2 Admin config (runtime, no code changes)
+  These can also be set via the Admin Dashboard → Settings tab:
+  - Crypto currency (default: USDT)
+  - Network (e.g. TRC20, ERC20, BEP20, Polygon, Solana)
+  - Wallet address
+  - EVM network & wallet address
+  - Payment instructions shown to buyer
+
+  The admin panel is at /admin after logging in as admin.
+
+5.3 Supported networks (hash validation built in)
+  - EVM chains: Ethereum, BSC, Polygon, Arbitrum, Base, Avalanche, Optimism, Fantom, Celo
+  - Tron (TRC20)
+  - Solana
+
+5.4 Crypto payment flow (already implemented):
+  - User picks "Crypto" at checkout
+  - App shows wallet address + instructions
+  - User sends USDT from their wallet (MetaMask, Trust Wallet, etc.)
+  - User submits: transaction hash + payment proof screenshot
+  - Backend validates hash format per network (e.g. 0x...66-char hex for EVM)
+  - Backend checks hash hasn't been used before (duplicate detection)
+  - Order marked as "crypto_pending"
+  - Admin reviews in Admin Dashboard → Crypto Payments tab
+  - Admin confirms → order marked as paid, stock released, tickets issued
+
+5.5 What you need to set up:
+  a) Have a crypto wallet with USDT (Trust Wallet, MetaMask, or hardware wallet)
+  b) Generate receiving addresses for each network you want to accept
+  c) Enter those addresses in server/.env or Admin Dashboard → Settings
+  d) That's it — the frontend checkout flow already supports crypto
+
+================================================================================
+  6. SSL & NGINX REVERSE PROXY (HTTPS)
+================================================================================
+
+6.1 Install Certbot (Let's Encrypt — free SSL)
+  apt install certbot python3-certbot-nginx -y
+  certbot --nginx -d wheelsnationke.co.ke -d www.wheelsnationke.co.ke
+  # Auto-renews every 90 days — test with: certbot renew --dry-run
+
+6.2 Modify nginx.conf for production
+  The current nginx.conf in the repo only handles port 80. For production,
+  create a reverse-proxy nginx ON THE HOST (not in Docker) that forwards to the
+  Docker containers. Example /etc/nginx/sites-available/wheelsnationke:
+
+  server {
+    listen 80;
+    server_name wheelsnationke.co.ke www.wheelsnationke.co.ke;
+    return 301 https://$host$request_uri;
+  }
+
+  server {
+    listen 443 ssl;
+    server_name wheelsnationke.co.ke www.wheelsnationke.co.ke;
+
+    ssl_certificate     /etc/letsencrypt/live/wheelsnationke.co.ke/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/wheelsnationke.co.ke/privkey.pem;
+
+    # Frontend (Docker port 4173)
+    location / {
+      proxy_pass http://127.0.0.1:4173;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # API (Docker port 8080)
+    location /api/ {
+      proxy_pass http://127.0.0.1:8080;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+
+      # Increase timeouts for M-Pesa callbacks
+      proxy_read_timeout 120s;
+      proxy_connect_timeout 30s;
+    }
+
+    # Uploaded images
+    location /uploads/ {
+      proxy_pass http://127.0.0.1:8080;
+      proxy_set_header Host $host;
+    }
+  }
+
+  Enable it:
+  ln -s /etc/nginx/sites-available/wheelsnationke /etc/nginx/sites-enabled/
+  nginx -t && systemctl reload nginx
+
+================================================================================
+  7. DOCKER DEPLOYMENT (LAUNCH)
+================================================================================
+
+7.1 Set the DB password in the Docker environment
+  echo "DB_PASSWORD=$(openssl rand -base64 24)" > .env.db
+  # docker-compose.yml reads ${DB_PASSWORD} from the host env
+  export DB_PASSWORD=<your-generated-password>
+  # Or put it in a .env file alongside docker-compose.yml
+
+7.2 Update VITE_API_BASE_URL for production
+  In docker-compose.yml, change the web build arg:
+  args:
+    VITE_API_BASE_URL: https://wheelsnationke.co.ke
+
+7.3 Build and start
+  docker compose up --build -d
+
+7.4 Verify
+  curl https://wheelsnationke.co.ke/api/health
+  # Should return: {"ok":true,"db":"ok","time":"..."}
+
+7.5 Seed admin user
+  docker compose exec api node dist/seedAdmin.js
+  # Or if seed script is separate:
+  # docker compose exec api npm run seed:admin
+
+  Default admin login: admin@wheelsnationke.co.ke / 123456
+  CHANGE THE PASSWORD IMMEDIATELY after first login.
+
+7.6 Post-launch checklist
+  [ ] Frontend loads at https://wheelsnationke.co.ke
+  [ ] /api/health returns 200
+  [ ] Upload images work (test creating a listing)
+  [ ] M-Pesa callback URL is reachable (test with Postman: POST /api/payments/mpesa/callback)
+  [ ] Crypto checkout page shows your wallet address
+  [ ] Admin panel loads at /admin
+  [ ] Email SMTP works (test "forgot password")
+  [ ] SSL cert auto-renewal (cron: certbot renew --quiet)
+
+================================================================================
+  8. SOCIAL MEDIA ENDPOINT SETUP
+================================================================================
+
+The app already has social media link settings. Go to Admin → Settings and fill in
+your social profile URLs. These appear as icons in the site footer.
+
+What you need to do on each platform:
+  - X (Twitter):      Create/claim @wheelsnationke, put your domain link in bio
+  - Instagram:        Create @wheelsnationke, link in bio (use Linktree or direct URL)
+  - Facebook:         Create a business page "WheelsnationKe", link to your site
+  - WhatsApp:         Set up WhatsApp Business, add your site URL in business profile
+                       For the "inquiry" button, use wa.me/254XXXXXXXXX in your site footer
+
+To make the site truly the "hub" for all platforms:
+  a) Every platform's bio should link to https://wheelsnationke.co.ke
+  b) Use the blog section to cross-post content (write once, share link everywhere)
+  c) Share new listings to socials manually (auto-posting via APIs not built in yet)
+  d) Add social OG tags (already in index.html — update with your real handles):
+     <meta name="twitter:site" content="@wheelsnationke" />
+     <meta property="og:url" content="https://wheelsnationke.co.ke" />
+
+================================================================================
+  9. MAINTENANCE
+================================================================================
+
+9.1 Updates
+  git pull
+  docker compose up --build -d    # rebuilds with new code
+
+9.2 Backups
+  # Database backup (daily cron)
+  0 2 * * * docker compose exec -T db pg_dump -U app drivehub | gzip > /backups/drivehub-$(date +\%Y\%m\%d).sql.gz
+
+  # Restore
+  gunzip -c backup.sql.gz | docker compose exec -T db psql -U app drivehub
+
+  # Uploads backup (rsync to another server or S3)
+  docker compose cp api:/app/uploads ./uploads-backup/
+
+9.3 Monitoring
+  docker compose ps           # are all 3 containers running?
+  docker compose logs -f api  # tail API logs
+  docker compose logs -f web  # tail nginx logs
+  df -h                       # disk space (watch uploads + DB volume)
+  free -h                     # RAM usage
+
+================================================================================
+  10. QUICK-REFERENCE: ENV VARS YOU NEED
+================================================================================
+
+  # REQUIRED for all setups
+  DATABASE_URL=postgresql://app:PASSWORD@db:5432/drivehub
+  JWT_SECRET=<openssl rand -base64 48>
+  CORS_ORIGIN=https://wheelsnationke.co.ke
+
+  # M-Pesa (for payments)
+  MPESA_ENV=sandbox|production
+  MPESA_CONSUMER_KEY=...
+  MPESA_CONSUMER_SECRET=...
+  MPESA_SHORTCODE=...
+  MPESA_PASSKEY=...
+  MPESA_CALLBACK_URL=https://your-domain.com/api/payments/mpesa/callback
+
+  # Crypto (for USDT payments)
+  CRYPTO_WALLET_ADDRESS=...
+  CRYPTO_WALLET_ADDRESS_EVM=0x...
+  CRYPTO_NETWORK=TRC20
+  CRYPTO_NETWORK_EVM=Ethereum
+
+  # Email (for notifications)
+  SMTP_HOST=...
+  SMTP_PORT=587
+  SMTP_USER=...
+  SMTP_PASS=...
+  SMTP_FROM=no-reply@wheelsnationke.co.ke
+
+  # Optional: SMS/WhatsApp notifications
+  MESSAGING_WEBHOOK_URL=...
+  MESSAGING_PROVIDER=...
+
+================================================================================
+
+Written for Drive Hub (WheelsnationKe) — all payment code exists, just configure and deploy.

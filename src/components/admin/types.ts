@@ -237,6 +237,12 @@ export type SiteSettings = {
   bankSwift: string | null;
   bankInstructions: string | null;
   sellerCommissionRate: number;
+  trustedDealers: number;
+  countriesEstablished: number;
+  carsSold: number;
+  happyClients: number;
+  eventsHosted: number;
+  yearsExperience: number;
   cryptoCurrency: string | null;
   cryptoNetwork: string | null;
   cryptoWalletAddress: string | null;

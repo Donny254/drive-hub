@@ -14,6 +14,15 @@ type AdminSettingsTabProps = {
 };
 
 const AdminSettingsTab = ({ settings, setSettings, saveSettings }: AdminSettingsTabProps) => {
+  const homepageStats = [
+    { key: "trustedDealers", label: "Trusted Dealers" },
+    { key: "countriesEstablished", label: "Countries Established" },
+    { key: "carsSold", label: "Cars Sold" },
+    { key: "happyClients", label: "Happy Clients" },
+    { key: "eventsHosted", label: "Events Hosted" },
+    { key: "yearsExperience", label: "Years Experience" },
+  ] as const;
+
   return (
     <TabsContent value="settings" className="mt-6">
       <Card className="rounded-2xl">
@@ -26,6 +35,36 @@ const AdminSettingsTab = ({ settings, setSettings, saveSettings }: AdminSettings
         <CardContent className="space-y-6 pt-6">
           {settings && (
             <>
+              <div className="rounded-2xl border border-border bg-background/50 p-5">
+                <h3 className="font-medium">Homepage Statistics</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Update the public figures shown on the homepage. Cars Uploaded is calculated live from all non-deleted vehicle listings.
+                </p>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid gap-2">
+                    <Label htmlFor="homepage-cars-uploaded">Cars Uploaded (live)</Label>
+                    <Input id="homepage-cars-uploaded" value="Calculated from listings" disabled />
+                  </div>
+                  {homepageStats.map(({ key, label }) => (
+                    <div className="grid gap-2" key={key}>
+                      <Label htmlFor={`homepage-${key}`}>{label}</Label>
+                      <Input
+                        id={`homepage-${key}`}
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={settings[key]}
+                        onChange={(event) => {
+                          const value = Number(event.target.value);
+                          if (!Number.isSafeInteger(value) || value < 0) return;
+                          setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="grid gap-6 lg:grid-cols-2">
                 <div className="rounded-2xl border border-border bg-background/50 p-5">
                   <h3 className="font-medium">Company Contact</h3>

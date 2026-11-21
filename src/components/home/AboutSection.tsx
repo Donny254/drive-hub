@@ -1,13 +1,15 @@
 import carInterior from "@/assets/car-interior.jpg";
-
-const stats = [
-  { value: "500+", label: "Cars Sold" },
-  { value: "10K+", label: "Happy Clients" },
-  { value: "50+", label: "Events Hosted" },
-  { value: "15+", label: "Years Experience" },
-];
+import usePublicSiteStats from "@/hooks/usePublicSiteStats";
 
 const AboutSection = () => {
+  const siteStats = usePublicSiteStats();
+  const stats = [
+    { value: siteStats?.carsSold, label: "Cars Sold" },
+    { value: siteStats?.happyClients, label: "Happy Clients" },
+    { value: siteStats?.eventsHosted, label: "Events Hosted" },
+    { value: siteStats?.yearsExperience, label: "Years Experience" },
+  ];
+
   return (
     <section className="py-16">
       <div className="container mx-auto px-4">
@@ -37,10 +39,12 @@ const AboutSection = () => {
             </p>
 
             {/* Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-10">
+            <div className="mt-10 grid grid-cols-2 gap-6 xl:grid-cols-4">
               {stats.map((stat) => (
                 <div key={stat.label} className="text-center md:text-left">
-                  <span className="font-display text-3xl text-primary">{stat.value}</span>
+                  <span className="font-display text-3xl text-primary">
+                    {stat.value === undefined ? "—" : `${stat.value.toLocaleString()}+`}
+                  </span>
                   <p className="text-sm text-muted-foreground mt-1">{stat.label}</p>
                 </div>
               ))}

@@ -20,6 +20,44 @@ const toApi = (row) => ({
   updatedAt: row.updated_at,
 });
 
+const parseEventDate = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("Invalid event date");
+  }
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+};
+
+const validateEventDates = (startDate, endDate) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (startDate) {
+    const parsedStart = parseEventDate(startDate);
+    if (parsedStart < today) {
+      return "Start date cannot be in the past";
+    }
+  }
+
+  if (endDate) {
+    const parsedEnd = parseEventDate(endDate);
+    if (parsedEnd < today) {
+      return "End date cannot be in the past";
+    }
+  }
+
+  if (startDate && endDate) {
+    const parsedStart = parseEventDate(startDate);
+    const parsedEnd = parseEventDate(endDate);
+    if (parsedEnd < parsedStart) {
+      return "End date cannot be before the start date";
+    }
+  }
+
+  return null;
+};
+
 const expirePastEvents = async () => {
   await query(`
     UPDATE events
@@ -48,9 +86,8 @@ router.get("/", async (req, res, next) => {
        ) AS registrations_count
        FROM events e
        ${whereClause}
-       ORDER BY CASE WHEN e.marketing_slot > 0 THEN 0 ELSE 1 END,
-                e.marketing_slot ASC,
-                e.start_date DESC NULLS LAST`,
+       ORDER BY e.start_date ASC NULLS LAST,
+                e.end_date ASC NULLS LAST`,
       params
     );
     res.json(result.rows.map(toApi));
@@ -71,7 +108,11 @@ router.get("/:id", async (req, res, next) => {
       [req.params.id]
     );
     if (result.rowCount === 0) return res.status(404).json({ error: "Event not found" });
-    res.json(toApi(result.rows[0]));
+    const event = result.rows[0];
+    if (event.status !== "upcoming") {
+      return res.status(404).json({ error: "Event not found" });
+    }
+    res.json(toApi(event));
   } catch (error) {
     next(error);
   }
@@ -90,6 +131,10 @@ router.post("/", requireAuth, requireRole("admin"), async (req, res, next) => {
       status = "upcoming",
       marketingSlot = 0,
     } = req.body;
+    const dateValidationError = validateEventDates(startDate, endDate);
+    if (dateValidationError) {
+      return res.status(400).json({ error: dateValidationError });
+    }
     if (!title) return res.status(400).json({ error: "Title is required" });
     if (!Number.isInteger(priceCents) || priceCents < 0) {
       return res.status(400).json({ error: "priceCents must be a non-negative integer" });
@@ -133,11 +178,18 @@ router.put("/:id", requireAuth, requireRole("admin"), async (req, res, next) => 
       }
     };
 
+    const nextStartDate = req.body.startDate ?? undefined;
+    const nextEndDate = req.body.endDate ?? undefined;
+    const dateValidationError = validateEventDates(nextStartDate, nextEndDate);
+    if (dateValidationError) {
+      return res.status(400).json({ error: dateValidationError });
+    }
+
     maybeSet("title", req.body.title ?? undefined);
     maybeSet("description", req.body.description ?? undefined);
     maybeSet("location", req.body.location ?? undefined);
-    maybeSet("start_date", req.body.startDate ?? undefined);
-    maybeSet("end_date", req.body.endDate ?? undefined);
+    maybeSet("start_date", nextStartDate);
+    maybeSet("end_date", nextEndDate);
     maybeSet("image_url", req.body.imageUrl ?? undefined);
     if (req.body.priceCents !== undefined) {
       if (!Number.isInteger(req.body.priceCents) || req.body.priceCents < 0) {

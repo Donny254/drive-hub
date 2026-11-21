@@ -1,10 +1,13 @@
 import { lazy, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
+import usePublicSiteStats from "@/hooks/usePublicSiteStats";
 
 const DriveScene3D = lazy(() => import("./DriveScene3D"));
 
 const HeroSection = () => {
+  const stats = usePublicSiteStats();
+
   return (
     <section className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[hsl(180_10%_4%)]">
       {/* 3D Driving Scene */}
@@ -14,9 +17,9 @@ const HeroSection = () => {
         </Suspense>
       </div>
 
-      {/* Dark gradient overlays — left side anchors text, bottom fade adds depth. */}
+      {/* Themed overlays keep the text readable and add a light-mode smoke fade. */}
       <div className="absolute inset-0 bg-gradient-to-r from-[hsl(180_10%_4%)] via-[hsl(180_10%_4%)/90%] to-transparent pointer-events-none" />
-      <div className="absolute inset-0 bg-gradient-to-t from-[hsl(180_10%_4%)] via-[hsl(180_10%_4%)/45%] to-transparent pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/10 to-transparent dark:from-[hsl(180_10%_4%)] dark:via-[hsl(180_10%_4%)/45%] pointer-events-none" />
 
       {/* Static accent lines */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -46,8 +49,8 @@ const HeroSection = () => {
             className="mt-6 max-w-xl text-base text-white/70 animate-fade-in md:text-xl"
             style={{ animationDelay: "0.2s" }}
           >
-            East Africa's exclusive marketplace for performance cars and luxury
-            SUVs. BUY, SELL, or RENT high-end vehicles from trusted dealers
+            East Africa's exclusive marketplace for Crazy Builds,Performance cars and Luxury
+            SUVs. BUY, SELL, or RENT your vehicles of choice from trusted dealers
             across EA.
           </p>
           <div
@@ -69,15 +72,19 @@ const HeroSection = () => {
           {/* Stats bar */}
           <div className="mt-16 grid grid-cols-1 gap-6 animate-fade-in sm:grid-cols-3 sm:gap-8" style={{ animationDelay: "0.6s" }}>
             <div className="text-center sm:text-left">
-              <p className="font-display text-3xl text-primary">250+</p>
-              <p className="text-sm text-muted-foreground">Premium Cars</p>
+              <p className="font-display text-3xl text-primary">{stats?.totalCars.toLocaleString() ?? "—"}</p>
+              <p className="text-sm text-muted-foreground">Cars Uploaded</p>
             </div>
             <div className="text-center sm:text-left">
-              <p className="font-display text-3xl text-primary">10+</p>
+              <p className="font-display text-3xl text-primary">
+                {stats ? `${stats.trustedDealers.toLocaleString()}+` : "—"}
+              </p>
               <p className="text-sm text-muted-foreground">Trusted Dealers</p>
             </div>
             <div className="text-center sm:text-left">
-              <p className="font-display text-3xl text-primary">5+</p>
+              <p className="font-display text-3xl text-primary">
+                {stats ? `${stats.countriesEstablished.toLocaleString()}+` : "—"}
+              </p>
               <p className="text-sm text-muted-foreground">African Countries</p>
             </div>
           </div>

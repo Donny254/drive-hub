@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ArrowDown, ArrowUp, BookmarkPlus, Calendar, Car, DollarSign, Fuel, Gauge, Gavel, MapPin, Scale, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Banknote, BookmarkPlus, Calendar, Car, Fuel, Gauge, Gavel, MapPin, Scale, X } from "lucide-react";
 import MarketSlider from "@/components/market/MarketSlider";
 import { useAuth } from "@/context/AuthContext";
 import { apiFetch, resolveImageUrl } from "@/lib/api";
@@ -85,7 +85,6 @@ const tabs = [
   { id: "all", label: "All Cars" },
   { id: "buy", label: "Buy" },
   { id: "rent", label: "Rent" },
-  { id: "sell", label: "Sell Yours" },
 ] as const;
 
 const formatMileage = (listing: Listing) => {
@@ -110,6 +109,7 @@ const Market = () => {
   const [compareOpen, setCompareOpen] = useState(false);
   const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [supportEmail, setSupportEmail] = useState("info@wheelsnationke.co.ke");
+  const [marketPageSize, setMarketPageSize] = useState(12);
 
   const [bookingListing, setBookingListing] = useState<Listing | null>(null);
   const [bookingStart, setBookingStart] = useState("");
@@ -252,42 +252,31 @@ const Market = () => {
       .catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    const updatePageSize = () => {
+      const width = window.innerWidth;
+      setMarketPageSize(width < 640 ? 4 : width < 1280 ? 8 : 12);
+    };
+
+    updatePageSize();
+    window.addEventListener("resize", updatePageSize);
+    return () => window.removeEventListener("resize", updatePageSize);
+  }, []);
+
   const filteredListings = useMemo(() => listings, [listings]);
-  const { pageItems: pagedListings, page: listingsPage, totalPages: listingsTotalPages, goTo: goToListingsPage, reset: resetListingsPage } = usePagination(filteredListings, 12);
+  const { pageItems: pagedListings, page: listingsPage, totalPages: listingsTotalPages, goTo: goToListingsPage, reset: resetListingsPage } = usePagination(filteredListings, marketPageSize);
   const shortlistIds = useMemo(() => new Set(shortlist.map((item) => item.id)), [shortlist]);
 
-  const buildSellerEmailLink = useCallback(
+  const openListingSubmission = useCallback(
     (listingType: "sell" | "rent" = "sell") => {
-      const subject =
-        listingType === "rent"
-          ? "Vehicle Rental Listing Submission"
-          : "Vehicle Sale Listing Submission";
-      const bodyLines = [
-        "Hello WheelsnationKe team,",
-        "",
-        `I would like to upload a vehicle for ${listingType === "rent" ? "rental" : "sale"} on the marketplace.`,
-        "",
-        "Vehicle details:",
-        "Make and model:",
-        "Year:",
-        "Mileage:",
-        "Price (KES):",
-        "Location:",
-        "Description:",
-        "",
-        "Please advise on the next step.",
-      ];
-
-      return `mailto:${supportEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines.join("\n"))}`;
+      if (!user) {
+        navigate("/login");
+        return;
+      }
+      const params = new URLSearchParams({ new: "1", type: listingType, source: "market" });
+      navigate(`/my-listings?${params.toString()}`);
     },
-    [supportEmail]
-  );
-
-  const openSellerEmail = useCallback(
-    (listingType: "sell" | "rent" = "sell") => {
-      window.location.href = buildSellerEmailLink(listingType);
-    },
-    [buildSellerEmailLink]
+    [navigate, user]
   );
 
   const openBooking = (listing: Listing) => {
@@ -571,9 +560,9 @@ const Market = () => {
   const isHighValue = bookingListing ? bookingListing.priceCents > 50000000 : false;
   const bookingBasePrice = bookingListing
     ? bookingListing.listingType === "rent"
-      ? `${(bookingListing.priceCents / 100).toLocaleString()} / day`
-      : `KES ${(bookingListing.priceCents / 100).toLocaleString()}`
-    : "KES 0";
+      ? `KSh ${(bookingListing.priceCents / 100).toLocaleString()} / day`
+      : `KSh ${(bookingListing.priceCents / 100).toLocaleString()}`
+    : "KSh 0";
   const scrollBookingDialog = (direction: "top" | "bottom") => {
     if (!bookingDialogRef.current) return;
     bookingDialogRef.current.scrollTo({
@@ -691,8 +680,8 @@ const Market = () => {
                     </span>
                   )}
                 </Button>
-                <Button variant="hero" size="sm" onClick={() => openSellerEmail("sell")}>
-                  Sell Yours
+                <Button variant="hero" size="sm" onClick={() => openListingSubmission("sell")}>
+                  Sell
                 </Button>
               </div>
             </div>
@@ -714,14 +703,14 @@ const Market = () => {
               />
               <Input
                 type="number"
-                placeholder="Min KES"
+                placeholder="Min KSh"
                 value={minPrice}
                 onChange={(e) => setMinPrice(e.target.value)}
                 className="h-9 w-28 text-sm"
               />
               <Input
                 type="number"
-                placeholder="Max KES"
+                placeholder="Max KSh"
                 value={maxPrice}
                 onChange={(e) => setMaxPrice(e.target.value)}
                 className="h-9 w-28 text-sm"
@@ -789,7 +778,7 @@ const Market = () => {
             )}
 
             {!loading && !error && filteredListings.length > 0 && (
-              <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {pagedListings.map((listing, index) => (
                   <div
                     key={listing.id}
@@ -901,11 +890,11 @@ const Market = () => {
 
                       <div className="mt-auto flex flex-col gap-4 pt-6">
                         <div className="flex items-start gap-2">
-                          <DollarSign className="text-primary" size={20} />
+                          <Banknote className="text-primary" size={20} />
                           <span className="font-display text-2xl leading-tight break-words">
                             {listing.isAuction ? (
                               <>
-                                KES{" "}
+                                KSh{" "}
                                 {(
                                   (listing.highestBidCents && listing.highestBidCents > 0
                                     ? listing.highestBidCents
@@ -919,7 +908,7 @@ const Market = () => {
                               </>
                             ) : (
                               <>
-                                KES {(listing.priceCents / 100).toLocaleString()}
+                                KSh {(listing.priceCents / 100).toLocaleString()}
                                 {listing.listingType === "rent" && (
                                   <span className="text-sm text-muted-foreground">/day</span>
                                 )}
@@ -972,14 +961,14 @@ const Market = () => {
               WANT TO <span className="text-primary">SELL YOUR CAR?</span>
             </h2>
             <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
-              Reach buyers and renters without mixing your vehicle submission with service requests. Contact the admin team and they will assist with onboarding your car for sale or rent.
+              Upload the vehicle details you want to offer on the marketplace. Every new sale or rental submission is routed to the admin moderation queue before it becomes visible to buyers.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              <Button variant="secondary" size="xl" onClick={() => openSellerEmail("sell")}>
-                Contact Admin for Sale
+              <Button variant="hero" size="xl" onClick={() => openListingSubmission("sell")}>
+                Upload Car Details
               </Button>
-              <Button variant="hero" size="xl" onClick={() => openSellerEmail("rent")}>
-                Contact Admin for Rent
+              <Button variant="secondary" size="xl" onClick={() => openListingSubmission("rent")}>
+                Upload Rental Details
               </Button>
             </div>
           </div>
@@ -1035,7 +1024,7 @@ const Market = () => {
                 />
                 <h3 className="mt-4 font-display text-2xl break-words">{item.title}</h3>
                 <div className="mt-4 space-y-3 text-sm">
-                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Price</span><span className="text-right break-words">KES {(item.priceCents / 100).toLocaleString()}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-muted-foreground">Price</span><span className="text-right break-words">KSh {(item.priceCents / 100).toLocaleString()}</span></div>
                   <div className="flex justify-between gap-3"><span className="text-muted-foreground">Type</span><span className="capitalize text-right break-words">{item.listingType}</span></div>
                   <div className="flex justify-between gap-3"><span className="text-muted-foreground">Year</span><span className="text-right break-words">{item.year ?? "N/A"}</span></div>
                   <div className="flex justify-between gap-3"><span className="text-muted-foreground">Mileage</span><span className="text-right break-words">{formatMileage(item)}</span></div>
@@ -1177,7 +1166,7 @@ const Market = () => {
               </div>
               <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
                 <span className="font-medium">Total</span>
-                <span className="font-semibold text-primary">KES {totalPrice.toLocaleString()}</span>
+                <span className="font-semibold text-primary">KSh {totalPrice.toLocaleString()}</span>
               </div>
             </div>
             <div className="grid gap-2">

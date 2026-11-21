@@ -18,15 +18,31 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
-    steps:
-      - name: Install SSH key
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.PRODUCTION_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.PRODUCTION_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Deploy on server
+    steps:
+      - name: Validate deployment configuration
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+        run: |
+          test -n "$PRODUCTION_HOST" || { echo "PRODUCTION_HOST is empty"; exit 1; }
+          test -n "$PRODUCTION_USER" || { echo "PRODUCTION_USER is empty"; exit 1; }
+
+          if [[ "$PRODUCTION_HOST" =~ [^a-zA-Z0-9.-] ]]; then
+            echo "PRODUCTION_HOST contains invalid characters."
+            exit 1
+          fi
+
+          echo "Deployment host and username look valid."
+      - name: Install SSH key
+        shell: bash
+        run: |
+             mkdir -p "$HOME/.ssh"
+             chmod 700 "$HOME/.ssh"
+             printf '%s\n' "${{ secrets.PRODUCTION_SSH_KEY }}" > "$HOME/.ssh/deploy_key"
+             chmod 600 "$HOME/.ssh/deploy_key"
+             ssh-keyscan -H "${{ secrets.PRODUCTION_HOST }}" >> "$HOME/.ssh/known_hosts"
+      - name: Deploy on Oracle VPS
         env:
           PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
           PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
@@ -35,4 +51,9 @@ jobs:
           DEPLOY_BRANCH: ${{ github.ref_name }}
         run: |
           ssh -i ~/.ssh/deploy_key "${PRODUCTION_USER}@${PRODUCTION_HOST}" \
-            "cd '${PRODUCTION_APP_DIR}' && VITE_API_BASE_URL='${VITE_API_BASE_URL}' DEPLOY_BRANCH='${DEPLOY_BRANCH}' ./scripts/deploy.sh"
+            "cd '${PRODUCTION_APP_DIR}' && \
+             git fetch origin '${DEPLOY_BRANCH}' && \
+             git reset --hard 'origin/${DEPLOY_BRANCH}' && \
+             VITE_API_BASE_URL='${VITE_API_BASE_URL}' \
+             DEPLOY_BRANCH='${DEPLOY_BRANCH}' \
+             ./scripts/deploy.sh"
