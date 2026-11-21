@@ -38,43 +38,61 @@ const toApi = (row) => ({
   updatedAt: row.updated_at || null,
 });
 
-// Admin-only view: adds M-Pesa configuration. Secrets are never returned —
-// only a boolean saying whether one is stored (UI shows "saved, blank keeps").
 const toAdminApi = (row) => ({
   ...toApi(row),
-  mpesaShortcode: row.mpesa_shortcode || null,
-  mpesaPartyb: row.mpesa_partyb || null,
+
+  // null means the server's MPESA_ENV setting is used.
+  mpesaEnvironment: row.mpesa_environment || null,
+
   mpesaAccountReference: row.mpesa_account_reference || null,
   mpesaTransactionDesc: row.mpesa_transaction_desc || null,
-  mpesaConsumerKeySet: Boolean(row.mpesa_consumer_key_enc),
-  mpesaConsumerSecretSet: Boolean(row.mpesa_consumer_secret_enc),
-  mpesaPasskeySet: Boolean(row.mpesa_passkey_enc),
+
+  mpesaSandboxShortcode: row.mpesa_sandbox_shortcode || null,
+  mpesaSandboxPartyb: row.mpesa_sandbox_partyb || null,
+  mpesaSandboxConsumerKeySet: Boolean(row.mpesa_sandbox_consumer_key_enc),
+  mpesaSandboxConsumerSecretSet: Boolean(row.mpesa_sandbox_consumer_secret_enc),
+  mpesaSandboxPasskeySet: Boolean(row.mpesa_sandbox_passkey_enc),
+
+  mpesaProductionShortcode: row.mpesa_production_shortcode || null,
+  mpesaProductionPartyb: row.mpesa_production_partyb || null,
+  mpesaProductionConsumerKeySet: Boolean(row.mpesa_production_consumer_key_enc),
+  mpesaProductionConsumerSecretSet: Boolean(
+    row.mpesa_production_consumer_secret_enc,
+  ),
+  mpesaProductionPasskeySet: Boolean(row.mpesa_production_passkey_enc),
 });
 
-// Secret fields: only written when the admin typed a new value; empty string
-// means "keep the stored one". Values are encrypted before touching the DB.
 const MPESA_SECRET_FIELDS = {
-  mpesa_consumer_key_enc: "mpesaConsumerKey",
-  mpesa_consumer_secret_enc: "mpesaConsumerSecret",
-  mpesa_passkey_enc: "mpesaPasskey",
+  mpesa_sandbox_consumer_key_enc: "mpesaSandboxConsumerKey",
+  mpesa_sandbox_consumer_secret_enc: "mpesaSandboxConsumerSecret",
+  mpesa_sandbox_passkey_enc: "mpesaSandboxPasskey",
+  mpesa_production_consumer_key_enc: "mpesaProductionConsumerKey",
+  mpesa_production_consumer_secret_enc: "mpesaProductionConsumerSecret",
+  mpesa_production_passkey_enc: "mpesaProductionPasskey",
 };
 
 const loadSettings = async () => {
   const result = await query("SELECT * FROM site_settings WHERE id = true");
   if (result.rowCount > 0) return result.rows[0];
-  const inserted = await query("INSERT INTO site_settings (id) VALUES (true) RETURNING *");
+
+  const inserted = await query(
+    "INSERT INTO site_settings (id) VALUES (true) RETURNING *",
+  );
   return inserted.rows[0];
 };
 
 router.get("/public", async (req, res, next) => {
   try {
     const row = await loadSettings();
+
     const countResult = await query(
       `SELECT COUNT(*)::int AS total_cars
        FROM listings
        WHERE deleted_at IS NULL`
     );
+
     const counts = countResult.rows[0];
+
     res.json({
       ...toApi(row),
       totalCars: counts.total_cars,
@@ -86,8 +104,7 @@ router.get("/public", async (req, res, next) => {
 
 router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
-    const row = await loadSettings();
-    res.json(toAdminApi(row));
+    res.json(toAdminApi(await loadSettings()));
   } catch (error) {
     next(error);
   }
@@ -118,6 +135,23 @@ router.put("/", requireAuth, requireRole("admin"), async (req, res, next) => {
     const updates = [];
     const values = [];
 
+    if (Object.prototype.hasOwnProperty.call(req.body, "mpesaEnvironment")) {
+      const environment = req.body.mpesaEnvironment;
+
+      if (
+        environment !== null &&
+        environment !== "sandbox" &&
+        environment !== "production"
+      ) {
+        return res.status(400).json({
+          error: "mpesaEnvironment must be sandbox, production, or null",
+        });
+      }
+
+      values.push(environment);
+      updates.push(`mpesa_environment = $${values.length}`);
+    }
+
     const fields = {
       company_name: req.body.companyName,
       support_email: req.body.supportEmail,
@@ -146,47 +180,69 @@ router.put("/", requireAuth, requireRole("admin"), async (req, res, next) => {
       crypto_instructions: req.body.cryptoInstructions,
       crypto_network_evm: req.body.cryptoNetworkEvm,
       crypto_wallet_address_evm: req.body.cryptoWalletAddressEvm,
-      mpesa_shortcode: req.body.mpesaShortcode,
-      mpesa_partyb: req.body.mpesaPartyb,
+
+      // Shared by both Daraja environments.
       mpesa_account_reference: req.body.mpesaAccountReference,
       mpesa_transaction_desc: req.body.mpesaTransactionDesc,
+
+      // Sandbox configuration.
+      mpesa_sandbox_shortcode: req.body.mpesaSandboxShortcode,
+      mpesa_sandbox_partyb: req.body.mpesaSandboxPartyb,
+
+      // Production configuration.
+      mpesa_production_shortcode: req.body.mpesaProductionShortcode,
+      mpesa_production_partyb: req.body.mpesaProductionPartyb,
     };
 
-    Object.entries(fields).forEach(([column, value]) => {
-      if (value !== undefined) {
-        values.push(column === "seller_commission_rate" ? (Number.isFinite(value) ? value : 0) : value || null);
-        updates.push(`${column} = $${values.length}`);
-      }
-    });
+    for (const [column, value] of Object.entries(fields)) {
+      if (value === undefined) continue;
+
+      const normalized =
+        column === "seller_commission_rate"
+          ? Number.isFinite(value)
+            ? value
+            : 0
+          : value || null;
+
+      values.push(normalized);
+      updates.push(`${column} = $${values.length}`);
+    }
 
     for (const [column, bodyKey] of Object.entries(MPESA_SECRET_FIELDS)) {
       const value = req.body[bodyKey];
-      if (typeof value === "string" && value.trim()) {
-        const encrypted = encryptSecret(value.trim());
-        if (!encrypted) {
-          return res.status(400).json({
-            error: "Server is missing SETTINGS_ENCRYPTION_KEY — cannot store credentials securely",
-          });
-        }
-        values.push(encrypted);
-        updates.push(`${column} = $${values.length}`);
+
+      // Empty means retain the existing encrypted credential.
+      if (typeof value !== "string" || !value.trim()) continue;
+
+      const encrypted = encryptSecret(value.trim());
+      if (!encrypted) {
+        return res.status(400).json({
+          error:
+            "Server is missing SETTINGS_ENCRYPTION_KEY — cannot store credentials securely",
+        });
       }
+
+      values.push(encrypted);
+      updates.push(`${column} = $${values.length}`);
     }
 
     if (updates.length === 0) {
       return res.status(400).json({ error: "No fields to update" });
     }
 
+    // Ensure the singleton exists before applying updates.
+    await loadSettings();
+
+    values.push(true);
     const result = await query(
       `UPDATE site_settings
        SET ${updates.join(", ")}
-       WHERE id = true
+       WHERE id = $${values.length}
        RETURNING *`,
-      values
+      values,
     );
 
-    const row = result.rowCount > 0 ? result.rows[0] : await loadSettings();
-    res.json(toAdminApi(row));
+    res.json(toAdminApi(result.rows[0]));
   } catch (error) {
     next(error);
   }

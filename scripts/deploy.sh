@@ -43,7 +43,7 @@ echo "Validating production configuration..."
 "${COMPOSE[@]}" config --quiet
 
 echo "Building and deploying API and frontend..."
-"${COMPOSE[@]}" up -d --build api web
+"${COMPOSE[@]}" up -d --build --no-deps api web
 
 echo "Waiting for API health check..."
 healthy=false
