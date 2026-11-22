@@ -677,6 +677,45 @@ const callbackBaseUrl = () => {
   }
 };
 
+router.get(
+  "/mpesa/admin/callback-config",
+  requireAuth,
+  requireRole("admin"),
+  async (req, res, next) => {
+    try {
+      const baseUrl = callbackBaseUrl();
+      const configuredStkUrl = process.env.MPESA_CALLBACK_URL?.trim();
+
+      const stkCallbackUrl = configuredStkUrl ||
+        (baseUrl ? `${baseUrl}/stk/result` : null);
+
+      res.json({
+        configured: Boolean(baseUrl && stkCallbackUrl),
+        baseUrl: baseUrl || null,
+        callbacks: {
+          stk: stkCallbackUrl,
+          c2bConfirmation: baseUrl
+            ? `${baseUrl}/c2b/confirmation`
+            : null,
+          c2bValidation: baseUrl
+            ? `${baseUrl}/c2b/validation`
+            : null,
+          pullResult: baseUrl
+            ? `${baseUrl}/pull/result`
+            : null,
+        },
+        registration: {
+          stk: "sent_with_each_stk_push",
+          c2b: "manual_registration_required",
+          pull: "registered_with_nominated_number",
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 const darajaAdminPost = async (path, body) => {
   const creds = await getMpesaCredentials();
   const accessToken = await getAccessToken(creds);

@@ -19,7 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "@/components/ui/sonner";
-import { RefreshCw, Download, Webhook, Link2 } from "lucide-react";
+import { RefreshCw, Download, Webhook, Link2, Copy } from "lucide-react";
 
 type Props = {
   authHeaders: Record<string, string>;
@@ -45,6 +45,17 @@ type PullResult = {
   fetched?: number;
   newTransactions?: number;
   transactions?: unknown[];
+};
+
+type CallbackConfig = {
+  configured: boolean;
+  baseUrl: string | null;
+  callbacks: {
+    stk: string | null;
+    c2bConfirmation: string | null;
+    c2bValidation: string | null;
+    pullResult: string | null;
+  };
 };
 
 const localDate = (date: Date) => {
@@ -77,6 +88,8 @@ const AdminMpesaOperations = ({ authHeaders }: Props) => {
   const [registeringC2B, setRegisteringC2B] = useState(false);
   const [registeringPull, setRegisteringPull] = useState(false);
   const [queryingPull, setQueryingPull] = useState(false);
+  const [c2bPage, setC2bPage] = useState(1);
+  const c2bPageSize = 10;
 
   const [nominatedNumber, setNominatedNumber] = useState("");
   const [startDate, setStartDate] = useState(today);
@@ -86,6 +99,9 @@ const AdminMpesaOperations = ({ authHeaders }: Props) => {
   const [pullResult, setPullResult] = useState<PullResult | null>(null);
   const [lastProviderResponse, setLastProviderResponse] =
     useState<Record<string, unknown> | null>(null);
+  const [callbackConfig, setCallbackConfig] =
+    useState<CallbackConfig | null>(null);
+  const [loadingCallbacks, setLoadingCallbacks] = useState(false);
 
   const loadC2BTransactions = useCallback(async (quiet = false) => {
     if (quiet) setRefreshing(true);
@@ -122,6 +138,53 @@ const AdminMpesaOperations = ({ authHeaders }: Props) => {
     void loadC2BTransactions();
   }, [loadC2BTransactions]);
 
+  const c2bPageCount = Math.max(
+    1,
+    Math.ceil(transactions.length / c2bPageSize),
+  );
+
+  const paginatedC2BTransactions = transactions.slice(
+    (c2bPage - 1) * c2bPageSize,
+    c2bPage * c2bPageSize,
+  );
+
+  useEffect(() => {
+    setC2bPage((page) => Math.min(page, c2bPageCount));
+  }, [c2bPageCount]);
+
+  const loadCallbackConfig = useCallback(async () => {
+    setLoadingCallbacks(true);
+
+    try {
+      const response = await apiFetch(
+        "/api/payments/mpesa/admin/callback-config",
+        { headers: authHeaders },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Could not load callback configuration.",
+        );
+      }
+
+      setCallbackConfig(data as CallbackConfig);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not load callback configuration.",
+      );
+    } finally {
+      setLoadingCallbacks(false);
+    }
+  }, [authHeaders]);
+
+  useEffect(() => {
+    void loadCallbackConfig();
+  }, [loadCallbackConfig]);
+
   const registerC2BUrls = async () => {
     setRegisteringC2B(true);
     setLastProviderResponse(null);
@@ -144,7 +207,9 @@ const AdminMpesaOperations = ({ authHeaders }: Props) => {
         );
       }
 
-      toast.success("C2B validation and confirmation URLs registered.");
+      toast.success(
+        "Safaricom accepted the C2B URL registration request.",
+      );
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "C2B registration failed.",
@@ -183,9 +248,17 @@ const AdminMpesaOperations = ({ authHeaders }: Props) => {
         );
       }
 
-      toast.success(
-        "Pull registration request submitted. Check the provider response below.",
-      );
+      if (String(data.responseCode) === "1000") {
+        toast.success("Pull registration confirmed by Safaricom.");
+      } else if (String(data.responseCode) === "1001") {
+        toast.info(
+          "Safaricom reports that Pull registration already exists.",
+        );
+      } else {
+        toast.warning(
+          data.responseMessage || "Check the Pull registration response.",
+        );
+      }
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Pull registration failed.",
@@ -274,6 +347,106 @@ const AdminMpesaOperations = ({ authHeaders }: Props) => {
           reconcile transactions received from Safaricom.
         </p>
       </div>
+
+      <Card className="rounded-2xl">
+        <CardHeader className="border-b border-border">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Webhook className="h-5 w-5" />
+                Callback URL Management
+              </CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Public endpoints Safaricom uses to send payment notifications.
+              </p>
+            </div>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void loadCallbackConfig()}
+              disabled={loadingCallbacks}
+            >
+              <RefreshCw
+                className={`mr-2 h-4 w-4 ${
+                  loadingCallbacks ? "animate-spin" : ""
+                }`}
+              />
+              Refresh URLs
+            </Button>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-4 pt-5">
+          {!callbackConfig?.configured ? (
+            <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+              <p className="font-medium text-sm">
+                Callback URLs are not fully configured
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Configure MPESA_CALLBACK_URL and MPESA_CALLBACK_BASE_URL
+                on the backend, then refresh this section.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {[
+                {
+                  label: "STK Push result",
+                  url: callbackConfig.callbacks.stk,
+                  note: "Automatically sent with each STK Push request.",
+                },
+                {
+                  label: "C2B confirmation",
+                  url: callbackConfig.callbacks.c2bConfirmation,
+                  note: "Registered with Safaricom using Register URL.",
+                },
+                {
+                  label: "C2B validation",
+                  url: callbackConfig.callbacks.c2bValidation,
+                  note: "Registered with Safaricom using Register URL.",
+                },
+                {
+                  label: "Pull result",
+                  url: callbackConfig.callbacks.pullResult,
+                  note: "Attached when registering Pull Transactions.",
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="flex flex-col gap-3 rounded-xl border border-border p-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{item.label}</p>
+                    <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
+                      {item.url || "Not configured"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {item.note}
+                    </p>
+                  </div>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0"
+                    disabled={!item.url}
+                    onClick={() => {
+                      if (item.url) {
+                        void navigator.clipboard.writeText(item.url);
+                        toast.success(`${item.label} URL copied.`);
+                      }
+                    }}
+                  >
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy URL
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Card className="rounded-2xl">
@@ -511,7 +684,7 @@ const AdminMpesaOperations = ({ authHeaders }: Props) => {
               </TableHeader>
 
               <TableBody>
-                {transactions.map((transaction) => (
+                {paginatedC2BTransactions.map((transaction) => (
                   <TableRow key={transaction.id}>
                     <TableCell>
                       <p className="font-mono text-xs font-medium">
@@ -567,6 +740,42 @@ const AdminMpesaOperations = ({ authHeaders }: Props) => {
                 )}
               </TableBody>
             </Table>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              Showing{" "}
+              {transactions.length === 0
+                ? 0
+                : (c2bPage - 1) * c2bPageSize + 1}
+              {" – "}
+              {Math.min(c2bPage * c2bPageSize, transactions.length)}
+              {" of "}
+              {transactions.length} records
+            </p>
+
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={c2bPage <= 1}
+                onClick={() => setC2bPage((page) => page - 1)}
+              >
+                Previous
+              </Button>
+
+              <span className="text-sm tabular-nums">
+                {c2bPage} / {c2bPageCount}
+              </span>
+
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={c2bPage >= c2bPageCount}
+                onClick={() => setC2bPage((page) => page + 1)}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

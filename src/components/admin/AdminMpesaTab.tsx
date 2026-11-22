@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/sonner";
 import { RefreshCw, Smartphone } from "lucide-react";
 import AdminMpesaOperations from "@/components/admin/AdminMpesaOperations";
@@ -77,47 +77,171 @@ const getResponseValue = (
   return null;
 };
 
-const getProviderDetails = (transaction: MpesaTransaction) => {
+type ProviderDetails = {
+  responseCode: string | null;
+  description: string | null;
+  stage: "callback" | "reconciliation" | "stk_push" | "unknown";
+};
+
+const getProviderDetails = (
+  transaction: MpesaTransaction,
+): ProviderDetails => {
   const response = transaction.response || {};
 
-  const stkPush =
-    typeof response.stk_push === "object" && response.stk_push !== null
-      ? (response.stk_push as Record<string, unknown>)
-      : response;
+  const getObject = (key: string) => {
+    const value = response[key];
+    return typeof value === "object" && value !== null
+      ? (value as Record<string, unknown>)
+      : {};
+  };
 
-  const callback =
-    typeof response.callback === "object" && response.callback !== null
-      ? (response.callback as Record<string, unknown>)
-      : {};
-  const reconciliation =
-    typeof response.reconciliation === "object" &&
-    response.reconciliation !== null
-      ? (response.reconciliation as Record<string, unknown>)
-      : {};
+  const callback = getObject("callback");
+  const reconciliation = getObject("reconciliation");
+  const stkPush = getObject("stk_push");
+
+  const callbackCode = getResponseValue(callback, [
+    "ResultCode",
+    "resultCode",
+  ]);
+
+  const reconciliationCode = getResponseValue(reconciliation, [
+    "ResultCode",
+    "resultCode",
+  ]);
+
+  const stkCode = getResponseValue(stkPush, [
+    "ResponseCode",
+    "responseCode",
+    "errorCode",
+  ]);
+
+  if (callbackCode !== null) {
+    return {
+      responseCode: callbackCode,
+      description:
+        getResponseValue(callback, ["ResultDesc", "resultDesc"]),
+      stage: "callback",
+    };
+  }
+
+  if (reconciliationCode !== null) {
+    return {
+      responseCode: reconciliationCode,
+      description:
+        getResponseValue(reconciliation, [
+          "ResultDesc",
+          "resultDesc",
+          "ResponseDescription",
+        ]),
+      stage: "reconciliation",
+    };
+  }
+
+  if (stkCode !== null) {
+    return {
+      responseCode: stkCode,
+      description:
+        getResponseValue(stkPush, [
+          "ResponseDescription",
+          "responseDescription",
+          "CustomerMessage",
+          "errorMessage",
+        ]),
+      stage: "stk_push",
+    };
+  }
 
   return {
     responseCode:
-      getResponseValue(stkPush, [
-        "ResponseCode",
-        "responseCode",
-        "errorCode",
-        "ResultCode",
-      ]) ||
-      getResponseValue(callback, ["ResultCode", "resultCode"]) ||
-      getResponseValue(reconciliation, ["ResultCode", "resultCode"]) ||
-      (transaction.result_code != null
+      transaction.result_code != null
         ? String(transaction.result_code)
-        : null),
-    description:
-      getResponseValue(stkPush, [
-        "ResponseDescription",
-        "responseDescription",
-        "errorMessage",
-        "ResultDesc",
-        "resultDesc",
-      ]) ||
-      getResponseValue(callback, ["ResultDesc", "resultDesc"]) ||
-      getResponseValue(reconciliation, ["ResultDesc", "resultDesc"]),
+        : null,
+    description: null,
+    stage: "unknown",
+  };
+};
+
+const getSafaricomExplanation = (
+  code: string | null,
+  stage: ProviderDetails["stage"],
+  providerDescription: string | null,
+) => {
+  if (code === "2029") {
+    return {
+      title: "Unresolved payment outcome",
+      explanation:
+        "Safaricom returned an unresolved reason. The query was accepted, but this response does not confirm whether the customer paid.",
+      action:
+        "Keep the transaction pending. Check again later and wait for the STK callback. Do not manually mark it paid.",
+      severity: "warning" as const,
+    };
+  }
+
+  if (code === "1032") {
+    return {
+      title: "Customer cancelled",
+      explanation: "The customer cancelled the STK request.",
+      action: "Confirm with the customer before initiating another payment prompt.",
+      severity: "destructive" as const,
+    };
+  }
+
+  if (code === "1037") {
+    return {
+      title: "Customer unreachable or request timed out",
+      explanation: "Safaricom reported a timeout while attempting to complete the STK request.",
+      action: "Check the transaction again before retrying. Avoid sending repeated prompts immediately.",
+      severity: "warning" as const,
+    };
+  }
+
+  if (code === "0" && stage === "stk_push") {
+    return {
+      title: "STK request accepted",
+      explanation: "Safaricom accepted the STK Push request. This is not proof of payment.",
+      action: "Wait for the callback or query the Checkout Request ID for the final result.",
+      severity: "success" as const,
+    };
+  }
+
+  if (code === "0" && stage === "callback") {
+    return {
+      title: "Payment successful",
+      explanation: "The STK callback reports a successful payment.",
+      action: "Verify the receipt number and transaction amount in the transaction details.",
+      severity: "success" as const,
+    };
+  }
+
+  if (code === "0" && stage === "reconciliation") {
+    return {
+      title: "Safaricom query reports success",
+      explanation: "The reconciliation response reports result code 0.",
+      action: "Check that the transaction was settled and that the receipt and amount are recorded.",
+      severity: "success" as const,
+    };
+  }
+
+  if (code === null) {
+    return {
+      title: "No provider result code",
+      explanation:
+        providerDescription ||
+        "No Safaricom result code has been recorded for this transaction.",
+      action:
+        "Inspect the stored provider response and try a status query if the transaction is pending.",
+      severity: "secondary" as const,
+    };
+  }
+
+  return {
+    title: `Provider result ${code}`,
+    explanation:
+      providerDescription ||
+      "No verified explanation is available in the local response dictionary.",
+    action:
+      "Use the provider's ResultDesc and raw response for diagnosis. Do not assume an unknown result code means payment success.",
+    severity: "secondary" as const,
   };
 };
 
@@ -142,6 +266,8 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
   const [amount, setAmount] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [transactionsPage, setTransactionsPage] = useState(1);
+  const transactionsPageSize = 10;
   const [selectedTransaction, setSelectedTransaction] =
     useState<MpesaTransaction | null>(null);
 
@@ -213,6 +339,24 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
       return matchesStatus && matchesSearch;
     });
   }, [transactions, search, statusFilter]);
+
+  const transactionsPageCount = Math.max(
+    1,
+    Math.ceil(filteredTransactions.length / transactionsPageSize),
+  );
+
+  const paginatedTransactions = filteredTransactions.slice(
+    (transactionsPage - 1) * transactionsPageSize,
+    transactionsPage * transactionsPageSize,
+  );
+
+  useEffect(() => {
+    setTransactionsPage(1);
+  }, [search, statusFilter]);
+
+  useEffect(() => {
+    setTransactionsPage((page) => Math.min(page, transactionsPageCount));
+  }, [transactionsPageCount]);
 
   const summary = useMemo(
     () => ({
@@ -369,6 +513,14 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
         ))}
       </div>
 
+      <Tabs defaultValue="transactions" className="space-y-5">
+        <TabsList className="grid h-auto w-full grid-cols-3">
+          <TabsTrigger value="transactions">Transactions</TabsTrigger>
+          <TabsTrigger value="stk">STK Push</TabsTrigger>
+          <TabsTrigger value="callbacks">Callbacks & Pull</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="stk" className="space-y-5">
       <Card className="rounded-2xl">
         <CardHeader className="border-b border-border">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -423,6 +575,9 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
         </CardContent>
       </Card>
 
+        </TabsContent>
+
+        <TabsContent value="transactions" className="space-y-5">
       <Card className="rounded-2xl">
         <CardHeader className="border-b border-border">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -486,7 +641,7 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
               </TableHeader>
 
               <TableBody>
-                {filteredTransactions.map((transaction) => {
+                {paginatedTransactions.map((transaction) => {
                   const provider = getProviderDetails(transaction);
 
                   return (
@@ -587,9 +742,44 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
             </Table>
           </div>
 
-          <p className="text-xs text-muted-foreground">
-            Showing {filteredTransactions.length} of {transactions.length} loaded transactions.
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              Showing{" "}
+              {filteredTransactions.length === 0
+                ? 0
+                : (transactionsPage - 1) * transactionsPageSize + 1}
+              {" – "}
+              {Math.min(
+                transactionsPage * transactionsPageSize,
+                filteredTransactions.length,
+              )}{" "}
+              of {filteredTransactions.length}
+            </p>
+
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={transactionsPage <= 1}
+                onClick={() => setTransactionsPage((page) => page - 1)}
+              >
+                Previous
+              </Button>
+
+              <span className="text-sm tabular-nums">
+                {transactionsPage} / {transactionsPageCount}
+              </span>
+
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={transactionsPage >= transactionsPageCount}
+                onClick={() => setTransactionsPage((page) => page + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -683,6 +873,67 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
               </div>
             </div>
 
+            {(() => {
+              const provider = getProviderDetails(selectedTransaction);
+              const explanation = getSafaricomExplanation(
+                provider.responseCode,
+                provider.stage,
+                provider.description,
+              );
+
+              return (
+                <Card className="border-border shadow-none">
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <CardTitle className="text-base">
+                        Safaricom response diagnosis
+                      </CardTitle>
+                      <Badge variant="outline" className="capitalize">
+                        {provider.stage.replace("_", " ")}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-2xl font-semibold">
+                        {provider.responseCode || "--"}
+                      </span>
+                      <Badge
+                        variant={
+                          explanation.severity === "destructive"
+                            ? "destructive"
+                            : explanation.severity === "success"
+                              ? "default"
+                              : "secondary"
+                        }
+                      >
+                        {explanation.title}
+                      </Badge>
+                    </div>
+
+                    <p className="text-sm text-muted-foreground">
+                      {explanation.explanation}
+                    </p>
+
+                    {provider.description && (
+                      <div className="rounded-lg bg-muted p-3">
+                        <p className="text-xs font-medium">Safaricom description</p>
+                        <p className="mt-1 text-sm">{provider.description}</p>
+                      </div>
+                    )}
+
+                    <div>
+                      <p className="text-sm font-medium">Recommended action</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {explanation.action}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
             <div>
               <p className="mb-2 text-sm font-medium">Stored Safaricom response</p>
               <pre className="max-h-[420px] overflow-auto rounded-xl bg-muted p-4 text-xs leading-relaxed">
@@ -693,7 +944,12 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
         </Card>
       )}
 
-      <AdminMpesaOperations authHeaders={authHeaders} />
+        </TabsContent>
+
+        <TabsContent value="callbacks" className="space-y-5">
+          <AdminMpesaOperations authHeaders={authHeaders} />
+        </TabsContent>
+      </Tabs>
     </TabsContent>
   );
 };
