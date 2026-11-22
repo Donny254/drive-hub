@@ -146,7 +146,7 @@ const darajaFetch = async (path, options = {}, baseUrl) => {
   }
 };
 
-const getAccessToken = async (creds) => {
+const getAccessToken = async (creds, { forceRefresh = false } = {}) => {
   const { consumerKey, consumerSecret, environment, baseUrl } = creds;
 
   if (!consumerKey || !consumerSecret) {
@@ -161,9 +161,9 @@ const getAccessToken = async (creds) => {
     .digest("hex");
 
   const cached = tokenCache.get(cacheKey);
-  if (cached && cached.expiresAtMs > Date.now()) return cached.token;
+  if (!forceRefresh && cached && cached.expiresAtMs > Date.now()) return cached.token;
 
-  if (tokenInflight.has(cacheKey)) return tokenInflight.get(cacheKey);
+  if (!forceRefresh && tokenInflight.has(cacheKey)) return tokenInflight.get(cacheKey);
 
   const basicAuth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64");
 
@@ -629,6 +629,76 @@ const darajaAdminPost = async (path, body) => {
 
   return response.json().catch(() => ({}));
 };
+
+router.post("/mpesa/test-connection", requireAuth, requireRole("admin"), async (req, res) => {
+  let environment = null;
+
+  try {
+    const requestedEnvironment = req.body?.environment;
+
+    if (
+      requestedEnvironment !== undefined &&
+      requestedEnvironment !== null &&
+      !["sandbox", "production"].includes(requestedEnvironment)
+    ) {
+      return res.status(400).json({ error: "Invalid M-Pesa environment." });
+    }
+
+    const creds = await getMpesaCredentials({
+      environment: requestedEnvironment || undefined,
+    });
+    environment = creds.environment;
+
+    // Use non-empty unsaved credentials from the selected environment.
+    // Blank fields deliberately fall back to the currently saved credentials.
+    const overrides = req.body?.credentials?.[environment] || {};
+    const consumerKey =
+      typeof overrides.consumerKey === "string" && overrides.consumerKey.trim()
+        ? overrides.consumerKey.trim()
+        : creds.consumerKey;
+    const consumerSecret =
+      typeof overrides.consumerSecret === "string" && overrides.consumerSecret.trim()
+        ? overrides.consumerSecret.trim()
+        : creds.consumerSecret;
+
+    if (!consumerKey || !consumerSecret) {
+      return res.status(400).json({
+        success: false,
+        environment,
+        error: `The ${environment} consumer key and consumer secret are not configured.`,
+      });
+    }
+
+    await getAccessToken(
+      { ...creds, consumerKey, consumerSecret },
+      { forceRefresh: true }
+    );
+
+    return res.json({
+      success: true,
+      environment,
+      message: `Daraja OAuth authentication succeeded for ${environment}.`,
+    });
+  } catch (error) {
+    // Never return provider response bodies, tokens, credentials, or raw errors.
+    const statusMatch = String(error?.message || "").match(/\bHTTP\s+(\d{3})\b/i);
+    const providerStatus = statusMatch ? Number(statusMatch[1]) : null;
+
+    if (providerStatus) {
+      return res.status(502).json({
+        success: false,
+        environment,
+        error: `Daraja rejected the OAuth request (HTTP ${providerStatus}). Check the credentials and selected environment.`,
+      });
+    }
+
+    return res.status(502).json({
+      success: false,
+      environment,
+      error: "Could not complete the Daraja OAuth request. Check network access and try again.",
+    });
+  }
+});
 
 router.post("/mpesa/register-url", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {

@@ -249,17 +249,28 @@ export type SiteSettings = {
   cryptoInstructions: string | null;
   cryptoNetworkEvm: string | null;
   cryptoWalletAddressEvm: string | null;
-  mpesaShortcode?: string | null;
-  mpesaPartyb?: string | null;
+  // null means use the server's MPESA_ENV setting.
+  mpesaEnvironment?: "sandbox" | "production" | null;
   mpesaAccountReference?: string | null;
   mpesaTransactionDesc?: string | null;
-  // Secrets are never returned by the API — only whether one is stored.
-  mpesaConsumerKeySet?: boolean;
-  mpesaConsumerSecretSet?: boolean;
-  mpesaPasskeySet?: boolean;
-  mpesaConsumerKey?: string | null;
-  mpesaConsumerSecret?: string | null;
-  mpesaPasskey?: string | null;
+
+  mpesaSandboxShortcode?: string | null;
+  mpesaSandboxPartyb?: string | null;
+  mpesaSandboxConsumerKey?: string;
+  mpesaSandboxConsumerSecret?: string;
+  mpesaSandboxPasskey?: string;
+  mpesaSandboxConsumerKeySet?: boolean;
+  mpesaSandboxConsumerSecretSet?: boolean;
+  mpesaSandboxPasskeySet?: boolean;
+
+  mpesaProductionShortcode?: string | null;
+  mpesaProductionPartyb?: string | null;
+  mpesaProductionConsumerKey?: string;
+  mpesaProductionConsumerSecret?: string;
+  mpesaProductionPasskey?: string;
+  mpesaProductionConsumerKeySet?: boolean;
+  mpesaProductionConsumerSecretSet?: boolean;
+  mpesaProductionPasskeySet?: boolean;
 };
 
 export type AdminAnalytics = {

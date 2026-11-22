@@ -621,6 +621,37 @@ export const useAdminActions = ({
     }
   }, [authHeaders, notifyError, notifySuccess, setSettings, settings]);
 
+  const testMpesaConnection = useCallback(async (currentSettings: SiteSettings) => {
+    const response = await apiFetch("/api/payments/mpesa/test-connection", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        environment: currentSettings.mpesaEnvironment ?? null,
+        credentials: {
+          sandbox: {
+            consumerKey: currentSettings.mpesaSandboxConsumerKey ?? "",
+            consumerSecret: currentSettings.mpesaSandboxConsumerSecret ?? "",
+          },
+          production: {
+            consumerKey: currentSettings.mpesaProductionConsumerKey ?? "",
+            consumerSecret: currentSettings.mpesaProductionConsumerSecret ?? "",
+          },
+        },
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || "M-Pesa connection test failed.");
+    }
+
+    return {
+      environment: data.environment as string,
+      message: data.message as string,
+    };
+  }, [authHeaders]);
+
   const exportFinanceReport = useCallback((orders: Order[]) => {
     const rows = orders.map((order) => ({
       orderId: order.id,
@@ -785,5 +816,6 @@ export const useAdminActions = ({
     saveServiceBooking,
     saveSettings,
     saveUser,
+    testMpesaConnection,
   };
 };
