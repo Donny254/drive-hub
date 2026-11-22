@@ -413,6 +413,7 @@ const Admin = () => {
     saveServiceBooking,
     saveSettings,
     saveUser,
+    testMpesaConnection,
   } = useAdminActions({
     authHeaders,
     fetchAll,
@@ -942,6 +943,7 @@ const Admin = () => {
                   settings={settings}
                   setSettings={setSettings}
                   saveSettings={saveSettings}
+                  testMpesaConnection={testMpesaConnection}
                 />
                 </Tabs>
                 <AdminDeleteConfirmDialog

@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import type { SiteSettings } from "@/components/admin/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,9 +11,46 @@ type AdminSettingsTabProps = {
   settings: SiteSettings | null;
   setSettings: Dispatch<SetStateAction<SiteSettings | null>>;
   saveSettings: () => Promise<void> | void;
+  testMpesaConnection: (settings: SiteSettings) => Promise<{
+    environment: string;
+    message: string;
+  }>;
 };
 
-const AdminSettingsTab = ({ settings, setSettings, saveSettings }: AdminSettingsTabProps) => {
+const AdminSettingsTab = ({
+  settings,
+  setSettings,
+  saveSettings,
+  testMpesaConnection,
+}: AdminSettingsTabProps) => {
+  const [testingMpesa, setTestingMpesa] = useState(false);
+  const [mpesaTestResult, setMpesaTestResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+
+  const handleTestMpesaConnection = async () => {
+    if (!settings || testingMpesa) return;
+
+    setTestingMpesa(true);
+    setMpesaTestResult(null);
+
+    try {
+      const result = await testMpesaConnection(settings);
+      setMpesaTestResult({
+        success: true,
+        message: result.message,
+      });
+    } catch (error) {
+      setMpesaTestResult({
+        success: false,
+        message: error instanceof Error ? error.message : "M-Pesa connection test failed.",
+      });
+    } finally {
+      setTestingMpesa(false);
+    }
+  };
+
   const homepageStats = [
     { key: "trustedDealers", label: "Trusted Dealers" },
     { key: "countriesEstablished", label: "Countries Established" },
@@ -469,10 +506,34 @@ const AdminSettingsTab = ({ settings, setSettings, saveSettings }: AdminSettings
                 </div>
               </div>            </>
           )}
-          <div className="flex justify-end">
-            <Button variant="hero" onClick={saveSettings} disabled={!settings}>
-              Save Settings
-            </Button>
+          <div className="flex flex-col gap-3">
+            {mpesaTestResult && (
+              <div
+                role="status"
+                className={`rounded-lg border p-3 text-sm ${
+                  mpesaTestResult.success
+                    ? "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300"
+                    : "border-destructive/30 bg-destructive/10 text-destructive"
+                }`}
+              >
+                {mpesaTestResult.message}
+              </div>
+            )}
+
+            <div className="flex flex-wrap justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleTestMpesaConnection}
+                disabled={!settings || testingMpesa}
+              >
+                {testingMpesa ? "Testing connection..." : "Test M-Pesa Connection"}
+              </Button>
+
+              <Button variant="hero" onClick={saveSettings} disabled={!settings}>
+                Save Settings
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
