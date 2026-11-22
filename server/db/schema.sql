@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS site_settings (
   mpesa_partyb text,
   mpesa_account_reference text,
   mpesa_transaction_desc text,
+  mpesa_callback_domain text,
   -- Daraja secrets, AES-256-GCM encrypted via utils/secrets.js
   mpesa_consumer_key_enc text,
   mpesa_consumer_secret_enc text,
@@ -74,6 +75,9 @@ CREATE TABLE IF NOT EXISTS site_settings (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE site_settings
+  ADD COLUMN IF NOT EXISTS mpesa_callback_domain text;
 
 CREATE TABLE IF NOT EXISTS listings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
