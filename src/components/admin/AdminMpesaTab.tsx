@@ -16,6 +16,7 @@ import {
 import { TabsContent } from "@/components/ui/tabs";
 import { toast } from "@/components/ui/sonner";
 import { RefreshCw, Smartphone } from "lucide-react";
+import AdminMpesaOperations from "@/components/admin/AdminMpesaOperations";
 
 type MpesaTransaction = {
   id: string;
@@ -78,6 +79,12 @@ const getResponseValue = (
 
 const getProviderDetails = (transaction: MpesaTransaction) => {
   const response = transaction.response || {};
+
+  const stkPush =
+    typeof response.stk_push === "object" && response.stk_push !== null
+      ? (response.stk_push as Record<string, unknown>)
+      : response;
+
   const callback =
     typeof response.callback === "object" && response.callback !== null
       ? (response.callback as Record<string, unknown>)
@@ -90,12 +97,19 @@ const getProviderDetails = (transaction: MpesaTransaction) => {
 
   return {
     responseCode:
-      getResponseValue(response, ["ResponseCode", "responseCode", "errorCode"]) ||
+      getResponseValue(stkPush, [
+        "ResponseCode",
+        "responseCode",
+        "errorCode",
+        "ResultCode",
+      ]) ||
       getResponseValue(callback, ["ResultCode", "resultCode"]) ||
       getResponseValue(reconciliation, ["ResultCode", "resultCode"]) ||
-      (transaction.result_code != null ? String(transaction.result_code) : null),
+      (transaction.result_code != null
+        ? String(transaction.result_code)
+        : null),
     description:
-      getResponseValue(response, [
+      getResponseValue(stkPush, [
         "ResponseDescription",
         "responseDescription",
         "errorMessage",
@@ -121,6 +135,9 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [queryingTransactionId, setQueryingTransactionId] = useState<string | null>(
+    null,
+  );
   const [phoneNumber, setPhoneNumber] = useState("");
   const [amount, setAmount] = useState("");
   const [search, setSearch] = useState("");
@@ -147,7 +164,19 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
         throw new Error(data.error || data.message || "Could not load M-Pesa transactions.");
       }
 
-      setTransactions(Array.isArray(data.transactions) ? data.transactions : []);
+      const loadedTransactions = Array.isArray(data.transactions)
+        ? data.transactions
+        : [];
+
+      setTransactions(loadedTransactions);
+
+      setSelectedTransaction((current) => {
+        if (!current) return null;
+
+        return (
+          loadedTransactions.find((item) => item.id === current.id) || current
+        );
+      });
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "Could not load M-Pesa transactions.",
@@ -256,6 +285,67 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
       );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const queryStkStatus = async (transaction: MpesaTransaction) => {
+    if (!transaction.checkout_request_id) {
+      toast.error("This transaction has no Checkout Request ID.");
+      return;
+    }
+
+    if (transaction.status !== "pending") {
+      toast.info(`This transaction is already ${transaction.status}.`);
+      return;
+    }
+
+    setQueryingTransactionId(transaction.id);
+
+    try {
+      const response = await apiFetch(
+        `/api/payments/mpesa/admin/transactions/${encodeURIComponent(transaction.id)}/query`,
+        {
+          method: "POST",
+          headers: authHeaders,
+        },
+      );
+
+      const data = (await response.json().catch(() => ({}))) as ApiResult & {
+        status?: string;
+        resultCode?: string | number | null;
+        queried?: boolean;
+      };
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || data.message || "Could not query Safaricom for this transaction.",
+        );
+      }
+
+      if (data.transaction) {
+        setSelectedTransaction(data.transaction);
+      }
+
+      await loadTransactions(true);
+
+      if (data.status === "paid") {
+        toast.success("Safaricom confirmed the payment as paid.");
+      } else if (data.status === "failed") {
+        toast.error("Safaricom confirmed that the payment failed.");
+      } else {
+        toast.info(
+          data.message ||
+            "No final result yet. The transaction remains pending.",
+        );
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "STK Query failed.",
+      );
+    } finally {
+      setQueryingTransactionId(null);
     }
   };
 
@@ -436,14 +526,37 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
                         </Badge>
                       </TableCell>
 
-                      <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setSelectedTransaction(transaction)}
-                        >
-                          Inspect
-                        </Button>
+                      <TableCell>
+                        <div className="flex justify-end gap-2">
+                          {transaction.status === "pending" &&
+                            transaction.checkout_request_id && (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={queryingTransactionId !== null}
+                                onClick={() => void queryStkStatus(transaction)}
+                              >
+                                <RefreshCw
+                                  className={`mr-2 h-3.5 w-3.5 ${
+                                    queryingTransactionId === transaction.id
+                                      ? "animate-spin"
+                                      : ""
+                                  }`}
+                                />
+                                {queryingTransactionId === transaction.id
+                                  ? "Querying..."
+                                  : "Query Status"}
+                              </Button>
+                            )}
+
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setSelectedTransaction(transaction)}
+                          >
+                            Inspect
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -501,6 +614,35 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
           </CardHeader>
 
           <CardContent className="space-y-4 pt-5">
+            {selectedTransaction.status === "pending" &&
+              selectedTransaction.checkout_request_id && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-4">
+                  <div>
+                    <p className="text-sm font-medium">Check payment with Safaricom</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Query the Checkout Request ID to check whether the customer completed
+                      or cancelled the payment.
+                    </p>
+                  </div>
+
+                  <Button
+                    onClick={() => void queryStkStatus(selectedTransaction)}
+                    disabled={queryingTransactionId !== null}
+                  >
+                    <RefreshCw
+                      className={`mr-2 h-4 w-4 ${
+                        queryingTransactionId === selectedTransaction.id
+                          ? "animate-spin"
+                          : ""
+                      }`}
+                    />
+                    {queryingTransactionId === selectedTransaction.id
+                      ? "Querying Safaricom..."
+                      : "Query STK Status"}
+                  </Button>
+                </div>
+              )}
+
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>
                 <p className="text-xs text-muted-foreground">Phone</p>
@@ -550,6 +692,8 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
           </CardContent>
         </Card>
       )}
+
+      <AdminMpesaOperations authHeaders={authHeaders} />
     </TabsContent>
   );
 };
