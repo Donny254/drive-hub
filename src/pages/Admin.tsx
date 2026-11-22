@@ -7,6 +7,7 @@ import AdminBookingsTab from "@/components/admin/AdminBookingsTab";
 import AdminDeleteConfirmDialog from "@/components/admin/AdminDeleteConfirmDialog";
 import AdminEventRegistrationsTab from "@/components/admin/AdminEventRegistrationsTab";
 import AdminCryptoPaymentsTab from "@/components/admin/AdminCryptoPaymentsTab";
+import AdminMpesaTab from "@/components/admin/AdminMpesaTab";
 import AdminOverviewTab from "@/components/admin/AdminOverviewTab";
 import AdminInquiriesTab from "@/components/admin/AdminInquiriesTab";
 import AdminOrdersTab from "@/components/admin/AdminOrdersTab";
@@ -74,7 +75,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   LayoutDashboard, Car, CalendarCheck, Coins, Banknote, Wrench,
   Ticket, MessageSquare, Settings2, CalendarDays, Package, FileText,
-  ShoppingBag, Users, Settings, Megaphone, Clock, AlertTriangle,
+  ShoppingBag, Users, Settings, Megaphone, Clock, AlertTriangle, Smartphone,
 } from "lucide-react";
 
 const formatMoney = (cents?: number | null) => {
@@ -100,6 +101,7 @@ const ADMIN_TABS = [
   "orders",
   "bookings",
   "crypto-payments",
+  "mpesa",
   "payouts",
   "service-bookings",
   "event-registrations",
@@ -580,6 +582,7 @@ const Admin = () => {
         { value: "orders",               label: "Orders",          icon: ShoppingBag },
         { value: "bookings",             label: "Bookings",        icon: CalendarCheck },
         { value: "crypto-payments",      label: "Crypto Payments", icon: Coins },
+        { value: "mpesa",                label: "M-Pesa",          icon: Smartphone },
         { value: "payouts",              label: "Payouts",         icon: Banknote },
         { value: "service-bookings",     label: "Svc Bookings",    icon: Wrench },
         { value: "event-registrations",  label: "Event Regs",      icon: Ticket },
@@ -844,6 +847,8 @@ const Admin = () => {
                   formatMoney={formatMoney}
                   statusVariant={statusVariant}
                 />
+
+                <AdminMpesaTab authHeaders={authHeaders} />
 
                 <AdminPayoutsTab
                   payouts={payouts}

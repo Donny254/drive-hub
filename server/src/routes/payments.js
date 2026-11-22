@@ -292,23 +292,31 @@ const sendStkPush = async ({ phoneNumber, amount, accountReference, transactionD
 };
 
 const recordStkResponse = async (transactionId, responseData) => {
-  const responseCode = responseData.ResponseCode ?? responseData.responseCode;
-  const status = responseCode === "0" ? "pending" : "failed";
+  const responseCode =
+    responseData?.ResponseCode ?? responseData?.responseCode;
+
+  const status =
+    responseCode != null && String(responseCode) === "0"
+      ? "pending"
+      : "failed";
+
   await query(
     `UPDATE mpesa_transactions
      SET checkout_request_id = $1,
          merchant_request_id = $2,
-         response = $3,
+         response = COALESCE(response, '{}'::jsonb)
+           || jsonb_build_object('stk_push', $3::jsonb),
          status = $4
      WHERE id = $5`,
     [
-      responseData.CheckoutRequestID || null,
-      responseData.MerchantRequestID || null,
-      responseData,
+      responseData?.CheckoutRequestID || null,
+      responseData?.MerchantRequestID || null,
+      JSON.stringify(responseData || {}),
       status,
       transactionId,
     ]
   );
+
   return status;
 };
 
@@ -341,15 +349,17 @@ export const queryCheckoutStatus = async (checkoutRequestId, environment = null)
   );
 
   const data = await response.json().catch(() => ({}));
-  if (data.ResultCode == null) return null;
-  const resultCode = String(data.ResultCode);
+  const resultCode =
+    data.ResultCode != null ? String(data.ResultCode) : null;
+
   return {
     status:
       resultCode === "0"
         ? "paid"
-        : FINAL_FAILED_RESULT_CODES.has(resultCode)
+        : resultCode != null && FINAL_FAILED_RESULT_CODES.has(resultCode)
           ? "failed"
           : null,
+    resultCode,
     raw: data,
     ...parseCallbackItems(data),
   };
@@ -358,19 +368,27 @@ export const queryCheckoutStatus = async (checkoutRequestId, environment = null)
 // Applies a final result to a pending transaction exactly once (the
 // `status = 'pending'` guard makes duplicate callbacks / poll races a no-op)
 // and cascades to the order/booking/registration it paid for.
-export const settleMpesaTransaction = async ({ checkoutRequestId, status, metadata = {}, rawPayload }) => {
+export const settleMpesaTransaction = async ({
+  checkoutRequestId,
+  status,
+  metadata = {},
+  rawPayload,
+  source = "callback",
+}) => {
   return withTransaction(async (client) => {
     const txResult = await client.query(
       `UPDATE mpesa_transactions
        SET status = $1,
-           response = $2,
-           result_code = $3,
-           mpesa_receipt_number = COALESCE($4, mpesa_receipt_number)
-       WHERE checkout_request_id = $5 AND status = 'pending'
+           response = COALESCE(response, '{}'::jsonb)
+             || jsonb_build_object($2::text, $3::jsonb),
+           result_code = $4,
+           mpesa_receipt_number = COALESCE($5, mpesa_receipt_number)
+       WHERE checkout_request_id = $6 AND status = 'pending'
        RETURNING order_id, booking_id, event_registration_id`,
       [
         status,
-        rawPayload,
+        source,
+        JSON.stringify(rawPayload || {}),
         rawPayload?.ResultCode != null ? String(rawPayload.ResultCode) : null,
         metadata.mpesaReceiptNumber || null,
         checkoutRequestId,
@@ -474,23 +492,45 @@ export const settleMpesaTransaction = async ({ checkoutRequestId, status, metada
 
 // Verifies the paid amount before settling; on mismatch leaves the
 // transaction pending for manual admin review instead of auto-fulfilling.
-const finalizeTx = async (txRow, result) => {
+const finalizeTx = async (txRow, result, source = "callback") => {
   const expectedKes = Math.round(Number(txRow.amount_cents || 0) / 100);
-  if (result.status === "paid" && result.amount != null && Number(result.amount) !== expectedKes) {
+
+  if (
+    result.status === "paid" &&
+    result.amount != null &&
+    Number(result.amount) !== expectedKes
+  ) {
     console.warn(
       `M-Pesa amount mismatch for tx ${txRow.id}: expected KES ${expectedKes}, callback reports KES ${result.amount}. Left pending for review.`
     );
-    await query(`UPDATE mpesa_transactions SET response = $1 WHERE id = $2`, [
-      result.raw,
-      txRow.id,
-    ]);
+
+    await query(
+      `UPDATE mpesa_transactions
+       SET response = COALESCE(response, '{}'::jsonb)
+         || jsonb_build_object($1::text, $2::jsonb),
+           result_code = COALESCE($3, result_code)
+       WHERE id = $4`,
+      [
+        source,
+        JSON.stringify(result.raw || {}),
+        result.resultCode != null
+          ? String(result.resultCode)
+          : result.raw?.ResultCode != null
+            ? String(result.raw.ResultCode)
+            : null,
+        txRow.id,
+      ]
+    );
+
     return;
   }
+
   await settleMpesaTransaction({
     checkoutRequestId: txRow.checkout_request_id,
     status: result.status,
     metadata: result,
     rawPayload: result.raw,
+    source,
   });
 };
 
@@ -508,7 +548,7 @@ const reconcilePendingTransaction = async (transaction) => {
       transaction.mpesa_environment || null
     );
     if (!result?.status) return transaction;
-    await finalizeTx(transaction, result);
+    await finalizeTx(transaction, result, "reconciliation");
     const refreshed = await query("SELECT * FROM mpesa_transactions WHERE id = $1", [
       transaction.id,
     ]);
@@ -601,13 +641,40 @@ const recordC2bTransactions = async (rows, source) => {
 };
 
 // Base URL for webhook registration: MPESA_CALLBACK_BASE_URL if set, else
-// derived from MPESA_CALLBACK_URL by stripping its path.
+// derived from the public /stk/result callback URL.
 const callbackBaseUrl = () => {
-  if (process.env.MPESA_CALLBACK_BASE_URL) {
-    return process.env.MPESA_CALLBACK_BASE_URL.replace(/\/$/, "");
+  const configuredBase = process.env.MPESA_CALLBACK_BASE_URL?.trim();
+
+  if (configuredBase) {
+    return configuredBase.replace(/\/+$/, "");
   }
-  const url = process.env.MPESA_CALLBACK_URL || "";
-  return url.replace(/\/[^/]*$/, "");
+
+  const callbackUrl = process.env.MPESA_CALLBACK_URL?.trim();
+
+  if (!callbackUrl) {
+    return "";
+  }
+
+  try {
+    const url = new URL(callbackUrl);
+
+    if (url.protocol !== "https:") {
+      return "";
+    }
+
+    if (url.pathname.endsWith("/stk/result")) {
+      url.pathname = url.pathname.slice(0, -"/stk/result".length);
+    } else {
+      return "";
+    }
+
+    url.search = "";
+    url.hash = "";
+
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return "";
+  }
 };
 
 const darajaAdminPost = async (path, body) => {
@@ -734,26 +801,69 @@ router.post("/mpesa/register-url", requireAuth, requireRole("admin"), async (req
 router.post("/mpesa/pull/register", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const creds = await getMpesaCredentials();
+
     if (!creds.shortcode) {
-      return res.status(400).json({ error: "M-Pesa shortcode not configured" });
+      return res.status(400).json({
+        error: "M-Pesa shortcode not configured",
+      });
     }
+
     const nominatedNumber = normalizePhone(req.body.nominatedNumber);
+
     if (!/^254\d{9}$/.test(nominatedNumber)) {
-      return res.status(400).json({ error: "nominatedNumber must be a valid Kenyan mobile number" });
+      return res.status(400).json({
+        error: "nominatedNumber must be a valid Kenyan mobile number",
+      });
     }
+
     const base = callbackBaseUrl();
-    if (!base || !/^https:\/\//.test(base)) {
-      return res.status(400).json({ error: "Set MPESA_CALLBACK_BASE_URL (https) to register pull callbacks" });
+
+    if (!base || !/^https:\/\//i.test(base)) {
+      return res.status(400).json({
+        error: "Set MPESA_CALLBACK_BASE_URL (https) to register pull callbacks",
+      });
     }
 
-    const responseData = await darajaAdminPost("/pulltransactions/v1/register", {
-      ShortCode: creds.shortcode,
-      RequestType: "Pull",
-      NominatedNumber: nominatedNumber,
-      CallBackURL: `${base}/pull/result`,
-    });
+    const responseData = await darajaAdminPost(
+      "/pulltransactions/v1/register",
+      {
+        ShortCode: creds.shortcode,
+        RequestType: "Pull",
+        NominatedNumber: nominatedNumber,
+        CallBackURL: `${base}/pull/result`,
+      }
+    );
 
-    res.json({ ok: true, response: responseData });
+    const responseCode = String(
+      responseData?.ResponseStatus ??
+      responseData?.["Response Status"] ??
+      responseData?.ResponseCode ??
+      ""
+    );
+
+    const responseMessage =
+      responseData?.ResponseDescription ??
+      responseData?.["Response Description"] ??
+      responseData?.ResponseMessage ??
+      responseData?.errorMessage ??
+      null;
+
+    // 1000 = registered; 1001 = already registered.
+    if (!["1000", "1001"].includes(responseCode)) {
+      return res.status(502).json({
+        error: responseMessage || "Safaricom did not confirm Pull registration",
+        responseCode: responseCode || null,
+        response: responseData,
+      });
+    }
+
+    res.json({
+      ok: true,
+      alreadyRegistered: responseCode === "1001",
+      responseCode,
+      responseMessage,
+      response: responseData,
+    });
   } catch (error) {
     next(error);
   }
@@ -762,33 +872,105 @@ router.post("/mpesa/pull/register", requireAuth, requireRole("admin"), async (re
 router.post("/mpesa/pull/query", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
     const creds = await getMpesaCredentials();
+
     if (!creds.shortcode) {
-      return res.status(400).json({ error: "M-Pesa shortcode not configured" });
+      return res.status(400).json({
+        error: "M-Pesa shortcode not configured",
+      });
     }
-    const startDate = req.body.startDate;
-    const endDate = req.body.endDate || startDate;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(startDate || ""))) {
-      return res.status(400).json({ error: "startDate (YYYY-MM-DD) is required" });
+
+    const startDate = String(req.body.startDate || "");
+    const endDate = String(req.body.endDate || startDate);
+
+    const isValidDate = (value) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return false;
+      }
+
+      const [year, month, day] = value.split("-").map(Number);
+      const parsed = new Date(Date.UTC(year, month - 1, day));
+
+      return (
+        parsed.getUTCFullYear() === year &&
+        parsed.getUTCMonth() === month - 1 &&
+        parsed.getUTCDate() === day
+      );
+    };
+
+    if (!isValidDate(startDate) || !isValidDate(endDate)) {
+      return res.status(400).json({
+        error: "Both startDate and endDate must be valid dates in YYYY-MM-DD format",
+      });
+    }
+
+    const start = new Date(`${startDate}T00:00:00.000Z`);
+    const end = new Date(`${endDate}T23:59:59.000Z`);
+
+    if (end < start) {
+      return res.status(400).json({
+        error: "endDate cannot be earlier than startDate",
+      });
+    }
+
+    const rangeHours = (end.getTime() - start.getTime()) / 3_600_000;
+
+    if (rangeHours > 48) {
+      return res.status(400).json({
+        error: "Pull Transactions supports a maximum query window of 48 hours",
+      });
+    }
+
+    const rawOffset = req.body.offsetValue ?? "0";
+    const offsetValue = String(rawOffset);
+
+    if (!/^\d+$/.test(offsetValue)) {
+      return res.status(400).json({
+        error: "offsetValue must be a non-negative integer",
+      });
     }
 
     const data = await darajaAdminPost("/pulltransactions/v1/query", {
       ShortCode: creds.shortcode,
-      StartDate: startDate,
-      EndDate: endDate,
-      OffSetValue: req.body.offsetValue || "0",
+      StartDate: `${startDate} 00:00:00`,
+      EndDate: `${endDate} 23:59:59`,
+      OffSetValue: offsetValue,
     });
 
-    // Pull defines its own codes: 1000 success, 1001 no records.
-    const responseCode = String(data.ResponseCode ?? "");
-    const rows = parsePullRows(data.Response);
-    const stored = rows.length > 0 ? await recordC2bTransactions(rows, "pull") : 0;
+    const responseCode = String(
+      data?.ResponseCode ??
+      data?.ResponseStatus ??
+      data?.["Response Status"] ??
+      ""
+    );
+
+    const responseMessage =
+      data?.ResponseMessage ??
+      data?.["Response Message"] ??
+      data?.ResponseDescription ??
+      data?.["Response Description"] ??
+      null;
+
+    // 1000 = transactions fetched; 1001 = no transactions in this period.
+    if (!["1000", "1001"].includes(responseCode)) {
+      return res.status(502).json({
+        error: responseMessage || "Safaricom rejected the Pull Transactions query",
+        responseCode: responseCode || null,
+        response: data,
+      });
+    }
+
+    const rows = parsePullRows(data?.Response ?? data?.Transaction ?? []);
+    const stored = rows.length > 0
+      ? await recordC2bTransactions(rows, "pull")
+      : 0;
 
     res.json({
       responseCode,
-      responseMessage: data.ResponseMessage || data["Response Message"] || null,
+      responseMessage,
       fetched: rows.length,
       newTransactions: stored,
       transactions: rows,
+      providerResponse: data,
     });
   } catch (error) {
     next(error);
@@ -821,6 +1003,163 @@ router.get("/mpesa/c2b-transactions", requireAuth, requireRole("admin"), async (
     next(error);
   }
 });
+
+// Admin: list STK transactions for monitoring and troubleshooting.
+router.get(
+  "/mpesa/admin/transactions",
+  requireAuth,
+  requireRole("admin"),
+  async (req, res, next) => {
+    try {
+      const requestedLimit = Number.parseInt(req.query.limit, 10);
+      const limit = Number.isInteger(requestedLimit)
+        ? Math.min(Math.max(requestedLimit, 1), 500)
+        : 100;
+
+      const result = await query(
+        `SELECT
+           id,
+           phone_number,
+           amount_cents,
+           checkout_request_id,
+           merchant_request_id,
+           status,
+           mpesa_environment,
+           result_code,
+           mpesa_receipt_number,
+           response,
+           created_at,
+           updated_at,
+           order_id,
+           booking_id,
+           event_registration_id
+         FROM mpesa_transactions
+         ORDER BY created_at DESC
+         LIMIT $1`,
+        [limit]
+      );
+
+      res.json({
+        transactions: result.rows,
+        count: result.rowCount,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// Admin: initiate a standalone STK Push for diagnostics or manual collection.
+// This does not create an order, booking, or event registration.
+router.post(
+  "/mpesa/admin/stk-push",
+  requireAuth,
+  requireRole("admin"),
+  async (req, res, next) => {
+    let transactionId = null;
+
+    try {
+      const phoneNumber = normalizePhone(req.body?.phoneNumber);
+      const amount = Number(req.body?.amount);
+
+      if (!/^254\d{9}$/.test(phoneNumber)) {
+        return res.status(400).json({
+          error: "Enter a valid Kenyan phone number.",
+        });
+      }
+
+      if (!Number.isSafeInteger(amount) || amount < 1) {
+        return res.status(400).json({
+          error: "Amount must be a positive whole number in KES.",
+        });
+      }
+
+      const creds = await getMpesaCredentials();
+
+      // Record the attempt before contacting Daraja. This ensures failed
+      // network requests are also visible in the admin transaction history.
+      const inserted = await query(
+        `INSERT INTO mpesa_transactions (
+           phone_number,
+           amount_cents,
+           status,
+           mpesa_environment
+         )
+         VALUES ($1, $2, 'pending', $3)
+         RETURNING id`,
+        [phoneNumber, amount * 100, creds.environment]
+      );
+
+      transactionId = inserted.rows[0].id;
+
+      try {
+        const responseData = await sendStkPush({
+          phoneNumber,
+          amount,
+          creds,
+          accountReference: "ADMIN TEST",
+          transactionDesc: "Admin STK test",
+        });
+
+        const status = await recordStkResponse(
+          transactionId,
+          responseData
+        );
+
+        const saved = await query(
+          `SELECT *
+           FROM mpesa_transactions
+           WHERE id = $1`,
+          [transactionId]
+        );
+
+        return res.status(status === "failed" ? 502 : 200).json({
+          transaction: saved.rows[0],
+          response: responseData,
+          error:
+            status === "failed"
+              ? responseData.ResponseDescription ||
+                responseData.errorMessage ||
+                "Safaricom rejected the STK Push request."
+              : null,
+        });
+      } catch (providerError) {
+        const safeMessage = String(
+          providerError?.message || "STK Push request failed."
+        ).slice(0, 1000);
+
+        await query(
+          `UPDATE mpesa_transactions
+           SET status = 'failed',
+               response = COALESCE(response, '{}'::jsonb)
+                 || jsonb_build_object('stk_push', $1::jsonb)
+           WHERE id = $2`,
+          [
+            JSON.stringify({
+              error: safeMessage,
+              stage: "stk_push_request",
+            }),
+            transactionId,
+          ]
+        );
+
+        const saved = await query(
+          `SELECT *
+           FROM mpesa_transactions
+           WHERE id = $1`,
+          [transactionId]
+        );
+
+        return res.status(502).json({
+          error: safeMessage,
+          transaction: saved.rows[0] || null,
+        });
+      }
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 const computeDays = (startDate, endDate) => {
   if (!startDate) return 1;
@@ -1904,6 +2243,115 @@ router.get("/mpesa/event-registration-status/:registrationId", requireAuth, asyn
   }
 });
 
+// Admin: manually query Safaricom for the latest status of a pending STK payment.
+router.post(
+  "/mpesa/admin/transactions/:id/query",
+  requireAuth,
+  requireRole("admin"),
+  async (req, res, next) => {
+    try {
+      const transactionId = String(req.params.id || "");
+
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          transactionId
+        )
+      ) {
+        return res.status(400).json({
+          error: "Invalid transaction ID.",
+        });
+      }
+
+      const existing = await query(
+        `SELECT *
+         FROM mpesa_transactions
+         WHERE id = $1
+         LIMIT 1`,
+        [transactionId]
+      );
+
+      if (existing.rowCount === 0) {
+        return res.status(404).json({
+          error: "M-Pesa transaction not found.",
+        });
+      }
+
+      const transaction = existing.rows[0];
+
+      if (!transaction.checkout_request_id) {
+        return res.status(409).json({
+          error:
+            "This transaction has no Checkout Request ID. Safaricom STK Query cannot be performed.",
+          transaction,
+        });
+      }
+
+      if (transaction.status !== "pending") {
+        return res.status(200).json({
+          message: `Transaction is already ${transaction.status}. No query was sent.`,
+          transaction,
+          queried: false,
+        });
+      }
+
+      // Use the environment recorded when this STK request was initiated.
+      const result = await queryCheckoutStatus(
+        transaction.checkout_request_id,
+        transaction.mpesa_environment || null
+      );
+
+      if (!result) {
+        return res.status(502).json({
+          error: "Safaricom did not return a usable STK Query response.",
+        });
+      }
+
+      if (result.status) {
+        await finalizeTx(transaction, result, "reconciliation");
+      } else {
+        // Still pending or indeterminate: retain the response for diagnostics.
+        await query(
+          `UPDATE mpesa_transactions
+           SET response = COALESCE(response, '{}'::jsonb)
+             || jsonb_build_object('reconciliation', $1::jsonb),
+               result_code = COALESCE($2, result_code)
+           WHERE id = $3
+             AND status = 'pending'`,
+          [
+            JSON.stringify(result.raw || {}),
+            result.resultCode != null ? String(result.resultCode) : null,
+            transactionId,
+          ]
+        );
+      }
+
+      const refreshed = await query(
+        `SELECT *
+         FROM mpesa_transactions
+         WHERE id = $1`,
+        [transactionId]
+      );
+
+      return res.json({
+        queried: true,
+        status: result.status || "pending",
+        resultCode: result.resultCode,
+        response: result.raw,
+        transaction: refreshed.rows[0] || transaction,
+        message: result.status
+          ? `Safaricom reports this payment as ${result.status}.`
+          : "Safaricom has not returned a final payment status. The transaction remains pending.",
+      });
+    } catch (error) {
+      console.error("Admin M-Pesa STK Query failed:", error);
+
+      return res.status(502).json({
+        error: error.message || "Unable to query Safaricom for this transaction.",
+      });
+    }
+  }
+);
+
 // Safaricom calls these unauthenticated — gate by source IP when an
 // allowlist is configured (MPESA_CALLBACK_IP_ALLOWLIST, CSV; empty = allow).
 const callbackIpGuard = (req, res, next) => {
@@ -1945,7 +2393,12 @@ router.post(
             [checkoutRequestId]
           );
           if (txResult.rowCount > 0) {
-            await finalizeTx(txResult.rows[0], { ...parseCallbackItems(callback), raw: callback });
+            await finalizeTx(txResult.rows[0], {
+              status: "paid",
+              resultCode: String(callback.ResultCode),
+              ...parseCallbackItems(callback),
+              raw: callback,
+            });
             return;
           }
         }
