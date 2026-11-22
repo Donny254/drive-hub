@@ -212,18 +212,25 @@ const getAccessToken = async (creds, { forceRefresh = false } = {}) => {
   }
 };
 
-const buildStkPayload = ({ phoneNumber, amount, creds, callbackUrl }) => {
+const buildStkPayload = ({
+  phoneNumber,
+  amount,
+  creds,
+  callbackUrl,
+}) => {
   if (!creds?.shortcode || !creds?.passkey) {
-    throw new Error("Missing M-Pesa shortcode/passkey (set them in admin settings or environment)");
+    throw new Error(
+      "Missing M-Pesa shortcode/passkey. Configure them in admin settings."
+    );
   }
   if (!callbackUrl) {
     throw new Error("M-Pesa callback URL is not configured.");
   }
 
   const timestamp = formatTimestampEAT();
-  const password = Buffer.from(`${creds.shortcode}${creds.passkey}${timestamp}`).toString(
-    "base64"
-  );
+  const password = Buffer.from(
+    `${creds.shortcode}${creds.passkey}${timestamp}`
+  ).toString("base64");
 
   return {
     BusinessShortCode: creds.shortcode,
@@ -244,8 +251,13 @@ const prepareStkPayment = async ({ phoneNumber, amount }) => {
   const creds = await getMpesaCredentials();
   const callbackUrl = `${await callbackBaseUrl()}/stk/result`;
 
-  // Validate shortcode, passkey and callback URL before creating records.
-  buildStkPayload({ phoneNumber, amount, creds, callbackUrl });
+  // Validate the credentials and callback before creating payment records.
+  buildStkPayload({
+    phoneNumber,
+    amount,
+    creds,
+    callbackUrl,
+  });
 
   // Authenticate with the selected Daraja environment before creating records.
   // sendStkPush will reuse the cached token.
@@ -268,11 +280,24 @@ export const parseCallbackItems = (callback) => {
   };
 };
 
-const sendStkPush = async ({ phoneNumber, amount, accountReference, transactionDesc, creds: suppliedCreds }) => {
+const sendStkPush = async ({
+  phoneNumber,
+  amount,
+  accountReference,
+  transactionDesc,
+  creds: suppliedCreds,
+}) => {
   const creds = suppliedCreds || await getMpesaCredentials();
   const accessToken = await getAccessToken(creds);
+
   const callbackUrl = `${await callbackBaseUrl()}/stk/result`;
-  const payload = buildStkPayload({ phoneNumber, amount, creds, callbackUrl });
+
+  const payload = buildStkPayload({
+    phoneNumber,
+    amount,
+    creds,
+    callbackUrl,
+  });
   // Daraja caps these fields in production (12 and 13 chars).
   if (accountReference) payload.AccountReference = String(accountReference).slice(0, 12);
   if (transactionDesc) payload.TransactionDesc = String(transactionDesc).slice(0, 13);
@@ -646,25 +671,32 @@ const DEFAULT_MPESA_CALLBACK_DOMAIN = "https://wheelsnation.co.ke";
 class InvalidCallbackDomainError extends Error {}
 
 const normalizeCallbackDomain = (value) => {
+  const raw = String(value || "").trim();
+
+  if (!raw) {
+    throw new InvalidCallbackDomainError("Enter a callback domain.");
+  }
+
   let url;
 
   try {
-    url = new URL(String(value || "").trim());
-  } catch {
-    throw new InvalidCallbackDomainError(
-      "Callback domain must be a valid HTTPS domain."
+    url = new URL(
+      raw.includes("://") ? raw : `https://${raw}`
     );
+  } catch {
+    throw new InvalidCallbackDomainError("Enter a valid domain.");
   }
 
   if (
     url.protocol !== "https:" ||
+    !url.hostname ||
     url.username ||
     url.password ||
-    url.search ||
-    url.hash
+    url.hostname === "localhost" ||
+    url.hostname.endsWith(".local")
   ) {
     throw new InvalidCallbackDomainError(
-      "Callback domain must be a valid HTTPS domain."
+      "Callback domain must be a public HTTPS domain."
     );
   }
 
@@ -744,11 +776,22 @@ router.post(
   requireAuth,
   requireRole("admin"),
   async (req, res, next) => {
-    try {
-      const domain = normalizeCallbackDomain(req.body?.domain);
+    let domain;
 
+    try {
+      domain = normalizeCallbackDomain(req.body?.domain);
+    } catch (error) {
+      return res.status(400).json({
+        error: error.message || "Invalid callback domain.",
+      });
+    }
+
+    try {
       await query(
-        `INSERT INTO site_settings (id, mpesa_callback_domain)
+        `INSERT INTO site_settings (
+           id,
+           mpesa_callback_domain
+         )
          VALUES (true, $1)
          ON CONFLICT (id)
          DO UPDATE SET
@@ -763,12 +806,6 @@ router.post(
         ...(await buildCallbackConfig()),
       });
     } catch (error) {
-      if (error instanceof InvalidCallbackDomainError) {
-        return res.status(400).json({
-          error: error.message || "Invalid callback domain.",
-        });
-      }
-
       next(error);
     }
   }

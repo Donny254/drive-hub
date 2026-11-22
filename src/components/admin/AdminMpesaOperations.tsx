@@ -50,12 +50,12 @@ type PullResult = {
 type CallbackConfig = {
   configured: boolean;
   domain: string;
-  baseUrl: string;
+  baseUrl: string | null;
   callbacks: {
-    stk: string;
-    c2bConfirmation: string;
-    c2bValidation: string;
-    pullResult: string;
+    stk: string | null;
+    c2bConfirmation: string | null;
+    c2bValidation: string | null;
+    pullResult: string | null;
   };
 };
 
@@ -197,7 +197,7 @@ const AdminMpesaOperations = ({ authHeaders }: Props) => {
     const domain = callbackDomain.trim();
 
     if (!domain) {
-      toast.error("Enter your public domain.");
+      toast.error("Enter your public website domain.");
       return;
     }
 
@@ -436,8 +436,7 @@ const AdminMpesaOperations = ({ authHeaders }: Props) => {
               </Label>
 
               <p className="mt-1 text-xs text-muted-foreground">
-                The HTTPS domain Safaricom will use to reach your payment
-                callback endpoints.
+                Automatically used for STK Push, C2B and Pull callbacks.
               </p>
             </div>
 
@@ -462,8 +461,8 @@ const AdminMpesaOperations = ({ authHeaders }: Props) => {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Default: https://wheelsnation.co.ke. The API path
-              /api/payments is added automatically.
+              Default: https://wheelsnation.co.ke
+              {" "}The /api/payments path is added automatically.
             </p>
           </div>
 
