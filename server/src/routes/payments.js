@@ -212,19 +212,25 @@ const getAccessToken = async (creds, { forceRefresh = false } = {}) => {
   }
 };
 
-const buildStkPayload = ({ phoneNumber, amount, creds }) => {
-  const { MPESA_CALLBACK_URL } = process.env;
+const buildStkPayload = ({
+  phoneNumber,
+  amount,
+  creds,
+  callbackUrl,
+}) => {
   if (!creds?.shortcode || !creds?.passkey) {
-    throw new Error("Missing M-Pesa shortcode/passkey (set them in admin settings or environment)");
+    throw new Error(
+      "Missing M-Pesa shortcode/passkey. Configure them in admin settings."
+    );
   }
-  if (!MPESA_CALLBACK_URL) {
-    throw new Error("Missing M-Pesa callback URL");
+  if (!callbackUrl) {
+    throw new Error("M-Pesa callback URL is not configured.");
   }
 
   const timestamp = formatTimestampEAT();
-  const password = Buffer.from(`${creds.shortcode}${creds.passkey}${timestamp}`).toString(
-    "base64"
-  );
+  const password = Buffer.from(
+    `${creds.shortcode}${creds.passkey}${timestamp}`
+  ).toString("base64");
 
   return {
     BusinessShortCode: creds.shortcode,
@@ -235,7 +241,7 @@ const buildStkPayload = ({ phoneNumber, amount, creds }) => {
     PartyA: phoneNumber,
     PartyB: creds.partyB || creds.shortcode,
     PhoneNumber: phoneNumber,
-    CallBackURL: MPESA_CALLBACK_URL,
+    CallBackURL: callbackUrl,
     AccountReference: creds.accountReference,
     TransactionDesc: creds.transactionDesc,
   };
@@ -243,9 +249,15 @@ const buildStkPayload = ({ phoneNumber, amount, creds }) => {
 
 const prepareStkPayment = async ({ phoneNumber, amount }) => {
   const creds = await getMpesaCredentials();
+  const callbackUrl = `${await callbackBaseUrl()}/stk/result`;
 
-  // Validate shortcode, passkey and callback URL before creating records.
-  buildStkPayload({ phoneNumber, amount, creds });
+  // Validate the credentials and callback before creating payment records.
+  buildStkPayload({
+    phoneNumber,
+    amount,
+    creds,
+    callbackUrl,
+  });
 
   // Authenticate with the selected Daraja environment before creating records.
   // sendStkPush will reuse the cached token.
@@ -268,10 +280,24 @@ export const parseCallbackItems = (callback) => {
   };
 };
 
-const sendStkPush = async ({ phoneNumber, amount, accountReference, transactionDesc, creds: suppliedCreds }) => {
+const sendStkPush = async ({
+  phoneNumber,
+  amount,
+  accountReference,
+  transactionDesc,
+  creds: suppliedCreds,
+}) => {
   const creds = suppliedCreds || await getMpesaCredentials();
   const accessToken = await getAccessToken(creds);
-  const payload = buildStkPayload({ phoneNumber, amount, creds });
+
+  const callbackUrl = `${await callbackBaseUrl()}/stk/result`;
+
+  const payload = buildStkPayload({
+    phoneNumber,
+    amount,
+    creds,
+    callbackUrl,
+  });
   // Daraja caps these fields in production (12 and 13 chars).
   if (accountReference) payload.AccountReference = String(accountReference).slice(0, 12);
   if (transactionDesc) payload.TransactionDesc = String(transactionDesc).slice(0, 13);
@@ -640,41 +666,96 @@ const recordC2bTransactions = async (rows, source) => {
   return inserted;
 };
 
-// Base URL for webhook registration: MPESA_CALLBACK_BASE_URL if set, else
-// derived from the public /stk/result callback URL.
-const callbackBaseUrl = () => {
-  const configuredBase = process.env.MPESA_CALLBACK_BASE_URL?.trim();
+const DEFAULT_MPESA_CALLBACK_DOMAIN = "https://wheelsnation.co.ke";
 
-  if (configuredBase) {
-    return configuredBase.replace(/\/+$/, "");
+class InvalidCallbackDomainError extends Error {}
+
+const normalizeCallbackDomain = (value) => {
+  const raw = String(value || "").trim();
+
+  if (!raw) {
+    throw new InvalidCallbackDomainError("Enter a callback domain.");
   }
 
-  const callbackUrl = process.env.MPESA_CALLBACK_URL?.trim();
-
-  if (!callbackUrl) {
-    return "";
-  }
+  let url;
 
   try {
-    const url = new URL(callbackUrl);
-
-    if (url.protocol !== "https:") {
-      return "";
-    }
-
-    if (url.pathname.endsWith("/stk/result")) {
-      url.pathname = url.pathname.slice(0, -"/stk/result".length);
-    } else {
-      return "";
-    }
-
-    url.search = "";
-    url.hash = "";
-
-    return url.toString().replace(/\/+$/, "");
+    url = new URL(
+      raw.includes("://") ? raw : `https://${raw}`
+    );
   } catch {
-    return "";
+    throw new InvalidCallbackDomainError("Enter a valid domain.");
   }
+
+  if (
+    url.protocol !== "https:" ||
+    !url.hostname ||
+    url.username ||
+    url.password ||
+    url.hostname === "localhost" ||
+    url.hostname.endsWith(".local")
+  ) {
+    throw new InvalidCallbackDomainError(
+      "Callback domain must be a public HTTPS domain."
+    );
+  }
+
+  return url.origin;
+};
+
+const getCallbackDomain = async () => {
+  const settings = await loadSettingsRow();
+
+  if (settings?.mpesa_callback_domain) {
+    return normalizeCallbackDomain(settings.mpesa_callback_domain);
+  }
+
+  const candidates = [
+    process.env.MPESA_CALLBACK_BASE_URL,
+    process.env.MPESA_CALLBACK_URL,
+    process.env.PUBLIC_APP_URL,
+    process.env.APP_URL,
+    DEFAULT_MPESA_CALLBACK_DOMAIN,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+
+    try {
+      return normalizeCallbackDomain(candidate);
+    } catch (error) {
+      if (!(error instanceof InvalidCallbackDomainError)) throw error;
+    }
+  }
+
+  return DEFAULT_MPESA_CALLBACK_DOMAIN;
+};
+
+const callbackBaseUrl = async () => {
+  const domain = await getCallbackDomain();
+  return `${domain}/api/payments`;
+};
+
+const buildCallbackConfig = async () => {
+  const domain = await getCallbackDomain();
+  const baseUrl = `${domain}/api/payments`;
+
+  return {
+    configured: true,
+    domain,
+    baseUrl,
+    callbacks: {
+      stk: `${baseUrl}/stk/result`,
+      c2bConfirmation: `${baseUrl}/c2b/confirmation`,
+      c2bValidation: `${baseUrl}/c2b/validation`,
+      pullResult: `${baseUrl}/pull/result`,
+    },
+    registration: {
+      stk: "sent_with_each_stk_push",
+      c2b: "manual_registration_required",
+      pull: "registered_with_nominated_number",
+    },
+  };
 };
 
 router.get(
@@ -683,32 +764,46 @@ router.get(
   requireRole("admin"),
   async (req, res, next) => {
     try {
-      const baseUrl = callbackBaseUrl();
-      const configuredStkUrl = process.env.MPESA_CALLBACK_URL?.trim();
+      res.json(await buildCallbackConfig());
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
-      const stkCallbackUrl = configuredStkUrl ||
-        (baseUrl ? `${baseUrl}/stk/result` : null);
+router.post(
+  "/mpesa/admin/callback-config",
+  requireAuth,
+  requireRole("admin"),
+  async (req, res, next) => {
+    let domain;
+
+    try {
+      domain = normalizeCallbackDomain(req.body?.domain);
+    } catch (error) {
+      return res.status(400).json({
+        error: error.message || "Invalid callback domain.",
+      });
+    }
+
+    try {
+      await query(
+        `INSERT INTO site_settings (
+           id,
+           mpesa_callback_domain
+         )
+         VALUES (true, $1)
+         ON CONFLICT (id)
+         DO UPDATE SET
+           mpesa_callback_domain = EXCLUDED.mpesa_callback_domain,
+           updated_at = now()`,
+        [domain]
+      );
 
       res.json({
-        configured: Boolean(baseUrl && stkCallbackUrl),
-        baseUrl: baseUrl || null,
-        callbacks: {
-          stk: stkCallbackUrl,
-          c2bConfirmation: baseUrl
-            ? `${baseUrl}/c2b/confirmation`
-            : null,
-          c2bValidation: baseUrl
-            ? `${baseUrl}/c2b/validation`
-            : null,
-          pullResult: baseUrl
-            ? `${baseUrl}/pull/result`
-            : null,
-        },
-        registration: {
-          stk: "sent_with_each_stk_push",
-          c2b: "manual_registration_required",
-          pull: "registered_with_nominated_number",
-        },
+        ok: true,
+        message: "M-Pesa callback domain saved.",
+        ...(await buildCallbackConfig()),
       });
     } catch (error) {
       next(error);
@@ -812,7 +907,7 @@ router.post("/mpesa/register-url", requireAuth, requireRole("admin"), async (req
     if (!creds.shortcode) {
       return res.status(400).json({ error: "M-Pesa shortcode not configured" });
     }
-    const base = callbackBaseUrl();
+    const base = await callbackBaseUrl();
     if (!base || !/^https:\/\//.test(base)) {
       return res.status(400).json({ error: "Set MPESA_CALLBACK_BASE_URL (https) to register webhook URLs" });
     }
@@ -855,7 +950,7 @@ router.post("/mpesa/pull/register", requireAuth, requireRole("admin"), async (re
       });
     }
 
-    const base = callbackBaseUrl();
+    const base = await callbackBaseUrl();
 
     if (!base || !/^https:\/\//i.test(base)) {
       return res.status(400).json({

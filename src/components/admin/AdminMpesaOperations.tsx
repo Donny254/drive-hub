@@ -49,6 +49,7 @@ type PullResult = {
 
 type CallbackConfig = {
   configured: boolean;
+  domain: string;
   baseUrl: string | null;
   callbacks: {
     stk: string | null;
@@ -102,6 +103,10 @@ const AdminMpesaOperations = ({ authHeaders }: Props) => {
   const [callbackConfig, setCallbackConfig] =
     useState<CallbackConfig | null>(null);
   const [loadingCallbacks, setLoadingCallbacks] = useState(false);
+  const [callbackDomain, setCallbackDomain] = useState(
+    "https://wheelsnation.co.ke",
+  );
+  const [savingCallbackDomain, setSavingCallbackDomain] = useState(false);
 
   const loadC2BTransactions = useCallback(async (quiet = false) => {
     if (quiet) setRefreshing(true);
@@ -170,6 +175,9 @@ const AdminMpesaOperations = ({ authHeaders }: Props) => {
       }
 
       setCallbackConfig(data as CallbackConfig);
+      setCallbackDomain(
+        data.domain || "https://wheelsnation.co.ke",
+      );
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -184,6 +192,49 @@ const AdminMpesaOperations = ({ authHeaders }: Props) => {
   useEffect(() => {
     void loadCallbackConfig();
   }, [loadCallbackConfig]);
+
+  const saveCallbackDomain = async () => {
+    const domain = callbackDomain.trim();
+
+    if (!domain) {
+      toast.error("Enter your public website domain.");
+      return;
+    }
+
+    setSavingCallbackDomain(true);
+
+    try {
+      const response = await apiFetch(
+        "/api/payments/mpesa/admin/callback-config",
+        {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ domain }),
+        },
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Could not save callback domain.",
+        );
+      }
+
+      setCallbackConfig(data as CallbackConfig);
+      setCallbackDomain(data.domain);
+
+      toast.success("M-Pesa callback domain saved.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not save callback domain.",
+      );
+    } finally {
+      setSavingCallbackDomain(false);
+    }
+  };
 
   const registerC2BUrls = async () => {
     setRegisteringC2B(true);
@@ -378,14 +429,50 @@ const AdminMpesaOperations = ({ authHeaders }: Props) => {
         </CardHeader>
 
         <CardContent className="space-y-4 pt-5">
+          <div className="space-y-4 rounded-xl border border-border p-4">
+            <div>
+              <Label htmlFor="mpesa-callback-domain">
+                Public website domain
+              </Label>
+
+              <p className="mt-1 text-xs text-muted-foreground">
+                Automatically used for STK Push, C2B and Pull callbacks.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Input
+                id="mpesa-callback-domain"
+                value={callbackDomain}
+                onChange={(event) =>
+                  setCallbackDomain(event.target.value)
+                }
+                placeholder="https://wheelsnation.co.ke"
+                type="url"
+              />
+
+              <Button
+                onClick={() => void saveCallbackDomain()}
+                disabled={savingCallbackDomain}
+                className="shrink-0"
+              >
+                {savingCallbackDomain ? "Saving..." : "Save domain"}
+              </Button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Default: https://wheelsnation.co.ke
+              {" "}The /api/payments path is added automatically.
+            </p>
+          </div>
+
           {!callbackConfig?.configured ? (
             <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
               <p className="font-medium text-sm">
                 Callback URLs are not fully configured
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Configure MPESA_CALLBACK_URL and MPESA_CALLBACK_BASE_URL
-                on the backend, then refresh this section.
+                Save a public HTTPS domain to generate callback URLs.
               </p>
             </div>
           ) : (
