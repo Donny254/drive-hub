@@ -293,7 +293,10 @@ const sendStkPush = async ({ phoneNumber, amount, accountReference, transactionD
 
 const recordStkResponse = async (transactionId, responseData) => {
   const responseCode = responseData.ResponseCode ?? responseData.responseCode;
-  const status = responseCode === "0" ? "pending" : "failed";
+  const status =
+    responseCode != null && String(responseCode) === "0"
+      ? "pending"
+      : "failed";
   await query(
     `UPDATE mpesa_transactions
      SET checkout_request_id = $1,
@@ -821,6 +824,162 @@ router.get("/mpesa/c2b-transactions", requireAuth, requireRole("admin"), async (
     next(error);
   }
 });
+
+// Admin: list STK transactions for monitoring and troubleshooting.
+router.get(
+  "/mpesa/admin/transactions",
+  requireAuth,
+  requireRole("admin"),
+  async (req, res, next) => {
+    try {
+      const requestedLimit = Number.parseInt(req.query.limit, 10);
+      const limit = Number.isInteger(requestedLimit)
+        ? Math.min(Math.max(requestedLimit, 1), 500)
+        : 100;
+
+      const result = await query(
+        `SELECT
+           id,
+           phone_number,
+           amount_cents,
+           checkout_request_id,
+           merchant_request_id,
+           status,
+           mpesa_environment,
+           result_code,
+           mpesa_receipt_number,
+           response,
+           created_at,
+           updated_at,
+           order_id,
+           booking_id,
+           event_registration_id
+         FROM mpesa_transactions
+         ORDER BY created_at DESC
+         LIMIT $1`,
+        [limit]
+      );
+
+      res.json({
+        transactions: result.rows,
+        count: result.rowCount,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// Admin: initiate a standalone STK Push for diagnostics or manual collection.
+// This does not create an order, booking, or event registration.
+router.post(
+  "/mpesa/admin/stk-push",
+  requireAuth,
+  requireRole("admin"),
+  async (req, res, next) => {
+    let transactionId = null;
+
+    try {
+      const phoneNumber = normalizePhone(req.body?.phoneNumber);
+      const amount = Number(req.body?.amount);
+
+      if (!/^254\d{9}$/.test(phoneNumber)) {
+        return res.status(400).json({
+          error: "Enter a valid Kenyan phone number.",
+        });
+      }
+
+      if (!Number.isSafeInteger(amount) || amount < 1) {
+        return res.status(400).json({
+          error: "Amount must be a positive whole number in KES.",
+        });
+      }
+
+      const creds = await getMpesaCredentials();
+
+      // Record the attempt before contacting Daraja. This ensures failed
+      // network requests are also visible in the admin transaction history.
+      const inserted = await query(
+        `INSERT INTO mpesa_transactions (
+           phone_number,
+           amount_cents,
+           status,
+           mpesa_environment
+         )
+         VALUES ($1, $2, 'pending', $3)
+         RETURNING id`,
+        [phoneNumber, amount * 100, creds.environment]
+      );
+
+      transactionId = inserted.rows[0].id;
+
+      try {
+        const responseData = await sendStkPush({
+          phoneNumber,
+          amount,
+          creds,
+          accountReference: "ADMIN TEST",
+          transactionDesc: "Admin STK test",
+        });
+
+        const status = await recordStkResponse(
+          transactionId,
+          responseData
+        );
+
+        const saved = await query(
+          `SELECT *
+           FROM mpesa_transactions
+           WHERE id = $1`,
+          [transactionId]
+        );
+
+        return res.status(status === "failed" ? 502 : 200).json({
+          transaction: saved.rows[0],
+          response: responseData,
+          error:
+            status === "failed"
+              ? responseData.ResponseDescription ||
+                responseData.errorMessage ||
+                "Safaricom rejected the STK Push request."
+              : null,
+        });
+      } catch (providerError) {
+        const safeMessage = String(
+          providerError?.message || "STK Push request failed."
+        ).slice(0, 1000);
+
+        await query(
+          `UPDATE mpesa_transactions
+           SET status = 'failed',
+               response = $1::jsonb
+           WHERE id = $2`,
+          [
+            JSON.stringify({
+              error: safeMessage,
+              stage: "stk_push_request",
+            }),
+            transactionId,
+          ]
+        );
+
+        const saved = await query(
+          `SELECT *
+           FROM mpesa_transactions
+           WHERE id = $1`,
+          [transactionId]
+        );
+
+        return res.status(502).json({
+          error: safeMessage,
+          transaction: saved.rows[0] || null,
+        });
+      }
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 const computeDays = (startDate, endDate) => {
   if (!startDate) return 1;
