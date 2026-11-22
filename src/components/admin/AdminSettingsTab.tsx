@@ -298,68 +298,176 @@ const AdminSettingsTab = ({ settings, setSettings, saveSettings }: AdminSettings
               </div>
 
               <div className="rounded-2xl border border-border bg-background/50 p-5">
-                <h3 className="font-medium">M-Pesa (Daraja) Credentials</h3>
+                <h3 className="font-medium">M-Pesa (Daraja) Configuration</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Values saved here override the server environment variables. Secrets are encrypted at rest —
-                  leave a secret blank to keep the stored one.
+                  Select which Daraja environment processes payments. Each environment has
+                  independent credentials. Secrets are encrypted at rest; leave secret fields
+                  blank to retain their saved values.
                 </p>
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
+
+                <div className="mt-4 grid gap-2">
+                  <Label htmlFor="mpesa-environment">Active Environment</Label>
+                  <select
+                    id="mpesa-environment"
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={settings.mpesaEnvironment ?? "default"}
+                    onChange={(event) =>
+                      setSettings((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              mpesaEnvironment:
+                                event.target.value === "default"
+                                  ? null
+                                  : event.target.value as "sandbox" | "production",
+                            }
+                          : prev
+                      )
+                    }
+                  >
+                    <option value="default">Default — use server MPESA_ENV</option>
+                    <option value="sandbox">Sandbox</option>
+                    <option value="production">Production</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Default uses the server environment variable. Sandbox and Production
+                    explicitly select their respective credentials.
+                  </p>
+                </div>
+
+                <div className="mt-6 grid gap-6 lg:grid-cols-2">
+                  <section className="space-y-4 rounded-xl border border-border p-4">
+                    <div>
+                      <h4 className="font-medium">Sandbox Credentials</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Used when Sandbox is selected.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label>Sandbox Business Shortcode</Label>
+                      <Input
+                        value={settings.mpesaSandboxShortcode ?? ""}
+                        onChange={(e) => setSettings((prev) => prev ? { ...prev, mpesaSandboxShortcode: e.target.value } : prev)}
+                        placeholder="Sandbox shortcode"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Sandbox Party B</Label>
+                      <Input
+                        value={settings.mpesaSandboxPartyb ?? ""}
+                        onChange={(e) => setSettings((prev) => prev ? { ...prev, mpesaSandboxPartyb: e.target.value } : prev)}
+                        placeholder="Sandbox Party B"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Sandbox Consumer Key {settings.mpesaSandboxConsumerKeySet ? "✓ saved" : ""}</Label>
+                      <Input
+                        type="password"
+                        autoComplete="new-password"
+                        value={settings.mpesaSandboxConsumerKey ?? ""}
+                        onChange={(e) => setSettings((prev) => prev ? { ...prev, mpesaSandboxConsumerKey: e.target.value } : prev)}
+                        placeholder={settings.mpesaSandboxConsumerKeySet ? "Saved — leave blank to keep" : "Not set"}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Sandbox Consumer Secret {settings.mpesaSandboxConsumerSecretSet ? "✓ saved" : ""}</Label>
+                      <Input
+                        type="password"
+                        autoComplete="new-password"
+                        value={settings.mpesaSandboxConsumerSecret ?? ""}
+                        onChange={(e) => setSettings((prev) => prev ? { ...prev, mpesaSandboxConsumerSecret: e.target.value } : prev)}
+                        placeholder={settings.mpesaSandboxConsumerSecretSet ? "Saved — leave blank to keep" : "Not set"}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Sandbox Passkey {settings.mpesaSandboxPasskeySet ? "✓ saved" : ""}</Label>
+                      <Input
+                        type="password"
+                        autoComplete="new-password"
+                        value={settings.mpesaSandboxPasskey ?? ""}
+                        onChange={(e) => setSettings((prev) => prev ? { ...prev, mpesaSandboxPasskey: e.target.value } : prev)}
+                        placeholder={settings.mpesaSandboxPasskeySet ? "Saved — leave blank to keep" : "Not set"}
+                      />
+                    </div>
+                  </section>
+
+                  <section className="space-y-4 rounded-xl border border-border p-4">
+                    <div>
+                      <h4 className="font-medium">Production Credentials</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Used when Production is selected. These credentials are never
+                        automatically copied from Sandbox.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label>Production Business Shortcode</Label>
+                      <Input
+                        value={settings.mpesaProductionShortcode ?? ""}
+                        onChange={(e) => setSettings((prev) => prev ? { ...prev, mpesaProductionShortcode: e.target.value } : prev)}
+                        placeholder="Production shortcode"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Production Party B</Label>
+                      <Input
+                        value={settings.mpesaProductionPartyb ?? ""}
+                        onChange={(e) => setSettings((prev) => prev ? { ...prev, mpesaProductionPartyb: e.target.value } : prev)}
+                        placeholder="Production Party B"
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Production Consumer Key {settings.mpesaProductionConsumerKeySet ? "✓ saved" : ""}</Label>
+                      <Input
+                        type="password"
+                        autoComplete="new-password"
+                        value={settings.mpesaProductionConsumerKey ?? ""}
+                        onChange={(e) => setSettings((prev) => prev ? { ...prev, mpesaProductionConsumerKey: e.target.value } : prev)}
+                        placeholder={settings.mpesaProductionConsumerKeySet ? "Saved — leave blank to keep" : "Not set"}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Production Consumer Secret {settings.mpesaProductionConsumerSecretSet ? "✓ saved" : ""}</Label>
+                      <Input
+                        type="password"
+                        autoComplete="new-password"
+                        value={settings.mpesaProductionConsumerSecret ?? ""}
+                        onChange={(e) => setSettings((prev) => prev ? { ...prev, mpesaProductionConsumerSecret: e.target.value } : prev)}
+                        placeholder={settings.mpesaProductionConsumerSecretSet ? "Saved — leave blank to keep" : "Not set"}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label>Production Passkey {settings.mpesaProductionPasskeySet ? "✓ saved" : ""}</Label>
+                      <Input
+                        type="password"
+                        autoComplete="new-password"
+                        value={settings.mpesaProductionPasskey ?? ""}
+                        onChange={(e) => setSettings((prev) => prev ? { ...prev, mpesaProductionPasskey: e.target.value } : prev)}
+                        placeholder={settings.mpesaProductionPasskeySet ? "Saved — leave blank to keep" : "Not set"}
+                      />
+                    </div>
+                  </section>
+                </div>
+
+                <div className="mt-6 grid gap-4 md:grid-cols-2">
                   <div className="grid gap-2">
-                    <Label>Business Shortcode</Label>
-                    <Input
-                      value={settings.mpesaShortcode ?? ""}
-                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, mpesaShortcode: e.target.value } : prev))}
-                      placeholder="e.g. 174379"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Account Reference</Label>
+                    <Label>Shared Account Reference</Label>
                     <Input
                       value={settings.mpesaAccountReference ?? ""}
-                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, mpesaAccountReference: e.target.value } : prev))}
-                      placeholder="Brand label on the STK prompt, max 12 chars — e.g. WHEELSNATION"
+                      onChange={(e) => setSettings((prev) => prev ? { ...prev, mpesaAccountReference: e.target.value } : prev)}
+                      placeholder="e.g. WHEELSNATION"
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label>Transaction Description</Label>
+                    <Label>Shared Transaction Description</Label>
                     <Input
                       value={settings.mpesaTransactionDesc ?? ""}
-                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, mpesaTransactionDesc: e.target.value } : prev))}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Consumer Key {settings.mpesaConsumerKeySet ? "✓ saved" : ""}</Label>
-                    <Input
-                      type="password"
-                      autoComplete="off"
-                      value={settings.mpesaConsumerKey ?? ""}
-                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, mpesaConsumerKey: e.target.value } : prev))}
-                      placeholder={settings.mpesaConsumerKeySet ? "Saved — leave blank to keep" : "Not set"}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label>Consumer Secret {settings.mpesaConsumerSecretSet ? "✓ saved" : ""}</Label>
-                    <Input
-                      type="password"
-                      autoComplete="off"
-                      value={settings.mpesaConsumerSecret ?? ""}
-                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, mpesaConsumerSecret: e.target.value } : prev))}
-                      placeholder={settings.mpesaConsumerSecretSet ? "Saved — leave blank to keep" : "Not set"}
-                    />
-                  </div>
-                  <div className="grid gap-2 md:col-span-2">
-                    <Label>Passkey {settings.mpesaPasskeySet ? "✓ saved" : ""}</Label>
-                    <Input
-                      type="password"
-                      autoComplete="off"
-                      value={settings.mpesaPasskey ?? ""}
-                      onChange={(e) => setSettings((prev) => (prev ? { ...prev, mpesaPasskey: e.target.value } : prev))}
-                      placeholder={settings.mpesaPasskeySet ? "Saved — leave blank to keep" : "Not set"}
+                      onChange={(e) => setSettings((prev) => prev ? { ...prev, mpesaTransactionDesc: e.target.value } : prev)}
                     />
                   </div>
                 </div>
-              </div>
-            </>
+              </div>            </>
           )}
           <div className="flex justify-end">
             <Button variant="hero" onClick={saveSettings} disabled={!settings}>
