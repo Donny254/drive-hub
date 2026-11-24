@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import PasswordField from "@/components/shared/PasswordField";
 
 const Login = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { login, user, hydrated } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,7 +24,7 @@ const Login = () => {
     setError(null);
     try {
       await login(email, password);
-      navigate("/");
+      navigate(searchParams.get("redirect") || "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -42,7 +43,7 @@ const Login = () => {
   }
 
   if (user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={searchParams.get("redirect") || "/"} replace />;
   }
 
   return (
@@ -100,7 +101,10 @@ const Login = () => {
 
             <p className="text-sm text-muted-foreground text-center mt-6">
               No account?{" "}
-              <Link to="/register" className="text-primary hover:underline">
+              <Link
+                to={`/register${searchParams.get("redirect") ? `?redirect=${encodeURIComponent(searchParams.get("redirect") || "")}` : ""}`}
+                className="text-primary hover:underline"
+              >
                 Create one
               </Link>
             </p>

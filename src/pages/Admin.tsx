@@ -75,7 +75,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   LayoutDashboard, Car, CalendarCheck, Coins, Banknote, Wrench,
   Ticket, MessageSquare, Settings2, CalendarDays, Package, FileText,
-  ShoppingBag, Users, Settings, Megaphone, Clock, AlertTriangle, Smartphone,
+  ShoppingBag, Users, Settings, Clock, AlertTriangle, Smartphone,
 } from "lucide-react";
 
 const formatMoney = (cents?: number | null) => {
@@ -606,14 +606,6 @@ const Admin = () => {
     },
   ] as const;
 
-  const QUICK_LINKS = [
-    { to: "/admin/services", icon: Wrench,       label: "Services" },
-    { to: "/admin/events",   icon: CalendarDays, label: "Events" },
-    { to: "/admin/products", icon: Package,      label: "Products" },
-    { to: "/admin/adverts",  icon: Megaphone,    label: "Adverts" },
-    { to: "/admin/posts",    icon: FileText,     label: "Blog" },
-  ] as const;
-
   const currentSection = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.value === activeTab);
 
   const SidebarContent = () => (
@@ -665,22 +657,6 @@ const Admin = () => {
           </div>
         ))}
 
-        {/* Quick links separator */}
-        <div>
-          <p className="mb-1 px-2 text-[10px] uppercase tracking-[0.25em] text-muted-foreground/60">Quick Links</p>
-          <div className="space-y-0.5">
-            {QUICK_LINKS.map(({ to, icon: Icon, label }) => (
-              <Link
-                key={to}
-                to={to}
-                className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-all duration-150 hover:bg-border/40 hover:text-foreground"
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                {label}
-              </Link>
-            ))}
-          </div>
-        </div>
       </nav>
     </div>
   );

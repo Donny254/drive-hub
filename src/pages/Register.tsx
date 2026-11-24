@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import PasswordRequirements from "@/components/shared/PasswordRequirements";
 
 const Register = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { register, user, hydrated } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -38,7 +39,7 @@ const Register = () => {
     }
     try {
       await register(name, email, phone, password);
-      navigate("/");
+      navigate(searchParams.get("redirect") || "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
@@ -57,7 +58,7 @@ const Register = () => {
   }
 
   if (user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to={searchParams.get("redirect") || "/"} replace />;
   }
 
   return (
@@ -134,7 +135,10 @@ const Register = () => {
 
             <p className="text-sm text-muted-foreground text-center mt-6">
               Already have an account?{" "}
-              <Link to="/login" className="text-primary hover:underline">
+              <Link
+                to={`/login${searchParams.get("redirect") ? `?redirect=${encodeURIComponent(searchParams.get("redirect") || "")}` : ""}`}
+                className="text-primary hover:underline"
+              >
                 Sign in
               </Link>
             </p>

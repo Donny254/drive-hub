@@ -270,7 +270,8 @@ const Market = () => {
   const openListingSubmission = useCallback(
     (listingType: "sell" | "rent" = "sell") => {
       if (!user) {
-        navigate("/login");
+        const params = new URLSearchParams({ new: "1", type: listingType, source: "market" });
+        navigate(`/login?redirect=${encodeURIComponent(`/my-listings?${params.toString()}`)}`);
         return;
       }
       const params = new URLSearchParams({ new: "1", type: listingType, source: "market" });

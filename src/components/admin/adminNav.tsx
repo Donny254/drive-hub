@@ -14,7 +14,6 @@ import {
   ShoppingBag,
   Users,
   Settings,
-  Megaphone,
 } from "lucide-react";
 
 // Shared admin navigation definitions, used by both the in-dashboard sidebar
@@ -58,12 +57,4 @@ export const NAV_GROUPS = [
       { value: "settings", label: "Settings", icon: Settings },
     ],
   },
-] as const;
-
-export const QUICK_LINKS = [
-  { to: "/admin/services", icon: Wrench, label: "Services" },
-  { to: "/admin/events", icon: CalendarDays, label: "Events" },
-  { to: "/admin/products", icon: Package, label: "Products" },
-  { to: "/admin/adverts", icon: Megaphone, label: "Adverts" },
-  { to: "/admin/posts", icon: FileText, label: "Blog" },
 ] as const;

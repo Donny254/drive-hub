@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { NAV_GROUPS, QUICK_LINKS } from "./adminNav";
+import { NAV_GROUPS } from "./adminNav";
 
 type AdminSidebarProps = {
   onNavigate?: () => void;
@@ -48,18 +48,6 @@ const AdminSidebar = ({ onNavigate }: AdminSidebarProps) => {
             </div>
           </div>
         ))}
-
-        <div>
-          <p className="mb-1 px-2 text-[10px] uppercase tracking-[0.25em] text-muted-foreground/60">Quick Links</p>
-          <div className="space-y-0.5">
-            {QUICK_LINKS.map(({ to, icon: Icon, label }) => (
-              <Link key={to} to={to} onClick={onNavigate} className={linkClass(location.pathname === to)}>
-                <Icon className="h-4 w-4 shrink-0" />
-                {label}
-              </Link>
-            ))}
-          </div>
-        </div>
       </nav>
     </div>
   );
