@@ -84,3 +84,48 @@ test("pull rows flatten nested arrays with loose key casing", () => {
   assert.equal(rows[1].amountCents, 9950);
   assert.deepEqual(parsePullRows(undefined), []);
 });
+
+test("pull rows parse wrapped objects and key/value items", () => {
+  const wrapped = parsePullRows({
+    Response: {
+      Transactions: {
+        Items: [
+          {
+            Item: [
+              { Name: "TransID", Value: "PULL-WRAPPED" },
+              { Name: "TransAmount", Value: "125.50" },
+              { Name: "MSISDN", Value: "254700123456" },
+            ],
+          },
+        ],
+      },
+    },
+  });
+  assert.equal(wrapped.length, 1);
+  assert.equal(wrapped[0].transactionId, "PULL-WRAPPED");
+  assert.equal(wrapped[0].amountCents, 12550);
+  assert.equal(wrapped[0].msisdn, "254700123456");
+
+  const direct = parsePullRows({
+    TransactionID: "PULL-DIRECT",
+    TransactionAmount: "300",
+  });
+  assert.equal(direct.length, 1);
+  assert.equal(direct[0].transactionId, "PULL-DIRECT");
+  assert.equal(direct[0].amountCents, 30000);
+});
+
+test("Daraja error catalogue distinguishes known and unknown codes", async () => {
+  const {
+    describeDarajaCode,
+    normalizeDarajaResponse,
+  } = await import("../src/utils/darajaErrors.js");
+
+  assert.equal(describeDarajaCode("1032").category, "cancelled");
+  assert.equal(describeDarajaCode("999999").known, false);
+  assert.equal(normalizeDarajaResponse({
+    stage: "stk",
+    httpStatus: 200,
+    response: { ResultCode: "2029", ResultDesc: "Unresolved" },
+  }).category, "unresolved");
+});
