@@ -322,38 +322,90 @@ const sendStkPush = async ({
     creds,
     callbackUrl,
   });
-  // Daraja caps these fields in production (12 and 13 chars).
-  if (accountReference) payload.AccountReference = String(accountReference).slice(0, 12);
-  if (transactionDesc) payload.TransactionDesc = String(transactionDesc).slice(0, 13);
 
-  const response = await darajaFetch(
-    "/mpesa/stkpush/v1/processrequest",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
+  // Daraja caps these fields in production (12 and 13 chars).
+  if (accountReference) {
+    payload.AccountReference = String(accountReference).slice(0, 12);
+  }
+
+  if (transactionDesc) {
+    payload.TransactionDesc = String(transactionDesc).slice(0, 13);
+  }
+
+  let response;
+
+  try {
+    response = await darajaFetch(
+      "/mpesa/stkpush/v1/processrequest",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
       },
-      body: JSON.stringify(payload),
-    },
-    creds.baseUrl
-  );
-  return response.json().catch(() => ({}));
+      creds.baseUrl
+    );
+  } catch (error) {
+    return {
+      _httpStatus: null,
+      _transportError:
+        error?.name === "AbortError"
+          ? "Daraja STK Push request timed out; provider outcome is unknown."
+          : String(error?.message || "Network error while contacting Daraja"),
+      _outcomeUnknown: true,
+    };
+  }
+
+  const responseText = await response.text().catch(() => "");
+  let data = {};
+
+  try {
+    data = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    data = {
+      _unparsedResponse: responseText.slice(0, 4000),
+    };
+  }
+
+  return {
+    ...data,
+    _httpStatus: response.status,
+    _httpOk: response.ok,
+    ...( !responseText ? { _emptyResponse: true } : {} ),
+    ...( !response.ok ? { _providerHttpError: true } : {} ),
+  };
 };
 
 const recordStkResponse = async (transactionId, responseData) => {
   const responseCode =
-    responseData?.ResponseCode ?? responseData?.responseCode;
+    responseData?.ResponseCode ??
+    responseData?.responseCode ??
+    null;
 
-  const status =
-    responseCode != null && String(responseCode) === "0"
-      ? "pending"
-      : "failed";
+  const normalizedCode =
+    responseCode == null
+      ? null
+      : String(responseCode).trim();
+
+  const httpStatus = Number(responseData?._httpStatus);
+  const hasHttpStatus = Number.isInteger(httpStatus) && httpStatus > 0;
+
+  const explicitRejection =
+    normalizedCode !== null &&
+    normalizedCode !== "" &&
+    normalizedCode !== "0" &&
+    (!hasHttpStatus || httpStatus < 500);
+
+  // Missing/malformed responses and HTTP 5xx responses are ambiguous.
+  // Never allow them to release the payment as a definite failure.
+  const status = explicitRejection ? "failed" : "pending";
 
   await query(
     `UPDATE mpesa_transactions
-     SET checkout_request_id = $1,
-         merchant_request_id = $2,
+     SET checkout_request_id = COALESCE($1, checkout_request_id),
+         merchant_request_id = COALESCE($2, merchant_request_id),
          response = COALESCE(response, '{}'::jsonb)
            || jsonb_build_object('stk_push', $3::jsonb),
          status = $4
@@ -367,19 +419,33 @@ const recordStkResponse = async (transactionId, responseData) => {
     ]
   );
 
+  if (status === "pending" && normalizedCode !== "0") {
+    console.warn(
+      `M-Pesa STK Push outcome is unresolved for transaction ${transactionId}. ` +
+      `HTTP status: ${hasHttpStatus ? httpStatus : "unknown"}; ` +
+      `Response code: ${normalizedCode || "missing"}.`
+    );
+  }
+
   return status;
 };
 
 // Probes Daraja for a transaction whose callback may have been lost.
 // Returns { status: 'paid'|'failed'|null, raw, amount, mpesaReceiptNumber } —
 // status null means "still in flight / unknown", leave it pending.
-export const queryCheckoutStatus = async (checkoutRequestId, environment = null) => {
+
+export const queryCheckoutStatus = async (
+  checkoutRequestId,
+  environment = null,
+) => {
   if (!checkoutRequestId) return null;
+
   const creds = await getMpesaCredentials({ environment });
   if (!creds.shortcode || !creds.passkey) return null;
 
   const timestamp = formatTimestampEAT();
   const accessToken = await getAccessToken(creds);
+
   const response = await darajaFetch(
     "/mpesa/stkpushquery/v1/query",
     {
@@ -390,30 +456,70 @@ export const queryCheckoutStatus = async (checkoutRequestId, environment = null)
       },
       body: JSON.stringify({
         BusinessShortCode: creds.shortcode,
-        Password: Buffer.from(`${creds.shortcode}${creds.passkey}${timestamp}`).toString("base64"),
+        Password: Buffer.from(
+          `${creds.shortcode}${creds.passkey}${timestamp}`,
+        ).toString("base64"),
         Timestamp: timestamp,
         CheckoutRequestID: checkoutRequestId,
       }),
     },
-    creds.baseUrl
+    creds.baseUrl,
   );
 
   const data = await response.json().catch(() => ({}));
+
+  // Preserve both layers independently:
+  // ResultCode = transaction/query result
+  // ResponseCode = request/API response where present
   const resultCode =
-    data.ResultCode != null ? String(data.ResultCode) : null;
+    data?.ResultCode != null ? String(data.ResultCode).trim() : null;
+
+  const responseCode =
+    data?.ResponseCode != null
+      ? String(data.ResponseCode).trim()
+      : data?.responseCode != null
+        ? String(data.responseCode).trim()
+        : null;
+
+  const resultDesc = data?.ResultDesc != null ? String(data.ResultDesc) : null;
+
+  const responseDescription =
+    data?.ResponseDescription != null
+      ? String(data.ResponseDescription)
+      : data?.ResponseMessage != null
+        ? String(data.ResponseMessage)
+        : null;
+
+  // A non-zero request-level response is not evidence of a
+  // transaction failure. Leave it unresolved.
+  const requestRejected = responseCode != null && responseCode !== "0";
+
+  let status = null;
+
+  if (!requestRejected && resultCode === "0") {
+    // Candidate success only. finalizeTx still requires receipt
+    // and amount validation before settlement.
+    status = "paid";
+  } else if (
+    !requestRejected &&
+    resultCode != null &&
+    FINAL_FAILED_RESULT_CODES.has(resultCode)
+  ) {
+    status = "failed";
+  }
 
   return {
-    status:
-      resultCode === "0"
-        ? "paid"
-        : resultCode != null && FINAL_FAILED_RESULT_CODES.has(resultCode)
-          ? "failed"
-          : null,
+    status,
     resultCode,
+    responseCode,
+    resultDesc,
+    responseDescription,
+    requestRejected,
     raw: data,
     ...parseCallbackItems(data),
   };
 };
+
 
 // Applies a final result to a pending transaction exactly once (the
 // `status = 'pending'` guard makes duplicate callbacks / poll races a no-op)
@@ -658,30 +764,104 @@ export const parseC2bConfirmation = (body) => ({
 // Pull query returns rows as nested arrays of loose key/value objects with
 // inconsistent casing; flatten them into the same shape as C2B confirmations.
 export const parsePullRows = (response) => {
-  if (!Array.isArray(response)) return [];
-  return response
-    .flat()
-    .filter((row) => row && typeof row === "object" && !Array.isArray(row))
-    .map((row) => {
-    const pick = (...keys) => {
-      for (const key of keys) {
-        const found = Object.keys(row).find((k) => k.toLowerCase() === key.toLowerCase());
-        if (found && row[found] != null) return String(row[found]);
+  const rows = [];
+  const visited = new Set();
+
+  const normalizeKey = (value) =>
+    String(value || "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+
+  const readFields = (row) => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) return {};
+
+    const fields = {};
+    for (const [key, value] of Object.entries(row)) {
+      fields[normalizeKey(key)] = value;
+    }
+
+    if (Array.isArray(row.Item)) {
+      for (const item of row.Item) {
+        if (item?.Name != null) {
+          fields[normalizeKey(item.Name)] = item.Value;
+        }
       }
-      return null;
-    };
-    const amount = pick("transAmount");
-    return {
-      transactionId: pick("transID") || "",
-      transactionType: pick("transactionType"),
-      transTime: pick("transTime"),
-      amountCents: amount != null ? Math.round(Number(amount) * 100) : null,
-      businessShortCode: pick("businessShortCode"),
-      billRefNumber: pick("billRefNumber"),
-      msisdn: pick("msisdn"),
-      orgAccountBalance: pick("orgAccountBalance"),
-    };
-  });
+    }
+
+    return fields;
+  };
+
+  const get = (fields, ...names) => {
+    for (const name of names) {
+      const value = fields[normalizeKey(name)];
+      if (value !== undefined && value !== null && value !== "") return value;
+    }
+    return null;
+  };
+
+  const visit = (value) => {
+    if (!value || typeof value !== "object" || visited.has(value)) return;
+    visited.add(value);
+
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+
+    const fields = readFields(value);
+    const transactionId = get(
+      fields,
+      "TransID",
+      "TransactionID",
+      "TransactionId",
+      "ReceiptNumber"
+    );
+
+    if (transactionId != null) {
+      const amountValue = get(fields, "TransAmount", "TransactionAmount", "Amount");
+      const amount = amountValue == null ? null : Number(amountValue);
+
+      rows.push({
+        transactionId: String(transactionId).trim(),
+        transactionType: get(fields, "TransactionType"),
+        transTime: get(fields, "TransTime", "TransactionTime"),
+        amountCents:
+          amount != null && Number.isFinite(amount)
+            ? Math.round(amount * 100)
+            : null,
+        businessShortCode: get(fields, "BusinessShortCode", "ShortCode"),
+        billRefNumber: get(fields, "BillRefNumber", "AccountReference"),
+        msisdn: get(fields, "MSISDN", "MSISDNNumber", "PhoneNumber"),
+        orgAccountBalance: get(
+          fields,
+          "OrgAccountBalance",
+          "OrganizationAccountBalance"
+        ),
+      });
+      return;
+    }
+
+    for (const key of [
+      "Response",
+      "Transaction",
+      "Transactions",
+      "Result",
+      "Results",
+      "Data",
+      "Body",
+      "Records",
+      "Items",
+    ]) {
+      if (value[key] != null) visit(value[key]);
+    }
+  };
+
+  visit(response);
+
+  const unique = new Map();
+  for (const row of rows) {
+    if (row.transactionId) unique.set(row.transactionId, row);
+  }
+
+  return [...unique.values()];
 };
 
 const recordC2bTransactions = async (rows, source) => {
@@ -710,6 +890,120 @@ const recordC2bTransactions = async (rows, source) => {
     inserted += result.rowCount || 0;
   }
   return inserted;
+};
+
+const processStoredDarajaCallback = async (inbox) => {
+  const payload = inbox.payload || {};
+
+  if (inbox.callback_type === "pull") {
+    let rows = parsePullRows(payload);
+    if (rows.length === 0) {
+      const single = parseC2bConfirmation(payload);
+      if (single.transactionId) rows = [single];
+    }
+    if (rows.length > 0) {
+      await recordC2bTransactions(rows, "pull_callback");
+    }
+    return {
+      processed: true,
+      message:
+        rows.length > 0
+          ? "Pull callback transactions recorded."
+          : "Pull callback stored; no transaction rows recognized.",
+    };
+  }
+
+  if (inbox.callback_type === "c2b") {
+    const row = parseC2bConfirmation(payload);
+
+    if (!row.transactionId) {
+      throw new Error("C2B callback has no TransID.");
+    }
+
+    await recordC2bTransactions([row], "c2b");
+    return { processed: true, message: "C2B transaction recorded." };
+  }
+
+  if (inbox.callback_type === "stk") {
+    const callback = payload?.stkCallback || payload;
+    const checkoutRequestId = callback?.CheckoutRequestID;
+
+    if (!checkoutRequestId) {
+      throw new Error("STK callback has no CheckoutRequestID.");
+    }
+
+    const resultCode = String(callback.ResultCode);
+    const metadata = parseCallbackItems(callback);
+    const txResult = await query(
+      `SELECT *
+       FROM mpesa_transactions
+       WHERE checkout_request_id = $1
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [checkoutRequestId]
+    );
+
+    if (txResult.rowCount === 0) {
+      throw new Error(
+        `No payment transaction matches CheckoutRequestID ${checkoutRequestId}`
+      );
+    }
+
+    const tx = txResult.rows[0];
+    if (tx.status !== "pending") {
+      return {
+        processed: true,
+        message: `Payment already ${tx.status}.`,
+      };
+    }
+
+    if (resultCode === "0") {
+      const result = await finalizeTx(
+        tx,
+        {
+          status: "paid",
+          resultCode,
+          amount: metadata.amount,
+          mpesaReceiptNumber: metadata.mpesaReceiptNumber,
+          phoneNumber: metadata.phoneNumber,
+          transactionDate: metadata.transactionDate,
+          raw: callback,
+        },
+        "callback"
+      );
+
+      if (result?.verificationFailed) {
+        throw new Error(result.verificationProblems.join("; "));
+      }
+
+      if (!result?.settled) {
+        const refreshed = await query(
+          `SELECT status
+           FROM mpesa_transactions
+           WHERE id = $1`,
+          [tx.id]
+        );
+
+        if (refreshed.rows[0]?.status !== "paid") {
+          throw new Error(
+            "Payment settlement did not complete; retry or reconcile."
+          );
+        }
+      }
+    } else {
+      await settleMpesaTransaction({
+        checkoutRequestId,
+        status: "failed",
+        metadata,
+        rawPayload: callback,
+        source: "callback",
+      });
+    }
+
+    return { processed: true, message: "STK callback processed." };
+  }
+
+  throw new Error(`Unsupported callback type: ${inbox.callback_type}`);
 };
 
 const DEFAULT_MPESA_CALLBACK_DOMAIN = "https://wheelsnation.co.ke";
@@ -1139,7 +1433,21 @@ router.post("/mpesa/pull/query", requireAuth, requireRole("admin"), async (req, 
       });
     }
 
-    const rows = parsePullRows(data?.Response ?? data?.Transaction ?? []);
+    const rows = parsePullRows(data);
+
+    if (responseCode === "1000" && rows.length === 0) {
+      console.error("Daraja Pull query returned success but no parseable transactions", {
+        responseKeys: Object.keys(data || {}),
+      });
+
+      return res.status(502).json({
+        error:
+          "Daraja reported transactions, but the response contained no parseable transaction rows. Inspect the provider response before treating this query as empty.",
+        responseCode,
+        response: data,
+      });
+    }
+
     const stored = rows.length > 0
       ? await recordC2bTransactions(rows, "pull")
       : 0;
@@ -1771,23 +2079,89 @@ router.post("/mpesa/stkpush-event-registration", requireAuth, async (req, res, n
       amount,
     });
 
-    await query(
-      `UPDATE event_registrations
-       SET contact_phone = COALESCE($1, contact_phone),
-           payment_method = 'mpesa',
-           payment_status = 'pending'
-       WHERE id = $2`,
-      [normalizedPhone, registration.id]
-    );
+    const creation = await withTransaction(async (client) => {
+      const lockedRegistration = await client.query(
+        `SELECT id, status, payment_status
+         FROM event_registrations
+         WHERE id = $1
+         FOR UPDATE`,
+        [registration.id]
+      );
 
-    const txResult = await query(
-      `INSERT INTO mpesa_transactions
-         (event_registration_id, phone_number, amount_cents, status, mpesa_environment)
-       VALUES ($1, $2, $3, 'pending', $4)
-       RETURNING *`,
-      [registration.id, normalizedPhone, totalCents, mpesaCreds.environment]
-    );
-    const transaction = txResult.rows[0];
+      if (lockedRegistration.rowCount === 0) {
+        return { error: "Event registration not found", statusCode: 404 };
+      }
+
+      if (lockedRegistration.rows[0].status === "cancelled") {
+        return { error: "Registration is cancelled", statusCode: 400 };
+      }
+
+      if (lockedRegistration.rows[0].payment_status === "paid") {
+        return { error: "Registration is already paid", statusCode: 400 };
+      }
+
+      const existingResult = await client.query(
+        `SELECT *
+         FROM mpesa_transactions
+         WHERE event_registration_id = $1
+           AND status = 'pending'
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [registration.id]
+      );
+
+      if (existingResult.rowCount > 0) {
+        return {
+          transaction: existingResult.rows[0],
+          reused: true,
+        };
+      }
+
+      await client.query(
+        `UPDATE event_registrations
+         SET contact_phone = COALESCE($1, contact_phone),
+             payment_method = 'mpesa',
+             payment_status = 'pending'
+         WHERE id = $2`,
+        [normalizedPhone, registration.id]
+      );
+
+      const txResult = await client.query(
+        `INSERT INTO mpesa_transactions
+           (event_registration_id, phone_number, amount_cents, status, mpesa_environment)
+         VALUES ($1, $2, $3, 'pending', $4)
+         RETURNING *`,
+        [
+          registration.id,
+          normalizedPhone,
+          totalCents,
+          mpesaCreds.environment,
+        ]
+      );
+
+      return {
+        transaction: txResult.rows[0],
+        reused: false,
+      };
+    });
+
+    if (creation.error) {
+      return res.status(creation.statusCode).json({ error: creation.error });
+    }
+
+    const transaction = creation.transaction;
+
+    if (creation.reused) {
+      return res.status(200).json({
+        registrationId: registration.id,
+        transactionId: transaction.id,
+        status: "pending",
+        reused: true,
+        checkoutRequestId: transaction.checkout_request_id,
+        message:
+          "A payment attempt is already pending for this registration. Check its status before trying again.",
+      });
+    }
 
     const responseData = await sendStkPush({
       phoneNumber: normalizedPhone,
@@ -2745,6 +3119,7 @@ router.post("/c2b/confirmation", callbackIpGuard, async (req, res) => {
 // logging — the register endpoint returns the sync response already.
 router.post("/pull/result", callbackIpGuard, async (req, res) => {
   let inboxId;
+
   try {
     inboxId = await saveDarajaCallback({
       callbackType: "pull",
@@ -2763,19 +3138,59 @@ router.post("/pull/result", callbackIpGuard, async (req, res) => {
     });
   }
 
+  // Acknowledge only after the raw callback has been durably stored.
   res.json({ ResultCode: 0, ResultDesc: "Accepted" });
 
-  await query(
-    `UPDATE mpesa_callback_inbox
-     SET processing_status = 'processed',
-         processing_attempts = processing_attempts + 1,
-         processed_at = now(),
-         last_attempt_at = now()
-     WHERE id = $1`,
-    [inboxId]
-  ).catch((error) => {
-    console.error("Pull inbox update failed:", error);
-  });
+  try {
+    await query(
+      `UPDATE mpesa_callback_inbox
+       SET processing_status = 'processing',
+           processing_attempts = processing_attempts + 1,
+           last_attempt_at = now()
+       WHERE id = $1`,
+      [inboxId]
+    );
+
+    let rows = parsePullRows(req.body);
+
+    if (rows.length === 0) {
+      const single = parseC2bConfirmation(req.body);
+      if (single.transactionId) rows = [single];
+    }
+
+    if (rows.length > 0) {
+      await recordC2bTransactions(rows, "pull_callback");
+    }
+
+    await query(
+      `UPDATE mpesa_callback_inbox
+       SET processing_status = 'processed',
+           processing_error = $1,
+           processed_at = now()
+       WHERE id = $2`,
+      [
+        rows.length > 0
+          ? null
+          : "Callback stored, but no transaction rows were recognized; inspect raw payload.",
+        inboxId,
+      ]
+    );
+  } catch (error) {
+    console.error("Pull callback processing failed:", error);
+
+    await query(
+      `UPDATE mpesa_callback_inbox
+       SET processing_status = 'retry',
+           processing_error = $1
+       WHERE id = $2`,
+      [
+        String(error?.message || "Pull callback processing failed").slice(0, 2000),
+        inboxId,
+      ]
+    ).catch((dbError) => {
+      console.error("Pull inbox update failed:", dbError);
+    });
+  }
 });
 
 router.get(
@@ -2786,6 +3201,244 @@ router.get(
     res.json({
       catalogue: getDarajaErrorCatalogue(),
     });
+  }
+);
+
+// Admin: inspect the callback inbox.
+router.get(
+  "/mpesa/admin/callback-inbox",
+  requireAuth,
+  requireRole("admin"),
+  async (req, res, next) => {
+    try {
+      const limit = Math.min(
+        100,
+        Math.max(1, Number(req.query.limit) || 50)
+      );
+      const status = String(req.query.status || "all");
+      const allowedStatuses = [
+        "received",
+        "processing",
+        "processed",
+        "retry",
+        "failed",
+      ];
+
+      if (status !== "all" && !allowedStatuses.includes(status)) {
+        return res.status(400).json({
+          error: "Invalid callback inbox status.",
+        });
+      }
+
+      const result = await query(
+        `SELECT
+           id,
+           callback_type,
+           provider_reference,
+           processing_status,
+           processing_attempts,
+           processing_error,
+           received_at,
+           processed_at,
+           last_attempt_at
+         FROM mpesa_callback_inbox
+         ${status === "all" ? "" : "WHERE processing_status = $1"}
+         ORDER BY received_at DESC
+         LIMIT ${limit}`,
+        status === "all" ? [] : [status]
+      );
+
+      return res.json({
+        items: result.rows,
+        count: result.rowCount,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// Admin: replay one stored callback.
+router.post(
+  "/mpesa/admin/callback-inbox/:id/retry",
+  requireAuth,
+  requireRole("admin"),
+  async (req, res, next) => {
+    try {
+      const id = String(req.params.id || "");
+      if (
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          id
+        )
+      ) {
+        return res.status(400).json({
+          error: "Invalid callback inbox ID.",
+        });
+      }
+
+      const claim = await query(
+        `UPDATE mpesa_callback_inbox
+         SET processing_status = 'processing',
+             processing_attempts = processing_attempts + 1,
+             last_attempt_at = now(),
+             processing_error = NULL
+         WHERE id = $1
+           AND processing_status IN ('received', 'retry')
+         RETURNING *`,
+        [id]
+      );
+
+      if (claim.rowCount === 0) {
+        const current = await query(
+          `SELECT processing_status
+           FROM mpesa_callback_inbox
+           WHERE id = $1`,
+          [id]
+        );
+
+        if (current.rowCount === 0) {
+          return res.status(404).json({
+            error: "Callback inbox record not found.",
+          });
+        }
+
+        return res.status(409).json({
+          error:
+            `Callback cannot be retried from status '${current.rows[0].processing_status}'.`,
+        });
+      }
+
+      const inbox = claim.rows[0];
+
+      try {
+        await processStoredDarajaCallback(inbox);
+
+        await query(
+          `UPDATE mpesa_callback_inbox
+           SET processing_status = 'processed',
+               processed_at = now(),
+               processing_error = NULL
+           WHERE id = $1
+             AND processing_status = 'processing'`,
+          [id]
+        );
+
+        return res.json({
+          ok: true,
+          message: "Callback successfully processed.",
+          id,
+        });
+      } catch (processingError) {
+        const message = String(
+          processingError?.message || "Callback processing failed"
+        ).slice(0, 2000);
+
+        await query(
+          `UPDATE mpesa_callback_inbox
+           SET processing_status = 'retry',
+               processing_error = $1
+           WHERE id = $2`,
+          [message, id]
+        );
+
+        return res.status(422).json({
+          ok: false,
+          error: message,
+          id,
+        });
+      }
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// Admin: recover multiple pending callback-processing failures.
+router.post(
+  "/mpesa/admin/callback-inbox/retry-batch",
+  requireAuth,
+  requireRole("admin"),
+  async (req, res, next) => {
+    try {
+      const limit = Math.min(
+        25,
+        Math.max(1, Number(req.body?.limit) || 10)
+      );
+
+      const claimed = await query(
+        `WITH candidates AS (
+           SELECT id
+           FROM mpesa_callback_inbox
+           WHERE processing_status IN ('received', 'retry')
+              OR (
+                processing_status = 'processing'
+                AND last_attempt_at < now() - interval '5 minutes'
+              )
+           ORDER BY received_at ASC
+           LIMIT $1
+           FOR UPDATE SKIP LOCKED
+         )
+         UPDATE mpesa_callback_inbox AS inbox
+         SET processing_status = 'processing',
+             processing_attempts = inbox.processing_attempts + 1,
+             processing_error = NULL,
+             last_attempt_at = now()
+         FROM candidates
+         WHERE inbox.id = candidates.id
+         RETURNING inbox.*`,
+        [limit]
+      );
+
+      const outcomes = [];
+
+      for (const inbox of claimed.rows) {
+        try {
+          await processStoredDarajaCallback(inbox);
+
+          await query(
+            `UPDATE mpesa_callback_inbox
+             SET processing_status = 'processed',
+                 processed_at = now(),
+                 processing_error = NULL
+             WHERE id = $1
+               AND processing_status = 'processing'`,
+            [inbox.id]
+          );
+
+          outcomes.push({
+            id: inbox.id,
+            status: "processed",
+          });
+        } catch (error) {
+          const message = String(
+            error?.message || "Callback processing failed"
+          ).slice(0, 2000);
+
+          await query(
+            `UPDATE mpesa_callback_inbox
+             SET processing_status = 'retry',
+                 processing_error = $1
+             WHERE id = $2
+               AND processing_status = 'processing'`,
+            [message, inbox.id]
+          );
+
+          outcomes.push({
+            id: inbox.id,
+            status: "retry",
+            error: message,
+          });
+        }
+      }
+
+      return res.json({
+        ok: true,
+        claimed: claimed.rowCount,
+        outcomes,
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 );
 
