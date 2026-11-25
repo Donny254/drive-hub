@@ -5,8 +5,32 @@ import { issueTicketsForRegistration } from "../utils/eventTickets.js";
 import { sendEventTicketEmail } from "../email.js";
 import { sendEventTicketMessage } from "../notifications.js";
 import { decryptSecret } from "../utils/secrets.js";
+import { getDarajaErrorCatalogue } from "../utils/darajaErrors.js";
 import { createHash } from "node:crypto";
 const router = Router();
+
+const saveDarajaCallback = async ({
+  callbackType,
+  providerReference,
+  payload,
+}) => {
+  const result = await query(
+    `INSERT INTO mpesa_callback_inbox (
+       callback_type,
+       provider_reference,
+       payload
+     )
+     VALUES ($1, $2, $3::jsonb)
+     RETURNING id`,
+    [
+      callbackType,
+      providerReference || null,
+      JSON.stringify(payload || {}),
+    ]
+  );
+
+  return result.rows[0]?.id;
+};
 
 const DARAJA_TIMEOUT_MS = 20_000;
 const TOKEN_TTL_SKEW_SECONDS = 60;
@@ -520,25 +544,44 @@ export const settleMpesaTransaction = async ({
 // transaction pending for manual admin review instead of auto-fulfilling.
 const finalizeTx = async (txRow, result, source = "callback") => {
   const expectedKes = Math.round(Number(txRow.amount_cents || 0) / 100);
+  const receipt = String(result.mpesaReceiptNumber || "").trim();
+  const actualAmount = result.amount;
+  const verificationProblems = [];
 
+  if (result.status === "paid" && !receipt) {
+    verificationProblems.push("Missing M-Pesa receipt number");
+  }
+  if (result.status === "paid" && actualAmount == null) {
+    verificationProblems.push("Missing payment amount");
+  }
   if (
     result.status === "paid" &&
-    result.amount != null &&
-    Number(result.amount) !== expectedKes
+    actualAmount != null &&
+    Number(actualAmount) !== expectedKes
   ) {
-    console.warn(
-      `M-Pesa amount mismatch for tx ${txRow.id}: expected KES ${expectedKes}, callback reports KES ${result.amount}. Left pending for review.`
+    verificationProblems.push(
+      `Amount mismatch: expected KES ${expectedKes}, received KES ${actualAmount}`
     );
+  }
 
+  if (verificationProblems.length > 0) {
+    const errorMessage = verificationProblems.join("; ");
+    console.warn(
+      `M-Pesa verification failed for transaction ${txRow.id}: ${errorMessage}`
+    );
     await query(
       `UPDATE mpesa_transactions
        SET response = COALESCE(response, '{}'::jsonb)
          || jsonb_build_object($1::text, $2::jsonb),
            result_code = COALESCE($3, result_code)
-       WHERE id = $4`,
+       WHERE id = $4
+         AND status = 'pending'`,
       [
         source,
-        JSON.stringify(result.raw || {}),
+        JSON.stringify({
+          raw: result.raw || {},
+          verificationProblems,
+        }),
         result.resultCode != null
           ? String(result.resultCode)
           : result.raw?.ResultCode != null
@@ -547,11 +590,14 @@ const finalizeTx = async (txRow, result, source = "callback") => {
         txRow.id,
       ]
     );
-
-    return;
+    return {
+      settled: false,
+      verificationFailed: true,
+      verificationProblems,
+    };
   }
 
-  await settleMpesaTransaction({
+  return settleMpesaTransaction({
     checkoutRequestId: txRow.checkout_request_id,
     status: result.status,
     metadata: result,
@@ -2504,49 +2550,127 @@ const callbackIpGuard = (req, res, next) => {
 router.post(
   "/stk/result",
   callbackIpGuard,
-  async (req, res, next) => {
+  async (req, res) => {
+    const callback = req.body?.Body?.stkCallback;
+    if (!callback) {
+      return res.status(400).json({
+        ResultCode: 1,
+        ResultDesc: "Invalid callback payload",
+      });
+    }
+
+    const checkoutRequestId = callback.CheckoutRequestID || null;
+    let inboxId;
+
     try {
-      const callback = req.body?.Body?.stkCallback;
-      if (!callback) {
-        return res.status(400).json({ error: "Invalid callback payload" });
-      }
+      inboxId = await saveDarajaCallback({
+        callbackType: "stk",
+        providerReference: checkoutRequestId,
+        payload: callback,
+      });
+    } catch (error) {
+      console.error("Failed to persist STK callback:", error);
+      return res.status(500).json({
+        ResultCode: 1,
+        ResultDesc: "Callback persistence failed",
+      });
+    }
 
-      const checkoutRequestId = callback.CheckoutRequestID;
-      const status = String(callback.ResultCode) === "0" ? "paid" : "failed";
+    res.json({ ResultCode: 0, ResultDesc: "Accepted" });
 
-      // Acknowledge quickly and settle outside the response path so Safaricom
-      // never times out on us; settleMpesaTransaction is idempotent.
-      res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+    if (!checkoutRequestId) {
+      await query(
+        `UPDATE mpesa_callback_inbox
+         SET processing_status = 'failed',
+             processing_error = 'Missing CheckoutRequestID',
+             processing_attempts = processing_attempts + 1,
+             last_attempt_at = now()
+         WHERE id = $1`,
+        [inboxId]
+      );
+      return;
+    }
 
-      if (!checkoutRequestId) return;
+    try {
+      await query(
+        `UPDATE mpesa_callback_inbox
+         SET processing_status = 'processing',
+             processing_attempts = processing_attempts + 1,
+             last_attempt_at = now()
+         WHERE id = $1`,
+        [inboxId]
+      );
 
-      try {
-        if (status === "paid") {
-          const txResult = await query(
-            "SELECT * FROM mpesa_transactions WHERE checkout_request_id = $1 ORDER BY created_at DESC LIMIT 1",
-            [checkoutRequestId]
-          );
-          if (txResult.rowCount > 0) {
-            await finalizeTx(txResult.rows[0], {
-              status: "paid",
-              resultCode: String(callback.ResultCode),
-              ...parseCallbackItems(callback),
-              raw: callback,
-            });
-            return;
-          }
+      const resultCode = String(callback.ResultCode);
+      const metadata = parseCallbackItems(callback);
+
+      if (resultCode === "0") {
+        const txResult = await query(
+          `SELECT *
+           FROM mpesa_transactions
+           WHERE checkout_request_id = $1
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [checkoutRequestId]
+        );
+        if (txResult.rowCount === 0) {
+          throw new Error("No payment record matched the CheckoutRequestID");
         }
+
+        const finalization = await finalizeTx(
+          txResult.rows[0],
+          {
+            status: "paid",
+            resultCode,
+            amount: metadata.amount,
+            mpesaReceiptNumber: metadata.mpesaReceiptNumber,
+            phoneNumber: metadata.phoneNumber,
+            transactionDate: metadata.transactionDate,
+            raw: callback,
+          },
+          "callback"
+        );
+
+        if (finalization?.verificationFailed) {
+          await query(
+            `UPDATE mpesa_callback_inbox
+             SET processing_status = 'failed',
+                 processing_error = $1,
+                 processed_at = NULL
+             WHERE id = $2`,
+            [finalization.verificationProblems.join("; "), inboxId]
+          );
+          return;
+        }
+      } else {
         await settleMpesaTransaction({
           checkoutRequestId,
-          status,
-          metadata: parseCallbackItems(callback),
+          status: "failed",
+          metadata,
           rawPayload: callback,
+          source: "callback",
         });
-      } catch (error) {
-        console.error("M-Pesa callback settlement failed:", error);
       }
+
+      await query(
+        `UPDATE mpesa_callback_inbox
+         SET processing_status = 'processed',
+             processing_error = NULL,
+             processed_at = now()
+         WHERE id = $1`,
+        [inboxId]
+      );
     } catch (error) {
-      next(error);
+      console.error("STK callback processing failed:", error);
+      await query(
+        `UPDATE mpesa_callback_inbox
+         SET processing_status = 'retry',
+             processing_error = $1
+         WHERE id = $2`,
+        [String(error?.message || "Callback processing failed").slice(0, 2000), inboxId]
+      ).catch((dbError) => {
+        console.error("Failed to update callback inbox status:", dbError);
+      });
     }
   }
 );
@@ -2559,25 +2683,110 @@ router.post("/c2b/validation", callbackIpGuard, (req, res) => {
 
 // C2B confirmation — a completed manual paybill payment. Record it
 // (deduped by TransID) and ack so Safaricom stops retrying.
-router.post("/c2b/confirmation", callbackIpGuard, async (req, res, next) => {
+router.post("/c2b/confirmation", callbackIpGuard, async (req, res) => {
+  const row = parseC2bConfirmation(req.body);
+  if (!row.transactionId) {
+    return res.status(400).json({
+      ResultCode: 1,
+      ResultDesc: "Missing transaction ID",
+    });
+  }
+
+  let inboxId;
   try {
-    res.json({ ResultCode: 0, ResultDesc: "Accepted" });
-    const row = parseC2bConfirmation(req.body);
-    if (!row.transactionId) return;
-    const inserted = await recordC2bTransactions([row], "c2b");
-    if (inserted > 0) {
-      console.log(`C2B confirmation recorded: ${row.transactionId} KES ${(row.amountCents || 0) / 100} from ${row.msisdn} ref=${row.billRefNumber}`);
-    }
+    inboxId = await saveDarajaCallback({
+      callbackType: "c2b",
+      providerReference: row.transactionId,
+      payload: req.body,
+    });
   } catch (error) {
-    console.error("C2B confirmation handling failed:", error);
+    console.error("C2B callback persistence failed:", error);
+    return res.status(500).json({
+      ResultCode: 1,
+      ResultDesc: "Callback persistence failed",
+    });
+  }
+
+  res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+
+  try {
+    await query(
+      `UPDATE mpesa_callback_inbox
+       SET processing_status = 'processing',
+           processing_attempts = processing_attempts + 1,
+           last_attempt_at = now()
+       WHERE id = $1`,
+      [inboxId]
+    );
+    await recordC2bTransactions([row], "c2b");
+    await query(
+      `UPDATE mpesa_callback_inbox
+       SET processing_status = 'processed',
+           processed_at = now(),
+           processing_error = NULL
+       WHERE id = $1`,
+      [inboxId]
+    );
+  } catch (error) {
+    console.error("C2B confirmation processing failed:", error);
+    await query(
+      `UPDATE mpesa_callback_inbox
+       SET processing_status = 'retry',
+           processing_error = $1
+       WHERE id = $2`,
+      [String(error?.message || "C2B processing failed").slice(0, 2000), inboxId]
+    ).catch((dbError) => {
+      console.error("C2B inbox update failed:", dbError);
+    });
   }
 });
 
 // Async response to /mpesa/pull/register arrives here; nothing to do beyond
 // logging — the register endpoint returns the sync response already.
-router.post("/pull/result", callbackIpGuard, (req, res) => {
-  console.log("Pull registration callback:", JSON.stringify(req.body).slice(0, 500));
+router.post("/pull/result", callbackIpGuard, async (req, res) => {
+  let inboxId;
+  try {
+    inboxId = await saveDarajaCallback({
+      callbackType: "pull",
+      providerReference:
+        req.body?.TransID ||
+        req.body?.TransactionID ||
+        req.body?.ResponseCode ||
+        null,
+      payload: req.body,
+    });
+  } catch (error) {
+    console.error("Pull callback persistence failed:", error);
+    return res.status(500).json({
+      ResultCode: 1,
+      ResultDesc: "Callback persistence failed",
+    });
+  }
+
   res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+
+  await query(
+    `UPDATE mpesa_callback_inbox
+     SET processing_status = 'processed',
+         processing_attempts = processing_attempts + 1,
+         processed_at = now(),
+         last_attempt_at = now()
+     WHERE id = $1`,
+    [inboxId]
+  ).catch((error) => {
+    console.error("Pull inbox update failed:", error);
+  });
 });
+
+router.get(
+  "/mpesa/admin/error-catalogue",
+  requireAuth,
+  requireRole("admin"),
+  (req, res) => {
+    res.json({
+      catalogue: getDarajaErrorCatalogue(),
+    });
+  }
+);
 
 export default router;

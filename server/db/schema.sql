@@ -426,6 +426,39 @@ CREATE TABLE IF NOT EXISTS mpesa_c2b_transactions (
 
 CREATE INDEX IF NOT EXISTS idx_mpesa_c2b_created_at ON mpesa_c2b_transactions(created_at DESC);
 
+-- Durable M-Pesa callback inbox.
+CREATE TABLE IF NOT EXISTS mpesa_callback_inbox (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  callback_type text NOT NULL CHECK (
+    callback_type IN ('stk', 'c2b', 'pull')
+  ),
+  provider_reference text,
+  payload jsonb NOT NULL,
+  processing_status text NOT NULL DEFAULT 'received' CHECK (
+    processing_status IN (
+      'received',
+      'processing',
+      'processed',
+      'retry',
+      'failed'
+    )
+  ),
+  processing_attempts integer NOT NULL DEFAULT 0,
+  processing_error text,
+  received_at timestamptz NOT NULL DEFAULT now(),
+  processed_at timestamptz,
+  last_attempt_at timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS idx_mpesa_callback_inbox_status
+  ON mpesa_callback_inbox(processing_status, received_at);
+
+CREATE INDEX IF NOT EXISTS idx_mpesa_callback_inbox_reference
+  ON mpesa_callback_inbox(provider_reference);
+
+CREATE INDEX IF NOT EXISTS idx_mpesa_callback_inbox_type
+  ON mpesa_callback_inbox(callback_type, received_at);
+
 ALTER TABLE bookings
   ADD COLUMN IF NOT EXISTS amount_cents integer;
 
