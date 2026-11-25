@@ -89,6 +89,9 @@ MPESA_CALLBACK_URL=https://your-domain.com
 MPESA_PARTYB=174379
 MPESA_ACCOUNT_REFERENCE=DriveHub Order
 MPESA_TRANSACTION_DESC=DriveHub checkout
+MPESA_NOTIFICATION_BATCH_SIZE=10
+MPESA_NOTIFICATION_POLL_MS=15000
+MPESA_NOTIFICATION_LEASE_MINUTES=15
 
 BANK_NAME=Your Bank
 BANK_ACCOUNT_NAME=WheelsnationKe Limited
@@ -113,6 +116,31 @@ recovery worker defaults to 12 attempts, batches of 20, and a 15-second
 polling interval. Override these with `MPESA_CALLBACK_MAX_ATTEMPTS`,
 `MPESA_CALLBACK_BATCH_SIZE`, `MPESA_RECOVERY_POLL_MS`, and
 `MPESA_CALLBACK_ABANDONED_MINUTES` (15 minutes by default).
+Paid event ticket notifications are queued transactionally and delivered
+independently by email, SMS, and WhatsApp. The notification worker defaults to
+10 jobs per batch, polls every 15 seconds, uses a 15-minute processing lease,
+and retries each channel up to 8 times. Configure the worker with
+`MPESA_NOTIFICATION_BATCH_SIZE`, `MPESA_NOTIFICATION_POLL_MS`,
+and `MPESA_NOTIFICATION_LEASE_MINUTES`.
+
+The server applies pending SQL migrations at startup. To inspect notification
+delivery state:
+
+```sql
+SELECT registration_id, channel, status, attempts, next_retry_at, last_error
+FROM event_ticket_notification_outbox
+ORDER BY created_at DESC
+LIMIT 20;
+
+SELECT channel, status, COUNT(*)
+FROM event_ticket_notification_outbox
+GROUP BY channel, status
+ORDER BY channel, status;
+```
+
+Orders track payment separately from fulfillment. A confirmed M-Pesa payment
+remains paid even when inventory is unavailable; `fulfillment_status` records
+`pending`, `fulfilled`, `stock_issue`, or `refund_required` for follow-up.
 
 Generate a secure JWT secret:
 

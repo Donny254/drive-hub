@@ -124,4 +124,42 @@ export const sendEventTicketMessage = async ({
       .join(" "),
   });
 
+export const sendEventTicketChannelMessage = async ({
+  channel,
+  phone,
+  attendeeName,
+  eventTitle,
+  ticketCodes = [],
+  throwOnError = true,
+}) => {
+  if (!["sms", "whatsapp"].includes(channel)) {
+    throw new Error(`Unsupported notification channel: ${channel}`);
+  }
+
+  const result = await maybeSend({
+    phone,
+    whatsapp: channel === "whatsapp",
+    sms: channel === "sms",
+    throwOnError,
+    message: [
+      `Hello ${attendeeName || "there"},`,
+      `Your ticket for ${eventTitle || "your event"} is confirmed.`,
+      ticketCodes.length
+        ? `Codes: ${ticketCodes.join(", ")}.`
+        : null,
+      "Download the full ticket from your WheelsnationKe account.",
+    ]
+      .filter(Boolean)
+      .join(" "),
+  });
+
+  if (!result[channel]) {
+    throw new Error(
+      `${channel.toUpperCase()} provider did not accept the message.`
+    );
+  }
+
+  return { accepted: true, channel };
+};
+
 export { normalizePhone };

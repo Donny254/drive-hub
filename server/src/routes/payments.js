@@ -1,9 +1,6 @@
 import { Router } from "express";
 import { query, withTransaction } from "../db.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
-import { issueTicketsForRegistration } from "../utils/eventTickets.js";
-import { sendEventTicketEmail } from "../email.js";
-import { sendEventTicketMessage } from "../notifications.js";
 import { decryptSecret } from "../utils/secrets.js";
 import { getDarajaErrorCatalogue } from "../utils/darajaErrors.js";
 import { createHash } from "node:crypto";
@@ -893,54 +890,144 @@ export const settleMpesaTransaction = async ({
 
     if (orderId) {
       const orderSelect = await client.query(
-        "SELECT status FROM orders WHERE id = $1 FOR UPDATE",
+        `SELECT id, status, payment_status, fulfillment_status
+         FROM orders
+         WHERE id = $1
+         FOR UPDATE`,
         [orderId]
       );
 
       if (orderSelect.rowCount > 0) {
-        const currentStatus = orderSelect.rows[0].status;
-        const paidAt = status === "paid" ? new Date().toISOString() : null;
+        const order = orderSelect.rows[0];
 
-        if (status === "paid" && currentStatus !== "paid") {
-          const insufficientResult = await client.query(
-            `SELECT p.id, p.name, p.stock, SUM(oi.quantity) AS required_quantity
-             FROM order_items oi
-             JOIN products p ON p.id = oi.product_id
-             WHERE oi.order_id = $1
-             GROUP BY p.id, p.name, p.stock
-             HAVING SUM(oi.quantity) > p.stock`,
-            [orderId]
-          );
+        if (status === "paid") {
+          if (order.payment_status !== "paid") {
+            const refundRequired = order.status === "cancelled";
+            let stockAvailable = true;
+            let requiredCount = 0;
+            let decrementedCount = 0;
 
-          if (insufficientResult.rowCount > 0) {
+            if (!refundRequired) {
+              const requiredResult = await client.query(
+                `SELECT
+                   product_id,
+                   SUM(quantity)::integer AS required_quantity
+                 FROM order_items
+                 WHERE order_id = $1
+                   AND product_id IS NOT NULL
+                 GROUP BY product_id
+                 ORDER BY product_id`,
+                [orderId]
+              );
+              const requiredProducts = requiredResult.rows;
+              requiredCount = requiredProducts.length;
+
+              const lockedProductsResult = requiredCount
+                ? await client.query(
+                    `SELECT id, stock
+                     FROM products
+                     WHERE id = ANY($1::uuid[])
+                     ORDER BY id
+                     FOR UPDATE`,
+                    [requiredProducts.map((item) => item.product_id)]
+                  )
+                : { rows: [] };
+              const stockByProductId = new Map(
+                lockedProductsResult.rows.map((product) => [
+                  String(product.id),
+                  Number(product.stock),
+                ])
+              );
+
+              stockAvailable = requiredProducts.every(
+                (item) =>
+                  stockByProductId.has(String(item.product_id)) &&
+                  stockByProductId.get(String(item.product_id)) >=
+                    Number(item.required_quantity)
+              );
+
+              if (stockAvailable && requiredCount > 0) {
+                await client.query("SAVEPOINT mpesa_order_stock_decrement");
+
+                const decrementResult = await client.query(
+                  `WITH required AS (
+                     SELECT
+                       product_id,
+                       SUM(quantity)::integer AS required_quantity
+                     FROM order_items
+                     WHERE order_id = $1
+                       AND product_id IS NOT NULL
+                     GROUP BY product_id
+                   )
+                   UPDATE products AS p
+                   SET stock = p.stock - required.required_quantity,
+                       updated_at = now()
+                   FROM required
+                   WHERE p.id = required.product_id
+                     AND p.stock >= required.required_quantity
+                   RETURNING p.id`,
+                  [orderId]
+                );
+                decrementedCount = decrementResult.rowCount;
+
+                if (decrementedCount !== requiredCount) {
+                  await client.query(
+                    "ROLLBACK TO SAVEPOINT mpesa_order_stock_decrement"
+                  );
+                  stockAvailable = false;
+                  decrementedCount = 0;
+                }
+
+                await client.query(
+                  "RELEASE SAVEPOINT mpesa_order_stock_decrement"
+                );
+              }
+            }
+
+            const fulfillmentStatus = refundRequired
+              ? "refund_required"
+              : stockAvailable
+                ? "fulfilled"
+                : "stock_issue";
+
             await client.query(
               `UPDATE orders
-               SET status = 'cancelled', payment_status = 'failed', paid_at = NULL
-               WHERE id = $1`,
-              [orderId]
-            );
-          } else {
-            await client.query(
-              `UPDATE orders
-               SET status = 'paid', payment_status = 'paid', paid_at = $1
-               WHERE id = $2`,
-              [paidAt, orderId]
+               SET payment_status = 'paid',
+                   paid_at = COALESCE(paid_at, $1),
+                   fulfillment_status = $2,
+                   status = CASE
+                     WHEN status = 'cancelled' THEN status
+                     ELSE 'paid'
+                   END
+               WHERE id = $3`,
+              [
+                new Date().toISOString(),
+                fulfillmentStatus,
+                orderId,
+              ]
             );
 
-            await client.query(
-              `UPDATE products
-               SET stock = stock - oi.quantity
-               FROM order_items oi
-               WHERE oi.order_id = $1
-                 AND products.id = oi.product_id
-                 AND oi.product_id IS NOT NULL`,
-              [orderId]
-            );
+            if (!refundRequired && !stockAvailable) {
+              console.error(
+                `M-Pesa payment ${txResult.rows[0].id} succeeded, ` +
+                `but order ${orderId} has insufficient stock. ` +
+                `Required product rows: ${requiredCount}; ` +
+                `stock decrements completed: ${decrementedCount}.`
+              );
+            }
           }
-        } else if (status !== "paid" && currentStatus !== "cancelled") {
+        } else if (
+          status === "failed" &&
+          order.payment_status !== "paid" &&
+          order.status !== "cancelled"
+        ) {
           await client.query(
-            "UPDATE orders SET status = $1, payment_status = $2 WHERE id = $3",
-            [status === "failed" ? "cancelled" : status, status, orderId]
+            `UPDATE orders
+             SET status = 'cancelled',
+                 payment_status = 'failed',
+                 fulfillment_status = 'pending'
+             WHERE id = $1`,
+            [orderId]
           );
         }
       }
@@ -968,7 +1055,19 @@ export const settleMpesaTransaction = async ({
         [paymentStatus, paidAt, registrationStatus, eventRegistrationId]
       );
       if (status === "paid") {
-        await notifyPaidRegistration(eventRegistrationId);
+        await client.query(
+          `INSERT INTO event_ticket_notification_outbox
+             (registration_id, channel)
+           SELECT er.id, channels.channel
+           FROM event_registrations er
+           CROSS JOIN (
+             VALUES ('email'), ('sms'), ('whatsapp')
+           ) AS channels(channel)
+           WHERE er.id = $1
+             AND er.status <> 'cancelled'
+           ON CONFLICT (registration_id, channel) DO NOTHING`,
+          [eventRegistrationId]
+        );
       }
     }
 
@@ -2325,53 +2424,6 @@ const latestCryptoSelect = `SELECT *
   WHERE %COLUMN% = $1
   ORDER BY created_at DESC
   LIMIT 1`;
-
-const notifyPaidRegistration = async (registrationId) => {
-  const registrationResult = await query(
-    `SELECT * FROM event_registrations WHERE id = $1`,
-    [registrationId]
-  );
-  if (registrationResult.rowCount === 0) return;
-
-  const registration = registrationResult.rows[0];
-  if (registration.status === "cancelled") return;
-
-  const createdTickets = await issueTicketsForRegistration(registration);
-  const notifyResult = await query(
-    `SELECT u.email, u.name, e.title, e.location, e.start_date, e.end_date
-     FROM event_registrations er
-     LEFT JOIN users u ON u.id = er.user_id
-     LEFT JOIN events e ON e.id = er.event_id
-     WHERE er.id = $1`,
-    [registrationId]
-  );
-  if (notifyResult.rowCount > 0) {
-    const notify = notifyResult.rows[0];
-    await sendEventTicketEmail({
-      to: notify.email,
-      attendeeName: notify.name,
-      registration: {
-        tickets: registration.tickets,
-        paymentMethod: registration.payment_method,
-        paymentStatus: registration.payment_status,
-      },
-      event: {
-        title: notify.title,
-        location: notify.location,
-        startDate: notify.start_date,
-        endDate: notify.end_date,
-      },
-      tickets: createdTickets,
-    });
-    await sendEventTicketMessage({
-      phone: registration.contact_phone,
-      attendeeName: notify.name,
-      eventTitle: notify.title,
-      ticketCodes: createdTickets.map((ticket) => ticket.ticket_number || ticket.ticketNumber),
-      throwOnError: true,
-    });
-  }
-};
 
 const insertOrderItems = async (orderId, items, client = null) => {
   if (!items || items.length === 0) return;
