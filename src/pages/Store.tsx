@@ -76,6 +76,7 @@ const Store = () => {
   const [activeCategory, setActiveCategory] = useState("All");
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const checkoutDialogRef = useRef<HTMLDivElement | null>(null);
+  const checkoutIdempotencyRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
 
@@ -353,9 +354,38 @@ const Store = () => {
 
       const endpoint =
         paymentMethod === "crypto" ? "/api/payments/crypto/checkout" : "/api/payments/mpesa/stkpush";
+      let idempotencyKey: string | null = null;
+      if (paymentMethod === "mpesa") {
+        const fingerprint = JSON.stringify({
+          phone: customerPhone.trim(),
+          items: orderItems
+            .map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+              size: item.selectedSize || null,
+            }))
+            .sort((a, b) =>
+              a.productId.localeCompare(b.productId) ||
+              String(a.size || "").localeCompare(String(b.size || "")) ||
+              a.quantity - b.quantity
+            ),
+        });
+
+        if (checkoutIdempotencyRef.current?.fingerprint !== fingerprint) {
+          checkoutIdempotencyRef.current = {
+            fingerprint,
+            key: window.crypto.randomUUID(),
+          };
+        }
+        idempotencyKey = checkoutIdempotencyRef.current.key;
+      }
+
       const resp = await apiFetch(endpoint, {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+        },
         body: JSON.stringify({
           phoneNumber: customerPhone,
           deliveryAddress: customerAddress || null,
@@ -369,14 +399,35 @@ const Store = () => {
       });
 
       if (!resp.ok) {
-        throw new Error(await getApiErrorMessage(resp, "Failed to place order"));
+        const errorMessage = await getApiErrorMessage(resp, "Failed to place order");
+        if (
+          paymentMethod === "mpesa" &&
+          resp.status === 400 &&
+          checkoutIdempotencyRef.current?.key === idempotencyKey
+        ) {
+          checkoutIdempotencyRef.current = null;
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await resp.json().catch(() => ({}));
+      if (paymentMethod === "mpesa") {
+        checkoutIdempotencyRef.current = null;
+      }
+      const mpesaResponse = data?.response;
+      const mpesaOutcomeUnresolved =
+        paymentMethod === "mpesa" &&
+        (data?.reused ||
+          mpesaResponse?._outcomeUnknown ||
+          mpesaResponse?._providerHttpError ||
+          !mpesaResponse?.CheckoutRequestID);
       const customerMessage =
         paymentMethod === "crypto"
           ? data?.message || "Crypto payment submitted for review."
-          : data?.response?.CustomerMessage;
+          : data?.message ||
+            (mpesaOutcomeUnresolved
+              ? "Payment initiation status is uncertain. Check the order status before trying again."
+              : mpesaResponse?.CustomerMessage);
       setCheckoutSuccess(
         customerMessage ||
           (paymentMethod === "crypto"

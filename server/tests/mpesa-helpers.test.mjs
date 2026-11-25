@@ -129,3 +129,297 @@ test("Daraja error catalogue distinguishes known and unknown codes", async () =>
     response: { ResultCode: "2029", ResultDesc: "Unresolved" },
   }).category, "unresolved");
 });
+
+test("Daraja OAuth uses GET, Basic auth and caches the token", async () => {
+  const { getAccessToken } = await import("../src/routes/payments.js");
+
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  let requestedUrl;
+  let requestedOptions;
+
+  const creds = {
+    environment: "sandbox",
+    baseUrl: "https://sandbox.safaricom.co.ke",
+    consumerKey: "test-consumer-key-cache",
+    consumerSecret: "test-consumer-secret-cache",
+  };
+
+  globalThis.fetch = async (url, options) => {
+    calls += 1;
+    requestedUrl = url;
+    requestedOptions = options;
+
+    return new Response(
+      JSON.stringify({
+        access_token: "test-daraja-token-cache",
+        expires_in: "3599",
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+  };
+
+  try {
+    const first = await getAccessToken(creds);
+    const second = await getAccessToken(creds);
+
+    assert.equal(first, "test-daraja-token-cache");
+    assert.equal(second, first);
+    assert.equal(calls, 1, "second call should reuse cached token");
+    assert.equal(
+      requestedUrl,
+      "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
+    );
+    assert.equal(requestedOptions.method, "GET");
+
+    const expectedBasic = Buffer.from(
+      `${creds.consumerKey}:${creds.consumerSecret}`
+    ).toString("base64");
+
+    assert.equal(
+      requestedOptions.headers.Authorization,
+      `Basic ${expectedBasic}`
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("concurrent Daraja OAuth calls share one token request", async () => {
+  const { getAccessToken } = await import("../src/routes/payments.js");
+
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+
+  const creds = {
+    environment: "sandbox",
+    baseUrl: "https://sandbox.safaricom.co.ke",
+    consumerKey: "test-consumer-key-concurrent",
+    consumerSecret: "test-consumer-secret-concurrent",
+  };
+
+  globalThis.fetch = async () => {
+    calls += 1;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    return new Response(
+      JSON.stringify({
+        access_token: "test-concurrent-token",
+        expires_in: "3599",
+      }),
+      { status: 200 }
+    );
+  };
+
+  try {
+    const tokens = await Promise.all(
+      Array.from({ length: 8 }, () => getAccessToken(creds))
+    );
+
+    assert.equal(calls, 1);
+    assert.ok(tokens.every((token) => token === "test-concurrent-token"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Daraja authorized request refreshes once after HTTP 401", async () => {
+  const { darajaAuthorizedFetch } = await import("../src/routes/payments.js");
+
+  const originalFetch = globalThis.fetch;
+  let tokenCalls = 0;
+  let apiCalls = 0;
+
+  const creds = {
+    environment: "sandbox",
+    baseUrl: "https://sandbox.safaricom.co.ke",
+    consumerKey: "test-consumer-key-401",
+    consumerSecret: "test-consumer-secret-401",
+  };
+
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes("/oauth/v1/generate")) {
+      tokenCalls += 1;
+
+      return new Response(
+        JSON.stringify({
+          access_token: `test-token-${tokenCalls}`,
+          expires_in: "3599",
+        }),
+        { status: 200 }
+      );
+    }
+
+    apiCalls += 1;
+
+    if (options.headers.Authorization === "Bearer test-token-1") {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401 }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ ResponseCode: "0" }),
+      { status: 200 }
+    );
+  };
+
+  try {
+    const response = await darajaAuthorizedFetch(
+      "/test/protected",
+      { method: "GET" },
+      creds
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(tokenCalls, 2);
+    assert.equal(apiCalls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("late 401 reuses a token refreshed by another request", async () => {
+  const {
+    darajaAuthorizedFetch,
+    getAccessToken,
+  } = await import("../src/routes/payments.js");
+
+  const originalFetch = globalThis.fetch;
+  let tokenCalls = 0;
+  let apiCalls = 0;
+  let resolveFirstApiRequest;
+  let markFirstApiRequestStarted;
+
+  const firstApiRequest = new Promise((resolve) => {
+    markFirstApiRequestStarted = resolve;
+  });
+  const firstApiResponse = new Promise((resolve) => {
+    resolveFirstApiRequest = resolve;
+  });
+
+  const creds = {
+    environment: "sandbox",
+    baseUrl: "https://sandbox.safaricom.co.ke",
+    consumerKey: "test-consumer-key-late-401",
+    consumerSecret: "test-consumer-secret-late-401",
+  };
+
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes("/oauth/v1/generate")) {
+      tokenCalls += 1;
+
+      return new Response(
+        JSON.stringify({
+          access_token: `test-late-token-${tokenCalls}`,
+          expires_in: "3599",
+        }),
+        { status: 200 }
+      );
+    }
+
+    apiCalls += 1;
+
+    if (apiCalls === 1) {
+      markFirstApiRequestStarted();
+      return firstApiResponse;
+    }
+
+    assert.equal(
+      options.headers.Authorization,
+      "Bearer test-late-token-2"
+    );
+
+    return new Response(
+      JSON.stringify({ ResponseCode: "0" }),
+      { status: 200 }
+    );
+  };
+
+  try {
+    assert.equal(
+      await getAccessToken(creds),
+      "test-late-token-1"
+    );
+
+    const request = darajaAuthorizedFetch(
+      "/test/protected",
+      { method: "GET" },
+      creds
+    );
+
+    await firstApiRequest;
+    assert.equal(
+      await getAccessToken(creds, { forceRefresh: true }),
+      "test-late-token-2"
+    );
+
+    resolveFirstApiRequest(
+      new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401 }
+      )
+    );
+
+    const response = await request;
+    assert.equal(response.status, 200);
+    assert.equal(tokenCalls, 2);
+    assert.equal(apiCalls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Daraja authorized request does not retry non-401 responses", async () => {
+  const { darajaAuthorizedFetch } = await import("../src/routes/payments.js");
+
+  const originalFetch = globalThis.fetch;
+  let tokenCalls = 0;
+  let apiCalls = 0;
+
+  const creds = {
+    environment: "sandbox",
+    baseUrl: "https://sandbox.safaricom.co.ke",
+    consumerKey: "test-consumer-key-500",
+    consumerSecret: "test-consumer-secret-500",
+  };
+
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("/oauth/v1/generate")) {
+      tokenCalls += 1;
+
+      return new Response(
+        JSON.stringify({
+          access_token: "test-token-500",
+          expires_in: "3599",
+        }),
+        { status: 200 }
+      );
+    }
+
+    apiCalls += 1;
+
+    return new Response(
+      JSON.stringify({ error: "Provider unavailable" }),
+      { status: 503 }
+    );
+  };
+
+  try {
+    const response = await darajaAuthorizedFetch(
+      "/test/protected",
+      { method: "GET" },
+      creds
+    );
+
+    assert.equal(response.status, 503);
+    assert.equal(tokenCalls, 1);
+    assert.equal(apiCalls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

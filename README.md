@@ -85,7 +85,7 @@ MPESA_CONSUMER_KEY=your_consumer_key
 MPESA_CONSUMER_SECRET=your_consumer_secret
 MPESA_SHORTCODE=174379
 MPESA_PASSKEY=your_passkey
-MPESA_CALLBACK_URL=https://your-domain.com/api/payments/mpesa/callback
+MPESA_CALLBACK_URL=https://your-domain.com
 MPESA_PARTYB=174379
 MPESA_ACCOUNT_REFERENCE=DriveHub Order
 MPESA_TRANSACTION_DESC=DriveHub checkout
@@ -104,6 +104,15 @@ SMTP_PASS=your_smtp_password
 SMTP_FROM=no-reply@wheelsnationke.local
 INQUIRY_NOTIFY_EMAIL=alerts@wheelsnationke.local
 ```
+
+The shop checkout sends an `Idempotency-Key` UUID and reuses it when retrying
+the same request. Other clients should send and retain this header as well;
+the API temporarily accepts requests without it during client migration, but
+those requests do not receive key-based checkout deduplication. The callback
+recovery worker defaults to 12 attempts, batches of 20, and a 15-second
+polling interval. Override these with `MPESA_CALLBACK_MAX_ATTEMPTS`,
+`MPESA_CALLBACK_BATCH_SIZE`, `MPESA_RECOVERY_POLL_MS`, and
+`MPESA_CALLBACK_ABANDONED_MINUTES` (15 minutes by default).
 
 Generate a secure JWT secret:
 

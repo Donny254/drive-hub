@@ -34,7 +34,13 @@ const sendViaWebhook = async ({ channel, to, message }) => {
   return response.ok;
 };
 
-const maybeSend = async ({ phone, message, whatsapp = true, sms = true }) => {
+const maybeSend = async ({
+  phone,
+  message,
+  whatsapp = true,
+  sms = true,
+  throwOnError = false,
+}) => {
   const to = normalizePhone(phone);
   if (!to || !message) return { sms: false, whatsapp: false };
 
@@ -47,6 +53,7 @@ const maybeSend = async ({ phone, message, whatsapp = true, sms = true }) => {
       result.whatsapp = await sendViaWebhook({ channel: "whatsapp", to, message });
     }
   } catch (error) {
+    if (throwOnError) throw error;
     console.warn("Messaging notification failed:", error);
   }
 
@@ -102,9 +109,11 @@ export const sendEventTicketMessage = async ({
   attendeeName,
   eventTitle,
   ticketCodes,
+  throwOnError = false,
 }) =>
   maybeSend({
     phone,
+    throwOnError,
     message: [
       `Hello ${attendeeName || "there"},`,
       `Your ticket for ${eventTitle || "your event"} is confirmed.`,
