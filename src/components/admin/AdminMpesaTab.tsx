@@ -26,6 +26,11 @@ type MpesaTransaction = {
   merchant_request_id: string | null;
   status: string;
   mpesa_environment: string | null;
+  transaction_type:
+    | "CustomerPayBillOnline"
+    | "CustomerBuyGoodsOnline"
+    | string
+    | null;
   result_code: string | number | null;
   mpesa_receipt_number: string | null;
   response: Record<string, unknown> | null;
@@ -634,6 +639,7 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
                   <TableHead>Phone / Date</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Environment</TableHead>
+                  <TableHead>Account type</TableHead>
                   <TableHead>Safaricom response</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Details</TableHead>
@@ -660,6 +666,18 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
                       <TableCell>
                         <Badge variant="outline" className="capitalize">
                           {transaction.mpesa_environment || "unknown"}
+                        </Badge>
+                      </TableCell>
+
+                      <TableCell>
+                        <Badge variant="outline">
+                          {transaction.transaction_type ===
+                          "CustomerBuyGoodsOnline"
+                            ? "Buy Goods"
+                            : transaction.transaction_type ===
+                                "CustomerPayBillOnline"
+                              ? "PayBill"
+                              : "Unknown"}
                         </Badge>
                       </TableCell>
 
@@ -720,7 +738,7 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
                 {!loading && filteredTransactions.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       No M-Pesa transactions match these filters.
@@ -731,7 +749,7 @@ const AdminMpesaTab = ({ authHeaders }: AdminMpesaTabProps) => {
                 {loading && (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       Loading M-Pesa transactions...

@@ -2231,6 +2231,7 @@ router.get(
            merchant_request_id,
            status,
            mpesa_environment,
+           transaction_type,
            result_code,
            mpesa_receipt_number,
            response,
