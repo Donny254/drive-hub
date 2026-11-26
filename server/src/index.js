@@ -8,6 +8,10 @@ import {
   startMpesaRecovery,
   stopMpesaRecovery,
 } from "./utils/mpesaRecovery.js";
+import {
+  startMpesaNotificationWorker,
+  stopMpesaNotificationWorker,
+} from "./utils/mpesaNotificationWorker.js";
 import { processStoredDarajaCallback } from "./routes/payments.js";
 
 dotenv.config();
@@ -35,6 +39,7 @@ const start = async () => {
 
   // Recover callbacks that were durably stored but not successfully processed.
   startMpesaRecovery(processStoredDarajaCallback);
+  startMpesaNotificationWorker();
 
   // Resolve ended auctions (highest bid wins) on startup and every minute.
   const runAuctionSweep = () =>
@@ -57,6 +62,7 @@ const start = async () => {
     stopDigestScheduler();
     clearInterval(auctionTimer);
     const recoveryDrain = stopMpesaRecovery();
+    const notificationDrain = stopMpesaNotificationWorker();
 
     try {
       await new Promise((resolve, reject) => {
@@ -70,8 +76,11 @@ const start = async () => {
       });
 
       await recoveryDrain;
+      await notificationDrain;
 
-      console.log("HTTP server and M-Pesa recovery worker stopped.");
+      console.log(
+        "HTTP server, M-Pesa recovery and notification workers stopped."
+      );
     } catch (error) {
       console.error("Graceful shutdown failed:", error);
       process.exitCode = 1;
