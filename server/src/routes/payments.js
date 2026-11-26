@@ -31,6 +31,20 @@ const saveDarajaCallback = async ({
 
 const DARAJA_TIMEOUT_MS = 20_000;
 const TOKEN_TTL_SKEW_SECONDS = 60;
+const MPESA_TRANSACTION_TYPES = new Set([
+  "CustomerPayBillOnline",
+  "CustomerBuyGoodsOnline",
+]);
+const getMpesaTransactionType = (creds) => {
+  const transactionType =
+    creds.transactionType || "CustomerPayBillOnline";
+
+  if (!MPESA_TRANSACTION_TYPES.has(transactionType)) {
+    throw new Error("Unsupported M-Pesa transaction type");
+  }
+
+  return transactionType;
+};
 // Safaricom retries missed callbacks; after this age we also probe Daraja
 // directly (stkpushquery) whenever a client polls status, so a lost callback
 // can never leave a paid order stuck in "pending".
@@ -143,7 +157,10 @@ const formatTimestampEAT = () => {
 const tokenCache = new Map();
 const tokenInflight = new Map();
 
-const getMpesaCredentials = async ({ environment: requestedEnvironment } = {}) => {
+const getMpesaCredentials = async ({
+  environment: requestedEnvironment,
+  transactionType: requestedTransactionType,
+} = {}) => {
   const row = await loadSettingsRow().catch(() => null);
 
   const configuredEnvironment =
@@ -182,8 +199,20 @@ const getMpesaCredentials = async ({ environment: requestedEnvironment } = {}) =
     (environment === "sandbox" ? row?.mpesa_partyb : null) ||
     envValue("PARTYB", environment === "sandbox" ? "MPESA_PARTYB" : null);
 
+  const transactionType =
+    requestedTransactionType ||
+    row?.[`${dbPrefix}_transaction_type`] ||
+    "CustomerPayBillOnline";
+
+  if (!MPESA_TRANSACTION_TYPES.has(transactionType)) {
+    throw new Error(
+      `Invalid M-Pesa transaction type for ${environment}.`
+    );
+  }
+
   return {
     environment,
+    transactionType,
     baseUrl:
       environment === "production"
         ? "https://api.safaricom.co.ke"
@@ -402,6 +431,12 @@ const buildStkPayload = ({
   creds,
   callbackUrl,
 }) => {
+  const transactionType =
+    creds?.transactionType || "CustomerPayBillOnline";
+  if (!MPESA_TRANSACTION_TYPES.has(transactionType)) {
+    throw new Error("Unsupported M-Pesa transaction type.");
+  }
+
   if (!creds?.shortcode || !creds?.passkey) {
     throw new Error(
       "Missing M-Pesa shortcode/passkey. Configure them in admin settings."
@@ -420,7 +455,7 @@ const buildStkPayload = ({
     BusinessShortCode: creds.shortcode,
     Password: password,
     Timestamp: timestamp,
-    TransactionType: "CustomerPayBillOnline",
+    TransactionType: transactionType,
     Amount: amount,
     PartyA: phoneNumber,
     PartyB: creds.partyB || creds.shortcode,
@@ -634,12 +669,24 @@ const dispatchMpesaOutboxItem = async (outboxId, suppliedCreds = null) => {
         environment: payload.environment || transaction.mpesa_environment,
       });
 
+    const transactionType =
+      transaction.transaction_type || payload.transactionType;
+
+    if (!MPESA_TRANSACTION_TYPES.has(transactionType)) {
+      throw new Error("Invalid stored M-Pesa transaction type");
+    }
+
+    const dispatchCreds = {
+      ...creds,
+      transactionType,
+    };
+
     const responseData = await sendStkPush({
       phoneNumber: payload.phoneNumber,
       amount: payload.amount,
       accountReference: payload.accountReference,
       transactionDesc: payload.transactionDesc,
-      creds,
+      creds: dispatchCreds,
     });
 
     const status = await recordStkResponse(transaction.id, responseData);
@@ -741,10 +788,11 @@ const dispatchMpesaOutboxItem = async (outboxId, suppliedCreds = null) => {
 export const queryCheckoutStatus = async (
   checkoutRequestId,
   environment = null,
+  transactionType = null,
 ) => {
   if (!checkoutRequestId) return null;
 
-  const creds = await getMpesaCredentials({ environment });
+  const creds = await getMpesaCredentials({ environment, transactionType });
   if (!creds.shortcode || !creds.passkey) return null;
 
   const timestamp = formatTimestampEAT();
@@ -1174,7 +1222,8 @@ const reconcilePendingTransaction = async (transaction) => {
   try {
     const result = await queryCheckoutStatus(
       transaction.checkout_request_id,
-      transaction.mpesa_environment || null
+      transaction.mpesa_environment || null,
+      transaction.transaction_type || null
     );
     if (!result?.status) return transaction;
     await finalizeTx(transaction, result, "reconciliation");
@@ -1590,7 +1639,8 @@ const retryMpesaDispatchOutbox = async (limit = 25) => {
     try {
       const result = await queryCheckoutStatus(
         transaction.checkout_request_id,
-        transaction.mpesa_environment || null
+        transaction.mpesa_environment || null,
+        transaction.transaction_type || null
       );
 
       if (result?.status) {
@@ -2231,6 +2281,7 @@ router.post(
       }
 
       const creds = await getMpesaCredentials();
+      const transactionType = getMpesaTransactionType(creds);
 
       // Record the attempt before contacting Daraja. This ensures failed
       // network requests are also visible in the admin transaction history.
@@ -2239,11 +2290,17 @@ router.post(
            phone_number,
            amount_cents,
            status,
-           mpesa_environment
+           mpesa_environment,
+           transaction_type
          )
-         VALUES ($1, $2, 'pending', $3)
+         VALUES ($1, $2, 'pending', $3, $4)
          RETURNING id`,
-        [phoneNumber, amount * 100, creds.environment]
+        [
+          phoneNumber,
+          amount * 100,
+          creds.environment,
+          transactionType,
+        ]
       );
 
       transactionId = inserted.rows[0].id;
@@ -2523,6 +2580,7 @@ router.post("/mpesa/stkpush", requireAuth, async (req, res, next) => {
       phoneNumber: normalizedPhone,
       amount,
     });
+    const transactionType = getMpesaTransactionType(mpesaCreds);
 
     const idempotencyKey = String(
       req.headers["idempotency-key"] || ""
@@ -2600,14 +2658,15 @@ router.post("/mpesa/stkpush", requireAuth, async (req, res, next) => {
       const txResult = await client.query(
         `INSERT INTO mpesa_transactions
            (order_id, phone_number, amount_cents, status,
-            mpesa_environment, idempotency_key)
-         VALUES ($1, $2, $3, 'pending', $4, $5)
+            mpesa_environment, transaction_type, idempotency_key)
+         VALUES ($1, $2, $3, 'pending', $4, $5, $6)
          RETURNING *`,
         [
           order.id,
           normalizedPhone,
           totalCents,
           mpesaCreds.environment,
+          transactionType,
           idempotencyKey || null,
         ]
       );
@@ -2638,6 +2697,9 @@ router.post("/mpesa/stkpush", requireAuth, async (req, res, next) => {
             phoneNumber: normalizedPhone,
             amount,
             environment: mpesaCreds.environment,
+            transactionType,
+            accountReference: mpesaCreds.accountReference,
+            transactionDesc: mpesaCreds.transactionDesc,
           }),
         ]
       );
@@ -2769,6 +2831,7 @@ router.post("/mpesa/stkpush-booking", requireAuth, async (req, res, next) => {
       phoneNumber: normalizedPhone,
       amount,
     });
+    const transactionType = getMpesaTransactionType(mpesaCreds);
 
     const creation = await withTransaction(async (client) => {
       await client.query(
@@ -2820,10 +2883,16 @@ router.post("/mpesa/stkpush-booking", requireAuth, async (req, res, next) => {
       const txResult = await client.query(
         `INSERT INTO mpesa_transactions
            (booking_id, phone_number, amount_cents,
-            status, mpesa_environment)
-         VALUES ($1, $2, $3, 'pending', $4)
+            status, mpesa_environment, transaction_type)
+         VALUES ($1, $2, $3, 'pending', $4, $5)
          RETURNING *`,
-        [booking.id, normalizedPhone, totalCents, mpesaCreds.environment]
+        [
+          booking.id,
+          normalizedPhone,
+          totalCents,
+          mpesaCreds.environment,
+          transactionType,
+        ]
       );
 
       return {
@@ -2922,6 +2991,7 @@ router.post("/mpesa/stkpush-event-registration", requireAuth, async (req, res, n
       phoneNumber: normalizedPhone,
       amount,
     });
+    const transactionType = getMpesaTransactionType(mpesaCreds);
 
     const creation = await withTransaction(async (client) => {
       const lockedRegistration = await client.query(
@@ -2972,14 +3042,16 @@ router.post("/mpesa/stkpush-event-registration", requireAuth, async (req, res, n
 
       const txResult = await client.query(
         `INSERT INTO mpesa_transactions
-           (event_registration_id, phone_number, amount_cents, status, mpesa_environment)
-         VALUES ($1, $2, $3, 'pending', $4)
+           (event_registration_id, phone_number, amount_cents, status,
+            mpesa_environment, transaction_type)
+         VALUES ($1, $2, $3, 'pending', $4, $5)
          RETURNING *`,
         [
           registration.id,
           normalizedPhone,
           totalCents,
           mpesaCreds.environment,
+          transactionType,
         ]
       );
 
@@ -3695,7 +3767,8 @@ router.post(
       // Use the environment recorded when this STK request was initiated.
       const result = await queryCheckoutStatus(
         transaction.checkout_request_id,
-        transaction.mpesa_environment || null
+        transaction.mpesa_environment || null,
+        transaction.transaction_type || null
       );
 
       if (!result) {

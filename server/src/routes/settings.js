@@ -4,6 +4,10 @@ import { requireAuth, requireRole } from "../middleware/auth.js";
 import { encryptSecret } from "../utils/secrets.js";
 
 const router = Router();
+const allowedTransactionTypes = new Set([
+  "CustomerPayBillOnline",
+  "CustomerBuyGoodsOnline",
+]);
 
 const toApi = (row) => ({
   companyName: row.company_name || null,
@@ -46,6 +50,10 @@ const toAdminApi = (row) => ({
 
   mpesaAccountReference: row.mpesa_account_reference || null,
   mpesaTransactionDesc: row.mpesa_transaction_desc || null,
+  mpesaSandboxTransactionType:
+    row.mpesa_sandbox_transaction_type || "CustomerPayBillOnline",
+  mpesaProductionTransactionType:
+    row.mpesa_production_transaction_type || "CustomerPayBillOnline",
 
   mpesaSandboxShortcode: row.mpesa_sandbox_shortcode || null,
   mpesaSandboxPartyb: row.mpesa_sandbox_partyb || null,
@@ -112,6 +120,19 @@ router.get("/", requireAuth, requireRole("admin"), async (req, res, next) => {
 
 router.put("/", requireAuth, requireRole("admin"), async (req, res, next) => {
   try {
+    for (const key of [
+      "mpesaSandboxTransactionType",
+      "mpesaProductionTransactionType",
+    ]) {
+      const value = req.body[key];
+
+      if (value !== undefined && !allowedTransactionTypes.has(value)) {
+        return res.status(400).json({
+          error: `Invalid ${key}.`,
+        });
+      }
+    }
+
     const statisticFields = {
       trusted_dealers: "trustedDealers",
       countries_established: "countriesEstablished",
@@ -188,10 +209,14 @@ router.put("/", requireAuth, requireRole("admin"), async (req, res, next) => {
       // Sandbox configuration.
       mpesa_sandbox_shortcode: req.body.mpesaSandboxShortcode,
       mpesa_sandbox_partyb: req.body.mpesaSandboxPartyb,
+      mpesa_sandbox_transaction_type:
+        req.body.mpesaSandboxTransactionType,
 
       // Production configuration.
       mpesa_production_shortcode: req.body.mpesaProductionShortcode,
       mpesa_production_partyb: req.body.mpesaProductionPartyb,
+      mpesa_production_transaction_type:
+        req.body.mpesaProductionTransactionType,
     };
 
     for (const [column, value] of Object.entries(fields)) {

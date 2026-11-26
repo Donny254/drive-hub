@@ -256,6 +256,9 @@ export type SiteSettings = {
 
   mpesaSandboxShortcode?: string | null;
   mpesaSandboxPartyb?: string | null;
+  mpesaSandboxTransactionType?:
+    | "CustomerPayBillOnline"
+    | "CustomerBuyGoodsOnline";
   mpesaSandboxConsumerKey?: string;
   mpesaSandboxConsumerSecret?: string;
   mpesaSandboxPasskey?: string;
@@ -265,6 +268,9 @@ export type SiteSettings = {
 
   mpesaProductionShortcode?: string | null;
   mpesaProductionPartyb?: string | null;
+  mpesaProductionTransactionType?:
+    | "CustomerPayBillOnline"
+    | "CustomerBuyGoodsOnline";
   mpesaProductionConsumerKey?: string;
   mpesaProductionConsumerSecret?: string;
   mpesaProductionPasskey?: string;

@@ -398,6 +398,37 @@ const AdminSettingsTab = ({
                       />
                     </div>
                     <div className="grid gap-2">
+                      <Label htmlFor="mpesa-sandbox-type">
+                        Sandbox Account Type
+                      </Label>
+                      <select
+                        id="mpesa-sandbox-type"
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        value={
+                          settings.mpesaSandboxTransactionType ||
+                          "CustomerPayBillOnline"
+                        }
+                        onChange={(event) =>
+                          setSettings((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  mpesaSandboxTransactionType:
+                                    event.target.value as
+                                      | "CustomerPayBillOnline"
+                                      | "CustomerBuyGoodsOnline",
+                                }
+                              : prev
+                          )
+                        }
+                      >
+                        <option value="CustomerPayBillOnline">PayBill</option>
+                        <option value="CustomerBuyGoodsOnline">
+                          Buy Goods / Till
+                        </option>
+                      </select>
+                    </div>
+                    <div className="grid gap-2">
                       <Label>Sandbox Consumer Key {settings.mpesaSandboxConsumerKeySet ? "✓ saved" : ""}</Label>
                       <Input
                         type="password"
@@ -453,6 +484,37 @@ const AdminSettingsTab = ({
                         onChange={(e) => setSettings((prev) => prev ? { ...prev, mpesaProductionPartyb: e.target.value } : prev)}
                         placeholder="Production Party B"
                       />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="mpesa-production-type">
+                        Production Account Type
+                      </Label>
+                      <select
+                        id="mpesa-production-type"
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                        value={
+                          settings.mpesaProductionTransactionType ||
+                          "CustomerPayBillOnline"
+                        }
+                        onChange={(event) =>
+                          setSettings((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  mpesaProductionTransactionType:
+                                    event.target.value as
+                                      | "CustomerPayBillOnline"
+                                      | "CustomerBuyGoodsOnline",
+                                }
+                              : prev
+                          )
+                        }
+                      >
+                        <option value="CustomerPayBillOnline">PayBill</option>
+                        <option value="CustomerBuyGoodsOnline">
+                          Buy Goods / Till
+                        </option>
+                      </select>
                     </div>
                     <div className="grid gap-2">
                       <Label>Production Consumer Key {settings.mpesaProductionConsumerKeySet ? "✓ saved" : ""}</Label>
