@@ -53,6 +53,118 @@ test("secrets: AES-256-GCM roundtrip, wrong key and missing key fail closed", as
   assert.equal(decryptSecret(enc), null);
 });
 
+test("M-Pesa credential profile encrypts secrets and preserves configuration", async () => {
+  const { buildMpesaCredentialProfile } = await import(
+    "../src/routes/payments.js"
+  );
+  const { decryptSecret } = await import("../src/utils/secrets.js");
+  const previousKey = process.env.SETTINGS_ENCRYPTION_KEY;
+
+  process.env.SETTINGS_ENCRYPTION_KEY = "profile-test-master-key";
+
+  try {
+    const profile = buildMpesaCredentialProfile({
+      environment: "sandbox",
+      transactionType: "CustomerBuyGoodsOnline",
+      baseUrl: "https://sandbox.safaricom.co.ke",
+      consumerKey: "profile-consumer-key",
+      consumerSecret: "profile-consumer-secret",
+      passkey: "profile-passkey",
+      shortcode: "174379",
+      partyB: "174379",
+      accountReference: "TEST ORDER",
+      transactionDesc: "TEST CHECKOUT",
+    });
+
+    assert.equal(profile.environment, "sandbox");
+    assert.equal(profile.transactionType, "CustomerBuyGoodsOnline");
+    assert.equal(profile.shortcode, "174379");
+    assert.equal(profile.partyB, "174379");
+
+    assert.notEqual(profile.consumerKey, "profile-consumer-key");
+    assert.notEqual(profile.consumerSecret, "profile-consumer-secret");
+    assert.notEqual(profile.passkey, "profile-passkey");
+
+    assert.equal(decryptSecret(profile.consumerKey), "profile-consumer-key");
+    assert.equal(
+      decryptSecret(profile.consumerSecret),
+      "profile-consumer-secret"
+    );
+    assert.equal(decryptSecret(profile.passkey), "profile-passkey");
+
+    assert.equal(profile.accountReference, "TEST ORDER");
+    assert.equal(profile.transactionDesc, "TEST CHECKOUT");
+  } finally {
+    if (previousKey === undefined) {
+      delete process.env.SETTINGS_ENCRYPTION_KEY;
+    } else {
+      process.env.SETTINGS_ENCRYPTION_KEY = previousKey;
+    }
+  }
+});
+
+test("M-Pesa credential profile refuses incomplete credentials", async () => {
+  const { buildMpesaCredentialProfile } = await import(
+    "../src/routes/payments.js"
+  );
+  const previousKey = process.env.SETTINGS_ENCRYPTION_KEY;
+
+  process.env.SETTINGS_ENCRYPTION_KEY = "profile-test-master-key";
+
+  try {
+    assert.throws(
+      () =>
+        buildMpesaCredentialProfile({
+          environment: "sandbox",
+          transactionType: "CustomerPayBillOnline",
+          baseUrl: "https://sandbox.safaricom.co.ke",
+          consumerKey: "key",
+          consumerSecret: "secret",
+          passkey: "",
+          shortcode: "174379",
+        }),
+      /passkey is missing/
+    );
+  } finally {
+    if (previousKey === undefined) {
+      delete process.env.SETTINGS_ENCRYPTION_KEY;
+    } else {
+      process.env.SETTINGS_ENCRYPTION_KEY = previousKey;
+    }
+  }
+});
+
+test("M-Pesa credential profile refuses plaintext storage without encryption key", async () => {
+  const { buildMpesaCredentialProfile } = await import(
+    "../src/routes/payments.js"
+  );
+  const previousKey = process.env.SETTINGS_ENCRYPTION_KEY;
+
+  delete process.env.SETTINGS_ENCRYPTION_KEY;
+
+  try {
+    assert.throws(
+      () =>
+        buildMpesaCredentialProfile({
+          environment: "sandbox",
+          transactionType: "CustomerPayBillOnline",
+          baseUrl: "https://sandbox.safaricom.co.ke",
+          consumerKey: "key",
+          consumerSecret: "secret",
+          passkey: "passkey",
+          shortcode: "174379",
+        }),
+      /SETTINGS_ENCRYPTION_KEY/
+    );
+  } finally {
+    if (previousKey === undefined) {
+      delete process.env.SETTINGS_ENCRYPTION_KEY;
+    } else {
+      process.env.SETTINGS_ENCRYPTION_KEY = previousKey;
+    }
+  }
+});
+
 test("C2B confirmation parsing maps Daraja fields to cents", () => {
   const row = parseC2bConfirmation({
     TransID: "TGH2SX81KZ",

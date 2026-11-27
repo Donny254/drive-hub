@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { query, withTransaction } from "../db.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
-import { decryptSecret } from "../utils/secrets.js";
+import { decryptSecret, encryptSecret } from "../utils/secrets.js";
 import { getDarajaErrorCatalogue } from "../utils/darajaErrors.js";
 import { createHash } from "node:crypto";
 const router = Router();
@@ -242,6 +242,131 @@ const getMpesaCredentials = async ({
       row?.mpesa_account_reference || process.env.MPESA_ACCOUNT_REFERENCE || "WheelsnationKe Order",
     transactionDesc:
       row?.mpesa_transaction_desc || process.env.MPESA_TRANSACTION_DESC || "WheelsnationKe checkout",
+  };
+};
+
+export const buildMpesaCredentialProfile = (creds) => {
+  const transactionType = getMpesaTransactionType(creds);
+
+  const required = {
+    consumerKey: creds.consumerKey,
+    consumerSecret: creds.consumerSecret,
+    passkey: creds.passkey,
+    shortcode: creds.shortcode,
+  };
+
+  for (const [name, value] of Object.entries(required)) {
+    if (!value || !String(value).trim()) {
+      throw new Error(
+        `Cannot create M-Pesa credential profile: ${name} is missing.`
+      );
+    }
+  }
+
+  const encrypted = {
+    consumerKey: encryptSecret(creds.consumerKey),
+    consumerSecret: encryptSecret(creds.consumerSecret),
+    passkey: encryptSecret(creds.passkey),
+  };
+
+  if (
+    !encrypted.consumerKey ||
+    !encrypted.consumerSecret ||
+    !encrypted.passkey
+  ) {
+    throw new Error(
+      "Cannot securely preserve M-Pesa credentials. Check SETTINGS_ENCRYPTION_KEY."
+    );
+  }
+
+  return {
+    environment: creds.environment,
+    transactionType,
+    baseUrl: creds.baseUrl,
+    shortcode: String(creds.shortcode),
+    partyB: creds.partyB ? String(creds.partyB) : null,
+    accountReference: creds.accountReference || null,
+    transactionDesc: creds.transactionDesc || null,
+    ...encrypted,
+  };
+};
+
+const insertMpesaCredentialProfile = async (client, creds) => {
+  const profile = buildMpesaCredentialProfile(creds);
+
+  const result = await client.query(
+    `INSERT INTO mpesa_credential_profiles (
+       environment,
+       transaction_type,
+       base_url,
+       shortcode,
+       party_b,
+       account_reference,
+       transaction_desc,
+       consumer_key_enc,
+       consumer_secret_enc,
+       passkey_enc
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     RETURNING id`,
+    [
+      profile.environment,
+      profile.transactionType,
+      profile.baseUrl,
+      profile.shortcode,
+      profile.partyB,
+      profile.accountReference,
+      profile.transactionDesc,
+      profile.consumerKey,
+      profile.consumerSecret,
+      profile.passkey,
+    ]
+  );
+
+  return result.rows[0].id;
+};
+
+const getMpesaCredentialsFromProfile = async (profileId) => {
+  if (!profileId) {
+    throw new Error(
+      "This M-Pesa transaction has no credential profile. Historical credentials cannot be verified; manual reconciliation is required."
+    );
+  }
+
+  const result = await query(
+    `SELECT *
+     FROM mpesa_credential_profiles
+     WHERE id = $1`,
+    [profileId]
+  );
+
+  if (!result.rowCount) {
+    throw new Error("M-Pesa credential profile was not found.");
+  }
+
+  const profile = result.rows[0];
+
+  const consumerKey = decryptSecret(profile.consumer_key_enc);
+  const consumerSecret = decryptSecret(profile.consumer_secret_enc);
+  const passkey = decryptSecret(profile.passkey_enc);
+
+  if (!consumerKey || !consumerSecret || !passkey) {
+    throw new Error(
+      "Unable to decrypt the stored M-Pesa credential profile. Check SETTINGS_ENCRYPTION_KEY."
+    );
+  }
+
+  return {
+    environment: profile.environment,
+    transactionType: profile.transaction_type,
+    baseUrl: profile.base_url,
+    shortcode: profile.shortcode,
+    partyB: profile.party_b || profile.shortcode,
+    accountReference: profile.account_reference,
+    transactionDesc: profile.transaction_desc,
+    consumerKey,
+    consumerSecret,
+    passkey,
   };
 };
 
@@ -625,7 +750,7 @@ const recordStkResponse = async (transactionId, responseData) => {
   return updated.rows[0]?.status || status;
 };
 
-const dispatchMpesaOutboxItem = async (outboxId, suppliedCreds = null) => {
+export const dispatchMpesaOutboxItem = async (outboxId) => {
   const claimed = await withTransaction(async (client) => {
     const result = await client.query(
       `UPDATE mpesa_dispatch_outbox
@@ -661,19 +786,22 @@ const dispatchMpesaOutboxItem = async (outboxId, suppliedCreds = null) => {
   );
   const transaction = transactionResult.rows[0];
   const payload = claimed.payload || {};
+  let providerResponseData = null;
 
   try {
-    const creds =
-      suppliedCreds ||
-      await getMpesaCredentials({
-        environment: payload.environment || transaction.mpesa_environment,
-      });
+    const creds = await getMpesaCredentialsFromProfile(
+      transaction.credential_profile_id
+    );
 
-    const transactionType =
-      transaction.transaction_type || payload.transactionType;
+    const transactionType = getMpesaTransactionType(creds);
 
-    if (!MPESA_TRANSACTION_TYPES.has(transactionType)) {
-      throw new Error("Invalid stored M-Pesa transaction type");
+    if (
+      transaction.transaction_type &&
+      transaction.transaction_type !== transactionType
+    ) {
+      throw new Error(
+        "Stored M-Pesa transaction type does not match its credential profile."
+      );
     }
 
     const dispatchCreds = {
@@ -681,7 +809,7 @@ const dispatchMpesaOutboxItem = async (outboxId, suppliedCreds = null) => {
       transactionType,
     };
 
-    const responseData = await sendStkPush({
+    providerResponseData = await sendStkPush({
       phoneNumber: payload.phoneNumber,
       amount: payload.amount,
       accountReference: payload.accountReference,
@@ -689,17 +817,20 @@ const dispatchMpesaOutboxItem = async (outboxId, suppliedCreds = null) => {
       creds: dispatchCreds,
     });
 
-    const status = await recordStkResponse(transaction.id, responseData);
+    const status = await recordStkResponse(
+      transaction.id,
+      providerResponseData
+    );
     const outboxStatus =
       status === "failed"
         ? "failed"
-        : responseData?._outcomeUnknown ||
-            responseData?._providerHttpError ||
-            !responseData?.CheckoutRequestID
+        : providerResponseData?._outcomeUnknown ||
+            providerResponseData?._providerHttpError ||
+            !providerResponseData?.CheckoutRequestID
           ? "retry"
           : "sent";
     const errorMessage =
-      responseData?._transportError ||
+      providerResponseData?._transportError ||
       (outboxStatus === "retry"
         ? "Provider dispatch outcome requires reconciliation; request will not be resent automatically."
         : null);
@@ -734,12 +865,81 @@ const dispatchMpesaOutboxItem = async (outboxId, suppliedCreds = null) => {
            ),
            updated_at = now()
        WHERE transaction_id = $2`,
-      [status, transaction.id, JSON.stringify(responseData || {})]
+      [status, transaction.id, JSON.stringify(providerResponseData || {})]
     );
 
-    return { status, responseData };
+    return {
+      status,
+      responseData: providerResponseData,
+      reconciliationRequired: outboxStatus === "retry",
+    };
   } catch (error) {
-    const message = String(error?.message || "M-Pesa dispatch failed").slice(0, 2000);
+    const message = String(
+      error?.message || "M-Pesa dispatch failed"
+    ).slice(0, 2000);
+    if (providerResponseData) {
+      try {
+        const status = await recordStkResponse(
+          transaction.id,
+          providerResponseData
+        );
+
+        const reconciliationMessage =
+          `Daraja responded, but dispatch processing encountered an error: ${message}`;
+
+        await query(
+          `UPDATE mpesa_dispatch_outbox
+           SET status = 'retry',
+               last_error = $1,
+               next_retry_at = now() + interval '1 minute',
+               updated_at = now()
+           WHERE id = $2`,
+          [reconciliationMessage, outboxId]
+        );
+
+        await query(
+          `UPDATE mpesa_transactions
+           SET dispatch_error = $1
+           WHERE id = $2
+             AND status = 'pending'`,
+          [reconciliationMessage, transaction.id]
+        );
+
+        await query(
+          `UPDATE mpesa_checkout_attempts
+           SET status = 'pending',
+               response_snapshot = jsonb_build_object(
+                 'transactionId', $1,
+                 'status', 'pending',
+                 'response', $2::jsonb
+               ),
+               updated_at = now()
+           WHERE transaction_id = $1`,
+          [transaction.id, JSON.stringify(providerResponseData)]
+        );
+
+        return {
+          status,
+          responseData: providerResponseData,
+          reconciliationRequired: true,
+        };
+      } catch (persistenceError) {
+        console.error(
+          `Could not persist Daraja response for transaction ${transaction.id}:`,
+          persistenceError
+        );
+
+        return {
+          status: "pending",
+          responseData: providerResponseData,
+          reconciliationRequired: true,
+          persistenceError: String(
+            persistenceError?.message || "Response persistence failed"
+          ),
+        };
+      }
+    }
+
     await query(
       `UPDATE mpesa_dispatch_outbox
        SET status = 'failed',
@@ -749,34 +949,39 @@ const dispatchMpesaOutboxItem = async (outboxId, suppliedCreds = null) => {
          AND status = 'processing'`,
       [message, outboxId]
     );
+
     await query(
       `UPDATE mpesa_transactions
        SET dispatch_error = $1
-       WHERE id = $2`,
+       WHERE id = $2
+         AND status = 'pending'`,
       [message, transaction.id]
     );
+
     const responseData = {
       _httpStatus: null,
       _transportError: message,
       _outcomeUnknown: false,
     };
-    const status = await recordStkResponse(transaction.id, responseData);
+
+    const status = await recordStkResponse(
+      transaction.id,
+      responseData
+    );
+
     await query(
       `UPDATE mpesa_checkout_attempts
-       SET status = CASE
-             WHEN $1 = 'failed' THEN 'failed'
-             WHEN $1 = 'paid' THEN 'completed'
-             ELSE 'pending'
-           END,
+       SET status = 'pending',
            response_snapshot = jsonb_build_object(
-             'transactionId', $2,
-             'status', $1,
-             'response', $3::jsonb
+             'transactionId', $1,
+             'status', 'pending',
+             'response', $2::jsonb
            ),
            updated_at = now()
-       WHERE transaction_id = $2`,
-      [status, transaction.id, JSON.stringify(responseData)]
+       WHERE transaction_id = $1`,
+      [transaction.id, JSON.stringify(responseData)]
     );
+
     return { status, responseData };
   }
 };
@@ -787,12 +992,13 @@ const dispatchMpesaOutboxItem = async (outboxId, suppliedCreds = null) => {
 
 export const queryCheckoutStatus = async (
   checkoutRequestId,
-  environment = null,
-  transactionType = null,
+  credentialProfileId = null,
 ) => {
   if (!checkoutRequestId) return null;
 
-  const creds = await getMpesaCredentials({ environment, transactionType });
+  const creds = await getMpesaCredentialsFromProfile(
+    credentialProfileId
+  );
   if (!creds.shortcode || !creds.passkey) return null;
 
   const timestamp = formatTimestampEAT();
@@ -895,6 +1101,123 @@ export const settleMpesaTransaction = async ({
   }
 
   return withTransaction(async (client) => {
+    const lockedTxResult = await client.query(
+      `SELECT
+         id,
+         order_id,
+         booking_id,
+         event_registration_id,
+         status
+       FROM mpesa_transactions
+       WHERE (
+         ($1::uuid IS NOT NULL AND id = $1::uuid)
+         OR
+         ($1::uuid IS NULL AND checkout_request_id = $2)
+       )
+       AND status = 'pending'
+       FOR UPDATE`,
+      [transactionId, checkoutRequestId]
+    );
+
+    if (lockedTxResult.rowCount === 0) {
+      return { settled: false };
+    }
+
+    if (lockedTxResult.rowCount !== 1) {
+      throw new Error(
+        "Multiple pending M-Pesa transactions matched one checkout request. Manual reconciliation is required."
+      );
+    }
+
+    const lockedTransaction = lockedTxResult.rows[0];
+    const linkedCount = [
+      lockedTransaction.order_id,
+      lockedTransaction.booking_id,
+      lockedTransaction.event_registration_id,
+    ].filter(Boolean).length;
+
+    if (linkedCount > 1) {
+      throw new Error(
+        "M-Pesa transaction is linked to multiple payment records. Settlement blocked."
+      );
+    }
+
+    const {
+      order_id: orderId,
+      booking_id: bookingId,
+      event_registration_id: eventRegistrationId,
+    } = lockedTransaction;
+
+    if (orderId) {
+      const result = await client.query(
+        `SELECT id, status, payment_status
+         FROM orders
+         WHERE id = $1
+         FOR UPDATE`,
+        [orderId]
+      );
+
+      if (result.rowCount !== 1) {
+        throw new Error(
+          `Order ${orderId} no longer exists. M-Pesa settlement requires manual review.`
+        );
+      }
+    }
+
+    let bookingRecord = null;
+    if (bookingId) {
+      const result = await client.query(
+        `SELECT id, status, payment_status
+         FROM bookings
+         WHERE id = $1
+         FOR UPDATE`,
+        [bookingId]
+      );
+
+      if (result.rowCount !== 1) {
+        throw new Error(
+          `Booking ${bookingId} no longer exists. M-Pesa settlement requires manual review.`
+        );
+      }
+      bookingRecord = result.rows[0];
+    }
+
+    let registrationRecord = null;
+    if (eventRegistrationId) {
+      const result = await client.query(
+        `SELECT id, status, payment_status
+         FROM event_registrations
+         WHERE id = $1
+         FOR UPDATE`,
+        [eventRegistrationId]
+      );
+
+      if (result.rowCount !== 1) {
+        throw new Error(
+          `Event registration ${eventRegistrationId} no longer exists. M-Pesa settlement requires manual review.`
+        );
+      }
+      registrationRecord = result.rows[0];
+    }
+
+    let settlementReview = null;
+    if (status === "paid" && bookingRecord?.status === "cancelled") {
+      settlementReview = {
+        reason: "payment_received_for_cancelled_booking",
+        bookingId,
+        refundRequired: true,
+      };
+    } else if (
+      status === "paid" &&
+      registrationRecord?.status === "cancelled"
+    ) {
+      settlementReview = {
+        reason: "payment_received_for_cancelled_event_registration",
+        eventRegistrationId,
+        refundRequired: true,
+      };
+    }
+
     const txResult = await client.query(
       `UPDATE mpesa_transactions
        SET status = $1,
@@ -902,21 +1225,21 @@ export const settleMpesaTransaction = async ({
              || jsonb_build_object($2::text, $3::jsonb),
            result_code = $4,
            mpesa_receipt_number = COALESCE($5, mpesa_receipt_number)
-       WHERE status = 'pending'
-         AND (
-             ($6::uuid IS NOT NULL AND id = $6::uuid)
-             OR
-             ($6::uuid IS NULL AND checkout_request_id = $7)
-         )
+       WHERE id = $6
+         AND status = 'pending'
        RETURNING id, order_id, booking_id, event_registration_id`,
       [
         status,
         source,
-        JSON.stringify(rawPayload || {}),
+        JSON.stringify({
+          ...(rawPayload || {}),
+          ...(settlementReview
+            ? { manualReview: settlementReview }
+            : {}),
+        }),
         rawPayload?.ResultCode != null ? String(rawPayload.ResultCode) : null,
         metadata.mpesaReceiptNumber || null,
-        transactionId,
-        checkoutRequestId,
+        lockedTransaction.id,
       ]
     );
 
@@ -929,12 +1252,6 @@ export const settleMpesaTransaction = async ({
         "Multiple pending M-Pesa transactions matched one checkout request."
       );
     }
-
-    const {
-      order_id: orderId,
-      booking_id: bookingId,
-      event_registration_id: eventRegistrationId,
-    } = txResult.rows[0];
 
     if (orderId) {
       const orderSelect = await client.query(
@@ -1222,8 +1539,7 @@ const reconcilePendingTransaction = async (transaction) => {
   try {
     const result = await queryCheckoutStatus(
       transaction.checkout_request_id,
-      transaction.mpesa_environment || null,
-      transaction.transaction_type || null
+      transaction.credential_profile_id
     );
     if (!result?.status) return transaction;
     await finalizeTx(transaction, result, "reconciliation");
@@ -1438,14 +1754,19 @@ export const processStoredDarajaCallback = async (inbox) => {
       `SELECT *
        FROM mpesa_transactions
        WHERE checkout_request_id = $1
-       ORDER BY created_at DESC
-       LIMIT 1`,
+       LIMIT 2`,
       [checkoutRequestId]
     );
 
     if (txResult.rowCount === 0) {
       throw new Error(
         `No payment transaction matches CheckoutRequestID ${checkoutRequestId}`
+      );
+    }
+
+    if (txResult.rowCount > 1) {
+      throw new Error(
+        `Multiple transactions match CheckoutRequestID ${checkoutRequestId}. Manual reconciliation is required.`
       );
     }
 
@@ -1538,7 +1859,7 @@ export const processStoredDarajaCallback = async (inbox) => {
   throw new Error(`Unsupported callback type: ${inbox.callback_type}`);
 };
 
-const retryMpesaDispatchOutbox = async (limit = 25) => {
+export const retryMpesaDispatchOutbox = async (limit = 25) => {
   const pending = await query(
     `SELECT id
      FROM mpesa_dispatch_outbox
@@ -1563,6 +1884,8 @@ const retryMpesaDispatchOutbox = async (limit = 25) => {
   }
 
   const claimed = await withTransaction(async (client) => {
+    // Retry entries are only reconciled against Daraja; this path never
+    // calls dispatchMpesaOutboxItem or resends an STK request.
     await client.query(
       `WITH abandoned AS (
          SELECT outbox.id, tx.checkout_request_id
@@ -1639,8 +1962,7 @@ const retryMpesaDispatchOutbox = async (limit = 25) => {
     try {
       const result = await queryCheckoutStatus(
         transaction.checkout_request_id,
-        transaction.mpesa_environment || null,
-        transaction.transaction_type || null
+        transaction.credential_profile_id
       );
 
       if (result?.status) {
@@ -2231,6 +2553,7 @@ router.get(
            merchant_request_id,
            status,
            mpesa_environment,
+           transaction_type,
            result_code,
            mpesa_receipt_number,
            response,
@@ -2285,31 +2608,48 @@ router.post(
 
       // Record the attempt before contacting Daraja. This ensures failed
       // network requests are also visible in the admin transaction history.
-      const inserted = await query(
-        `INSERT INTO mpesa_transactions (
-           phone_number,
-           amount_cents,
-           status,
-           mpesa_environment,
-           transaction_type
-         )
-         VALUES ($1, $2, 'pending', $3, $4)
-         RETURNING id`,
-        [
-          phoneNumber,
-          amount * 100,
-          creds.environment,
-          transactionType,
-        ]
-      );
+      const created = await withTransaction(async (client) => {
+        const credentialProfileId = await insertMpesaCredentialProfile(
+          client,
+          creds
+        );
 
-      transactionId = inserted.rows[0].id;
+        const inserted = await client.query(
+          `INSERT INTO mpesa_transactions (
+             phone_number,
+             amount_cents,
+             status,
+             mpesa_environment,
+             transaction_type,
+             credential_profile_id
+           )
+           VALUES ($1, $2, 'pending', $3, $4, $5)
+           RETURNING id`,
+          [
+            phoneNumber,
+            amount * 100,
+            creds.environment,
+            transactionType,
+            credentialProfileId,
+          ]
+        );
+
+        return {
+          transactionId: inserted.rows[0].id,
+          credentialProfileId,
+        };
+      });
+
+      transactionId = created.transactionId;
+      const dispatchCreds = await getMpesaCredentialsFromProfile(
+        created.credentialProfileId
+      );
 
       try {
         const responseData = await sendStkPush({
           phoneNumber,
           amount,
-          creds,
+          creds: dispatchCreds,
           accountReference: "ADMIN TEST",
           transactionDesc: "Admin STK test",
         });
@@ -2343,14 +2683,20 @@ router.post(
 
         await query(
           `UPDATE mpesa_transactions
-           SET status = 'failed',
+           SET dispatch_error = $1,
                response = COALESCE(response, '{}'::jsonb)
-                 || jsonb_build_object('stk_push', $1::jsonb)
-           WHERE id = $2`,
+                 || jsonb_build_object(
+                   'stk_push_exception',
+                   $2::jsonb
+                 )
+           WHERE id = $3
+             AND status = 'pending'`,
           [
+            safeMessage,
             JSON.stringify({
               error: safeMessage,
-              stage: "stk_push_request",
+              stage: "stk_push_processing",
+              outcome: "unknown",
             }),
             transactionId,
           ]
@@ -2364,8 +2710,10 @@ router.post(
         );
 
         return res.status(502).json({
-          error: safeMessage,
+          error:
+            "An error occurred while processing the STK request. The payment status was preserved for reconciliation.",
           transaction: saved.rows[0] || null,
+          manualReviewRequired: true,
         });
       }
     } catch (error) {
@@ -2655,11 +3003,17 @@ router.post("/mpesa/stkpush", requireAuth, async (req, res, next) => {
 
       await insertOrderItems(order.id, safeItems, client);
 
+      const credentialProfileId = await insertMpesaCredentialProfile(
+        client,
+        mpesaCreds
+      );
+
       const txResult = await client.query(
         `INSERT INTO mpesa_transactions
            (order_id, phone_number, amount_cents, status,
-            mpesa_environment, transaction_type, idempotency_key)
-         VALUES ($1, $2, $3, 'pending', $4, $5, $6)
+            mpesa_environment, transaction_type, credential_profile_id,
+            idempotency_key)
+         VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
          RETURNING *`,
         [
           order.id,
@@ -2667,6 +3021,7 @@ router.post("/mpesa/stkpush", requireAuth, async (req, res, next) => {
           totalCents,
           mpesaCreds.environment,
           transactionType,
+          credentialProfileId,
           idempotencyKey || null,
         ]
       );
@@ -2748,10 +3103,7 @@ router.post("/mpesa/stkpush", requireAuth, async (req, res, next) => {
 
     const order = creation.order;
     const transaction = creation.transaction;
-    const dispatchResult = await dispatchMpesaOutboxItem(
-      creation.outboxId,
-      mpesaCreds
-    );
+    const dispatchResult = await dispatchMpesaOutboxItem(creation.outboxId);
     const responseData = dispatchResult?.responseData || {
       _outcomeUnknown: true,
       _transportError: "Dispatch is already being processed.",
@@ -2880,11 +3232,17 @@ router.post("/mpesa/stkpush-booking", requireAuth, async (req, res, next) => {
 
       const booking = bookingResult.rows[0];
 
+      const credentialProfileId = await insertMpesaCredentialProfile(
+        client,
+        mpesaCreds
+      );
+
       const txResult = await client.query(
         `INSERT INTO mpesa_transactions
            (booking_id, phone_number, amount_cents,
-            status, mpesa_environment, transaction_type)
-         VALUES ($1, $2, $3, 'pending', $4, $5)
+            status, mpesa_environment, transaction_type,
+            credential_profile_id)
+         VALUES ($1, $2, $3, 'pending', $4, $5, $6)
          RETURNING *`,
         [
           booking.id,
@@ -2892,13 +3250,33 @@ router.post("/mpesa/stkpush-booking", requireAuth, async (req, res, next) => {
           totalCents,
           mpesaCreds.environment,
           transactionType,
+          credentialProfileId,
+        ]
+      );
+      const transaction = txResult.rows[0];
+
+      const outboxResult = await client.query(
+        `INSERT INTO mpesa_dispatch_outbox (transaction_id, payload)
+         VALUES ($1, $2::jsonb)
+         RETURNING id`,
+        [
+          transaction.id,
+          JSON.stringify({
+            phoneNumber: normalizedPhone,
+            amount,
+            environment: mpesaCreds.environment,
+            transactionType,
+            accountReference: mpesaCreds.accountReference,
+            transactionDesc: mpesaCreds.transactionDesc,
+          }),
         ]
       );
 
       return {
         reused: false,
         booking,
-        transaction: txResult.rows[0],
+        transaction,
+        outboxId: outboxResult.rows[0].id,
       };
     });
 
@@ -2917,31 +3295,39 @@ router.post("/mpesa/stkpush-booking", requireAuth, async (req, res, next) => {
       });
     }
 
-    const responseData = await sendStkPush({
-      phoneNumber: normalizedPhone,
-      amount,
-      creds: mpesaCreds,
-    });
-    const newStatus = await recordStkResponse(transaction.id, responseData);
+    const dispatchResult = await dispatchMpesaOutboxItem(
+      creation.outboxId
+    );
+    const responseData = dispatchResult?.responseData || {
+      _outcomeUnknown: true,
+      _transportError: "Dispatch is still processing. Check payment status.",
+    };
+    const newStatus = dispatchResult?.status || "pending";
 
     if (newStatus === "failed") {
       await query(
-        "UPDATE bookings SET payment_status = $1 WHERE id = $2",
-        ["failed", booking.id]
+        `UPDATE bookings
+         SET payment_status = 'failed'
+         WHERE id = $1
+           AND payment_status = 'pending'`,
+        [booking.id]
       );
-      return res.status(400).json({
-        error: responseData.CustomerMessage || "Failed to initiate M-Pesa payment",
-        bookingId: booking.id,
-        transactionId: transaction.id,
-        response: responseData,
-      });
     }
 
-    return res.status(201).json({
+    return res.status(newStatus === "failed" ? 400 : 201).json({
+      ...(newStatus === "failed"
+        ? {
+            error:
+              responseData?.CustomerMessage ||
+              "Failed to initiate M-Pesa payment",
+          }
+        : {}),
       bookingId: booking.id,
       transactionId: transaction.id,
       status: newStatus,
       response: responseData,
+      reconciliationRequired:
+        Boolean(dispatchResult?.reconciliationRequired),
     });
   } catch (error) {
     next(error);
@@ -3040,11 +3426,16 @@ router.post("/mpesa/stkpush-event-registration", requireAuth, async (req, res, n
         [normalizedPhone, registration.id]
       );
 
+      const credentialProfileId = await insertMpesaCredentialProfile(
+        client,
+        mpesaCreds
+      );
+
       const txResult = await client.query(
         `INSERT INTO mpesa_transactions
            (event_registration_id, phone_number, amount_cents, status,
-            mpesa_environment, transaction_type)
-         VALUES ($1, $2, $3, 'pending', $4, $5)
+            mpesa_environment, transaction_type, credential_profile_id)
+         VALUES ($1, $2, $3, 'pending', $4, $5, $6)
          RETURNING *`,
         [
           registration.id,
@@ -3052,12 +3443,35 @@ router.post("/mpesa/stkpush-event-registration", requireAuth, async (req, res, n
           totalCents,
           mpesaCreds.environment,
           transactionType,
+          credentialProfileId,
+        ]
+      );
+      const transaction = txResult.rows[0];
+
+      const outboxResult = await client.query(
+        `INSERT INTO mpesa_dispatch_outbox (transaction_id, payload)
+         VALUES ($1, $2::jsonb)
+         RETURNING id`,
+        [
+          transaction.id,
+          JSON.stringify({
+            phoneNumber: normalizedPhone,
+            amount,
+            environment: mpesaCreds.environment,
+            transactionType,
+            accountReference:
+              registration.event_title || mpesaCreds.accountReference,
+            transactionDesc: `Event ${
+              registration.event_title || registration.id
+            }`.slice(0, 13),
+          }),
         ]
       );
 
       return {
-        transaction: txResult.rows[0],
+        transaction,
         reused: false,
+        outboxId: outboxResult.rows[0].id,
       };
     });
 
@@ -3079,33 +3493,39 @@ router.post("/mpesa/stkpush-event-registration", requireAuth, async (req, res, n
       });
     }
 
-    const responseData = await sendStkPush({
-      phoneNumber: normalizedPhone,
-      amount,
-      accountReference: registration.event_title || undefined,
-      transactionDesc: `Event ${registration.event_title || registration.id}`,
-      creds: mpesaCreds,
-    });
-    const newStatus = await recordStkResponse(transaction.id, responseData);
+    const dispatchResult = await dispatchMpesaOutboxItem(
+      creation.outboxId
+    );
+    const responseData = dispatchResult?.responseData || {
+      _outcomeUnknown: true,
+      _transportError: "Dispatch is still processing. Check payment status.",
+    };
+    const newStatus = dispatchResult?.status || "pending";
 
     if (newStatus === "failed") {
       await query(
-        "UPDATE event_registrations SET payment_status = $1 WHERE id = $2",
-        ["failed", registration.id]
+        `UPDATE event_registrations
+         SET payment_status = 'failed'
+         WHERE id = $1
+           AND payment_status = 'pending'`,
+        [registration.id]
       );
-      return res.status(400).json({
-        error: responseData.CustomerMessage || "Failed to initiate M-Pesa payment",
-        registrationId: registration.id,
-        transactionId: transaction.id,
-        response: responseData,
-      });
     }
 
-    return res.status(201).json({
+    return res.status(newStatus === "failed" ? 400 : 201).json({
+      ...(newStatus === "failed"
+        ? {
+            error:
+              responseData?.CustomerMessage ||
+              "Failed to initiate M-Pesa payment",
+          }
+        : {}),
       registrationId: registration.id,
       transactionId: transaction.id,
       status: newStatus,
       response: responseData,
+      reconciliationRequired:
+        Boolean(dispatchResult?.reconciliationRequired),
     });
   } catch (error) {
     next(error);
@@ -3764,11 +4184,18 @@ router.post(
         });
       }
 
-      // Use the environment recorded when this STK request was initiated.
+      if (!transaction.credential_profile_id) {
+        return res.status(409).json({
+          error:
+            "This is a legacy payment without a saved credential profile. Automatic STK Query is disabled to avoid using potentially incorrect credentials.",
+          transaction,
+          manualReviewRequired: true,
+        });
+      }
+
       const result = await queryCheckoutStatus(
         transaction.checkout_request_id,
-        transaction.mpesa_environment || null,
-        transaction.transaction_type || null
+        transaction.credential_profile_id
       );
 
       if (!result) {
