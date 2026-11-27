@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import { query } from "../db.js";
+import { query, withTransaction } from "../db.js";
 import { hashPassword, verifyPassword } from "../utils/password.js";
 import { requireAuth } from "../middleware/auth.js";
 import { normalizePhone } from "../notifications.js";
@@ -10,6 +10,59 @@ import { createRateLimiter } from "../middleware/rateLimit.js";
 
 const router = Router();
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+const ACCESS_TOKEN_TTL = "15m";
+const REFRESH_SESSION_DAYS = 30;
+const REFRESH_COOKIE = "wheels_refresh";
+
+const hashRefreshToken = (token) =>
+  crypto.createHash("sha256").update(token).digest("hex");
+
+const cookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "strict",
+  path: "/api/auth",
+  ...(process.env.REFRESH_COOKIE_DOMAIN
+    ? { domain: process.env.REFRESH_COOKIE_DOMAIN }
+    : {}),
+});
+
+const setRefreshCookie = (res, token) => {
+  res.cookie(REFRESH_COOKIE, token, {
+    ...cookieOptions(),
+    maxAge: REFRESH_SESSION_DAYS * 24 * 60 * 60 * 1000,
+  });
+};
+
+const clearRefreshCookie = (res) => {
+  res.clearCookie(REFRESH_COOKIE, cookieOptions());
+};
+
+const createRefreshToken = () =>
+  crypto.randomBytes(48).toString("hex");
+
+const issueSession = async (user, res) => {
+  const refreshToken = createRefreshToken();
+  const expiresAt = new Date(
+    Date.now() + REFRESH_SESSION_DAYS * 24 * 60 * 60 * 1000
+  );
+
+  await query(
+    `INSERT INTO auth_sessions (user_id, token_hash, expires_at, token_version)
+     VALUES ($1, $2, $3, $4)`,
+    [
+      user.id,
+      hashRefreshToken(refreshToken),
+      expiresAt,
+      user.authTokenVersion ?? user.auth_token_version ?? 0,
+    ]
+  );
+
+  setRefreshCookie(res, refreshToken);
+
+  return signToken(user);
+};
+
 export const loginRateLimit = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 8,
@@ -39,7 +92,7 @@ const signToken = (user) =>
     },
     process.env.JWT_SECRET,
     {
-      expiresIn: "7d",
+      expiresIn: ACCESS_TOKEN_TTL,
     }
   );
 
@@ -100,7 +153,7 @@ router.post("/register", async (req, res, next) => {
     );
 
     const user = toAuthUser(result.rows[0]);
-    const token = signToken(user);
+    const token = await issueSession(user, res);
     res.status(201).json({ user, token });
   } catch (error) {
     if (error.code === "23505") {
@@ -133,7 +186,7 @@ router.post("/login", loginRateLimit, async (req, res, next) => {
     }
 
     const user = toAuthUser(row);
-    const token = signToken(user);
+    const token = await issueSession(user, res);
     res.json({ user, token });
   } catch (error) {
     next(error);
@@ -229,15 +282,40 @@ export const resetPasswordHandler = async (req, res, next) => {
     }
 
     const passwordHash = await hashPassword(password);
-    await query(
-      `UPDATE users
-       SET password_hash = $2,
-           auth_token_version = auth_token_version + 1,
-           password_reset_token_hash = NULL,
-           password_reset_expires_at = NULL
-       WHERE id = $1`,
-      [result.rows[0].id, passwordHash]
-    );
+    const resetCompleted = await withTransaction(async (client) => {
+      const updated = await client.query(
+        `UPDATE users
+         SET password_hash = $2,
+             auth_token_version = auth_token_version + 1,
+             password_reset_token_hash = NULL,
+             password_reset_expires_at = NULL
+         WHERE id = $1
+           AND password_reset_token_hash = $3
+           AND password_reset_expires_at > now()
+         RETURNING id`,
+        [result.rows[0].id, passwordHash, tokenHash]
+      );
+
+      if (updated.rowCount !== 1) {
+        return false;
+      }
+
+      await client.query(
+        `UPDATE auth_sessions
+         SET revoked_at = now()
+         WHERE user_id = $1
+           AND revoked_at IS NULL`,
+        [result.rows[0].id]
+      );
+
+      return true;
+    });
+
+    if (!resetCompleted) {
+      return res.status(400).json({
+        error: "This password reset link is invalid or has expired.",
+      });
+    }
 
     return res.json({ message: "Password reset successful. You can now sign in." });
   } catch (error) {
@@ -246,6 +324,113 @@ export const resetPasswordHandler = async (req, res, next) => {
 };
 
 router.post("/reset-password", resetPasswordRateLimit, resetPasswordHandler);
+
+export const refreshSessionHandler = async (req, res, next) => {
+  try {
+    const oldToken = req.cookies?.[REFRESH_COOKIE];
+
+    if (!oldToken) {
+      clearRefreshCookie(res);
+      return res.status(401).json({ error: "Refresh session missing" });
+    }
+
+    const oldHash = hashRefreshToken(oldToken);
+
+    const result = await withTransaction(async (client) => {
+      const sessionResult = await client.query(
+        `SELECT
+           s.id AS session_id,
+          u.id,
+          s.user_id,
+           s.expires_at,
+           s.revoked_at,
+           s.token_version,
+           u.email,
+           u.name,
+           u.phone,
+           u.address,
+           u.role,
+           u.auth_token_version,
+           u.created_at
+         FROM auth_sessions s
+         JOIN users u ON u.id = s.user_id
+         WHERE s.token_hash = $1
+           AND s.revoked_at IS NULL
+           AND s.expires_at > now()
+           AND s.token_version = u.auth_token_version
+         FOR UPDATE OF s`,
+        [oldHash]
+      );
+
+      const session = sessionResult.rows[0];
+
+      if (!session) {
+        return null;
+      }
+
+      const user = toAuthUser(session);
+      const nextRefreshToken = createRefreshToken();
+      const nextHash = hashRefreshToken(nextRefreshToken);
+      const nextExpiresAt = new Date(
+        Date.now() + REFRESH_SESSION_DAYS * 24 * 60 * 60 * 1000
+      );
+
+      await client.query(
+        `UPDATE auth_sessions
+         SET revoked_at = now(), last_used_at = now()
+         WHERE id = $1`,
+        [session.session_id]
+      );
+
+      await client.query(
+        `INSERT INTO auth_sessions (user_id, token_hash, expires_at, token_version)
+         VALUES ($1, $2, $3, $4)`,
+        [user.id, nextHash, nextExpiresAt, user.authTokenVersion]
+      );
+
+      return { user, nextRefreshToken };
+    });
+
+    if (!result) {
+      clearRefreshCookie(res);
+      return res.status(401).json({ error: "Refresh session invalid" });
+    }
+
+    setRefreshCookie(res, result.nextRefreshToken);
+
+    return res.json({
+      token: signToken(result.user),
+      user: result.user,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+router.post("/refresh", refreshSessionHandler);
+
+export const logoutHandler = async (req, res, next) => {
+  try {
+    const token = req.cookies?.[REFRESH_COOKIE];
+
+    if (token) {
+      await query(
+        `UPDATE auth_sessions
+         SET revoked_at = now()
+         WHERE token_hash = $1
+           AND revoked_at IS NULL`,
+        [hashRefreshToken(token)]
+      );
+    }
+
+    clearRefreshCookie(res);
+    return res.json({ message: "Logged out" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+router.post("/logout", logoutHandler);
 
 router.get("/me", requireAuth, async (req, res, next) => {
   try {
