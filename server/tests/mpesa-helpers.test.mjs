@@ -2,6 +2,7 @@
 // Covers the pure M-Pesa helpers — phone normalization and callback parsing.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 
 process.env.DATABASE_URL ||= "postgres://localhost:5432/drivehub_test";
 const { normalizePhone, parseCallbackItems, parseC2bConfirmation, parsePullRows } = await import(
@@ -531,6 +532,171 @@ test("Daraja authorized request does not retry non-401 responses", async () => {
     assert.equal(response.status, 503);
     assert.equal(tokenCalls, 1);
     assert.equal(apiCalls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Daraja admin POST refreshes once after an HTTP 401", async () => {
+  const { darajaAdminPost } = await import("../src/routes/payments.js");
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  let tokenCalls = 0;
+
+  const creds = {
+    environment: "sandbox",
+    baseUrl: "https://sandbox.safaricom.co.ke",
+    consumerKey: `admin-post-key-${randomUUID()}`,
+    consumerSecret: `admin-post-secret-${randomUUID()}`,
+  };
+
+  globalThis.fetch = async (url, options) => {
+    if (String(url).includes("/oauth/v1/generate")) {
+      tokenCalls += 1;
+      return new Response(
+        JSON.stringify({
+          access_token: `admin-post-token-${tokenCalls}`,
+          expires_in: "3599",
+        }),
+        { status: 200 }
+      );
+    }
+
+    requests.push({ url: String(url), options });
+    if (requests.length === 1) {
+      return new Response(
+        JSON.stringify({ errorMessage: "Invalid token" }),
+        { status: 401 }
+      );
+    }
+    return new Response(JSON.stringify({ ResponseCode: "0" }), {
+      status: 200,
+    });
+  };
+
+  try {
+    const result = await darajaAdminPost(
+      "/mpesa/c2b/v1/registerurl",
+      { ShortCode: "174379" },
+      creds
+    );
+
+    assert.deepEqual(result, { ResponseCode: "0" });
+    assert.equal(tokenCalls, 2);
+    assert.equal(requests.length, 2);
+    assert.equal(
+      requests[0].options.headers.Authorization,
+      "Bearer admin-post-token-1"
+    );
+    assert.equal(
+      requests[1].options.headers.Authorization,
+      "Bearer admin-post-token-2"
+    );
+    assert.equal(
+      requests[0].url,
+      "https://sandbox.safaricom.co.ke/mpesa/c2b/v1/registerurl"
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Daraja admin POST refreshes once for API errorCode 401.003.01", async () => {
+  const { darajaAdminPost } = await import("../src/routes/payments.js");
+  const originalFetch = globalThis.fetch;
+  let tokenCalls = 0;
+  let postCalls = 0;
+
+  const creds = {
+    environment: "production",
+    baseUrl: "https://api.safaricom.co.ke",
+    consumerKey: `admin-post-error-code-key-${randomUUID()}`,
+    consumerSecret: `admin-post-error-code-secret-${randomUUID()}`,
+  };
+
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("/oauth/v1/generate")) {
+      tokenCalls += 1;
+      return new Response(
+        JSON.stringify({
+          access_token: `admin-post-error-code-token-${tokenCalls}`,
+          expires_in: "3599",
+        }),
+        { status: 200 }
+      );
+    }
+
+    postCalls += 1;
+    return new Response(
+      JSON.stringify(
+        postCalls === 1
+          ? { errorCode: "401.003.01", errorMessage: "Invalid access token" }
+          : { ResponseStatus: "1000" }
+      ),
+      { status: 200 }
+    );
+  };
+
+  try {
+    const result = await darajaAdminPost(
+      "/pulltransactions/v1/register",
+      {},
+      creds
+    );
+
+    assert.deepEqual(result, { ResponseStatus: "1000" });
+    assert.equal(tokenCalls, 2);
+    assert.equal(postCalls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Daraja admin POST does not retry more than once", async () => {
+  const { darajaAdminPost } = await import("../src/routes/payments.js");
+  const originalFetch = globalThis.fetch;
+  let tokenCalls = 0;
+  let postCalls = 0;
+
+  const creds = {
+    environment: "sandbox",
+    baseUrl: "https://sandbox.safaricom.co.ke",
+    consumerKey: `admin-post-once-key-${randomUUID()}`,
+    consumerSecret: `admin-post-once-secret-${randomUUID()}`,
+  };
+
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("/oauth/v1/generate")) {
+      tokenCalls += 1;
+      return new Response(
+        JSON.stringify({
+          access_token: `admin-post-once-token-${tokenCalls}`,
+          expires_in: "3599",
+        }),
+        { status: 200 }
+      );
+    }
+
+    postCalls += 1;
+    return new Response(
+      JSON.stringify({ errorMessage: "Still unauthorized" }),
+      { status: 401 }
+    );
+  };
+
+  try {
+    await assert.rejects(
+      darajaAdminPost("/mpesa/test", {}, creds),
+      (error) => {
+        assert.equal(error.status, 401);
+        assert.deepEqual(error.providerResponse, {
+          errorMessage: "Still unauthorized",
+        });
+        return true;
+      }
+    );
+    assert.equal(tokenCalls, 2);
+    assert.equal(postCalls, 2);
   } finally {
     globalThis.fetch = originalFetch;
   }
