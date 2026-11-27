@@ -750,7 +750,7 @@ const recordStkResponse = async (transactionId, responseData) => {
   return updated.rows[0]?.status || status;
 };
 
-const dispatchMpesaOutboxItem = async (outboxId) => {
+export const dispatchMpesaOutboxItem = async (outboxId) => {
   const claimed = await withTransaction(async (client) => {
     const result = await client.query(
       `UPDATE mpesa_dispatch_outbox
@@ -786,6 +786,7 @@ const dispatchMpesaOutboxItem = async (outboxId) => {
   );
   const transaction = transactionResult.rows[0];
   const payload = claimed.payload || {};
+  let providerResponseData = null;
 
   try {
     const creds = await getMpesaCredentialsFromProfile(
@@ -808,7 +809,7 @@ const dispatchMpesaOutboxItem = async (outboxId) => {
       transactionType,
     };
 
-    const responseData = await sendStkPush({
+    providerResponseData = await sendStkPush({
       phoneNumber: payload.phoneNumber,
       amount: payload.amount,
       accountReference: payload.accountReference,
@@ -816,17 +817,20 @@ const dispatchMpesaOutboxItem = async (outboxId) => {
       creds: dispatchCreds,
     });
 
-    const status = await recordStkResponse(transaction.id, responseData);
+    const status = await recordStkResponse(
+      transaction.id,
+      providerResponseData
+    );
     const outboxStatus =
       status === "failed"
         ? "failed"
-        : responseData?._outcomeUnknown ||
-            responseData?._providerHttpError ||
-            !responseData?.CheckoutRequestID
+        : providerResponseData?._outcomeUnknown ||
+            providerResponseData?._providerHttpError ||
+            !providerResponseData?.CheckoutRequestID
           ? "retry"
           : "sent";
     const errorMessage =
-      responseData?._transportError ||
+      providerResponseData?._transportError ||
       (outboxStatus === "retry"
         ? "Provider dispatch outcome requires reconciliation; request will not be resent automatically."
         : null);
@@ -861,12 +865,81 @@ const dispatchMpesaOutboxItem = async (outboxId) => {
            ),
            updated_at = now()
        WHERE transaction_id = $2`,
-      [status, transaction.id, JSON.stringify(responseData || {})]
+      [status, transaction.id, JSON.stringify(providerResponseData || {})]
     );
 
-    return { status, responseData };
+    return {
+      status,
+      responseData: providerResponseData,
+      reconciliationRequired: outboxStatus === "retry",
+    };
   } catch (error) {
-    const message = String(error?.message || "M-Pesa dispatch failed").slice(0, 2000);
+    const message = String(
+      error?.message || "M-Pesa dispatch failed"
+    ).slice(0, 2000);
+    if (providerResponseData) {
+      try {
+        const status = await recordStkResponse(
+          transaction.id,
+          providerResponseData
+        );
+
+        const reconciliationMessage =
+          `Daraja responded, but dispatch processing encountered an error: ${message}`;
+
+        await query(
+          `UPDATE mpesa_dispatch_outbox
+           SET status = 'retry',
+               last_error = $1,
+               next_retry_at = now() + interval '1 minute',
+               updated_at = now()
+           WHERE id = $2`,
+          [reconciliationMessage, outboxId]
+        );
+
+        await query(
+          `UPDATE mpesa_transactions
+           SET dispatch_error = $1
+           WHERE id = $2
+             AND status = 'pending'`,
+          [reconciliationMessage, transaction.id]
+        );
+
+        await query(
+          `UPDATE mpesa_checkout_attempts
+           SET status = 'pending',
+               response_snapshot = jsonb_build_object(
+                 'transactionId', $1,
+                 'status', 'pending',
+                 'response', $2::jsonb
+               ),
+               updated_at = now()
+           WHERE transaction_id = $1`,
+          [transaction.id, JSON.stringify(providerResponseData)]
+        );
+
+        return {
+          status,
+          responseData: providerResponseData,
+          reconciliationRequired: true,
+        };
+      } catch (persistenceError) {
+        console.error(
+          `Could not persist Daraja response for transaction ${transaction.id}:`,
+          persistenceError
+        );
+
+        return {
+          status: "pending",
+          responseData: providerResponseData,
+          reconciliationRequired: true,
+          persistenceError: String(
+            persistenceError?.message || "Response persistence failed"
+          ),
+        };
+      }
+    }
+
     await query(
       `UPDATE mpesa_dispatch_outbox
        SET status = 'failed',
@@ -876,34 +949,39 @@ const dispatchMpesaOutboxItem = async (outboxId) => {
          AND status = 'processing'`,
       [message, outboxId]
     );
+
     await query(
       `UPDATE mpesa_transactions
        SET dispatch_error = $1
-       WHERE id = $2`,
+       WHERE id = $2
+         AND status = 'pending'`,
       [message, transaction.id]
     );
+
     const responseData = {
       _httpStatus: null,
       _transportError: message,
       _outcomeUnknown: false,
     };
-    const status = await recordStkResponse(transaction.id, responseData);
+
+    const status = await recordStkResponse(
+      transaction.id,
+      responseData
+    );
+
     await query(
       `UPDATE mpesa_checkout_attempts
-       SET status = CASE
-             WHEN $1 = 'failed' THEN 'failed'
-             WHEN $1 = 'paid' THEN 'completed'
-             ELSE 'pending'
-           END,
+       SET status = 'pending',
            response_snapshot = jsonb_build_object(
-             'transactionId', $2,
-             'status', $1,
-             'response', $3::jsonb
+             'transactionId', $1,
+             'status', 'pending',
+             'response', $2::jsonb
            ),
            updated_at = now()
-       WHERE transaction_id = $2`,
-      [status, transaction.id, JSON.stringify(responseData)]
+       WHERE transaction_id = $1`,
+      [transaction.id, JSON.stringify(responseData)]
     );
+
     return { status, responseData };
   }
 };
@@ -1023,6 +1101,123 @@ export const settleMpesaTransaction = async ({
   }
 
   return withTransaction(async (client) => {
+    const lockedTxResult = await client.query(
+      `SELECT
+         id,
+         order_id,
+         booking_id,
+         event_registration_id,
+         status
+       FROM mpesa_transactions
+       WHERE (
+         ($1::uuid IS NOT NULL AND id = $1::uuid)
+         OR
+         ($1::uuid IS NULL AND checkout_request_id = $2)
+       )
+       AND status = 'pending'
+       FOR UPDATE`,
+      [transactionId, checkoutRequestId]
+    );
+
+    if (lockedTxResult.rowCount === 0) {
+      return { settled: false };
+    }
+
+    if (lockedTxResult.rowCount !== 1) {
+      throw new Error(
+        "Multiple pending M-Pesa transactions matched one checkout request. Manual reconciliation is required."
+      );
+    }
+
+    const lockedTransaction = lockedTxResult.rows[0];
+    const linkedCount = [
+      lockedTransaction.order_id,
+      lockedTransaction.booking_id,
+      lockedTransaction.event_registration_id,
+    ].filter(Boolean).length;
+
+    if (linkedCount > 1) {
+      throw new Error(
+        "M-Pesa transaction is linked to multiple payment records. Settlement blocked."
+      );
+    }
+
+    const {
+      order_id: orderId,
+      booking_id: bookingId,
+      event_registration_id: eventRegistrationId,
+    } = lockedTransaction;
+
+    if (orderId) {
+      const result = await client.query(
+        `SELECT id, status, payment_status
+         FROM orders
+         WHERE id = $1
+         FOR UPDATE`,
+        [orderId]
+      );
+
+      if (result.rowCount !== 1) {
+        throw new Error(
+          `Order ${orderId} no longer exists. M-Pesa settlement requires manual review.`
+        );
+      }
+    }
+
+    let bookingRecord = null;
+    if (bookingId) {
+      const result = await client.query(
+        `SELECT id, status, payment_status
+         FROM bookings
+         WHERE id = $1
+         FOR UPDATE`,
+        [bookingId]
+      );
+
+      if (result.rowCount !== 1) {
+        throw new Error(
+          `Booking ${bookingId} no longer exists. M-Pesa settlement requires manual review.`
+        );
+      }
+      bookingRecord = result.rows[0];
+    }
+
+    let registrationRecord = null;
+    if (eventRegistrationId) {
+      const result = await client.query(
+        `SELECT id, status, payment_status
+         FROM event_registrations
+         WHERE id = $1
+         FOR UPDATE`,
+        [eventRegistrationId]
+      );
+
+      if (result.rowCount !== 1) {
+        throw new Error(
+          `Event registration ${eventRegistrationId} no longer exists. M-Pesa settlement requires manual review.`
+        );
+      }
+      registrationRecord = result.rows[0];
+    }
+
+    let settlementReview = null;
+    if (status === "paid" && bookingRecord?.status === "cancelled") {
+      settlementReview = {
+        reason: "payment_received_for_cancelled_booking",
+        bookingId,
+        refundRequired: true,
+      };
+    } else if (
+      status === "paid" &&
+      registrationRecord?.status === "cancelled"
+    ) {
+      settlementReview = {
+        reason: "payment_received_for_cancelled_event_registration",
+        eventRegistrationId,
+        refundRequired: true,
+      };
+    }
+
     const txResult = await client.query(
       `UPDATE mpesa_transactions
        SET status = $1,
@@ -1030,21 +1225,21 @@ export const settleMpesaTransaction = async ({
              || jsonb_build_object($2::text, $3::jsonb),
            result_code = $4,
            mpesa_receipt_number = COALESCE($5, mpesa_receipt_number)
-       WHERE status = 'pending'
-         AND (
-             ($6::uuid IS NOT NULL AND id = $6::uuid)
-             OR
-             ($6::uuid IS NULL AND checkout_request_id = $7)
-         )
+       WHERE id = $6
+         AND status = 'pending'
        RETURNING id, order_id, booking_id, event_registration_id`,
       [
         status,
         source,
-        JSON.stringify(rawPayload || {}),
+        JSON.stringify({
+          ...(rawPayload || {}),
+          ...(settlementReview
+            ? { manualReview: settlementReview }
+            : {}),
+        }),
         rawPayload?.ResultCode != null ? String(rawPayload.ResultCode) : null,
         metadata.mpesaReceiptNumber || null,
-        transactionId,
-        checkoutRequestId,
+        lockedTransaction.id,
       ]
     );
 
@@ -1057,12 +1252,6 @@ export const settleMpesaTransaction = async ({
         "Multiple pending M-Pesa transactions matched one checkout request."
       );
     }
-
-    const {
-      order_id: orderId,
-      booking_id: bookingId,
-      event_registration_id: eventRegistrationId,
-    } = txResult.rows[0];
 
     if (orderId) {
       const orderSelect = await client.query(
@@ -1565,14 +1754,19 @@ export const processStoredDarajaCallback = async (inbox) => {
       `SELECT *
        FROM mpesa_transactions
        WHERE checkout_request_id = $1
-       ORDER BY created_at DESC
-       LIMIT 1`,
+       LIMIT 2`,
       [checkoutRequestId]
     );
 
     if (txResult.rowCount === 0) {
       throw new Error(
         `No payment transaction matches CheckoutRequestID ${checkoutRequestId}`
+      );
+    }
+
+    if (txResult.rowCount > 1) {
+      throw new Error(
+        `Multiple transactions match CheckoutRequestID ${checkoutRequestId}. Manual reconciliation is required.`
       );
     }
 
@@ -1665,7 +1859,7 @@ export const processStoredDarajaCallback = async (inbox) => {
   throw new Error(`Unsupported callback type: ${inbox.callback_type}`);
 };
 
-const retryMpesaDispatchOutbox = async (limit = 25) => {
+export const retryMpesaDispatchOutbox = async (limit = 25) => {
   const pending = await query(
     `SELECT id
      FROM mpesa_dispatch_outbox
@@ -1690,6 +1884,8 @@ const retryMpesaDispatchOutbox = async (limit = 25) => {
   }
 
   const claimed = await withTransaction(async (client) => {
+    // Retry entries are only reconciled against Daraja; this path never
+    // calls dispatchMpesaOutboxItem or resends an STK request.
     await client.query(
       `WITH abandoned AS (
          SELECT outbox.id, tx.checkout_request_id
@@ -2487,14 +2683,20 @@ router.post(
 
         await query(
           `UPDATE mpesa_transactions
-           SET status = 'failed',
+           SET dispatch_error = $1,
                response = COALESCE(response, '{}'::jsonb)
-                 || jsonb_build_object('stk_push', $1::jsonb)
-           WHERE id = $2`,
+                 || jsonb_build_object(
+                   'stk_push_exception',
+                   $2::jsonb
+                 )
+           WHERE id = $3
+             AND status = 'pending'`,
           [
+            safeMessage,
             JSON.stringify({
               error: safeMessage,
-              stage: "stk_push_request",
+              stage: "stk_push_processing",
+              outcome: "unknown",
             }),
             transactionId,
           ]
@@ -2508,8 +2710,10 @@ router.post(
         );
 
         return res.status(502).json({
-          error: safeMessage,
+          error:
+            "An error occurred while processing the STK request. The payment status was preserved for reconciliation.",
           transaction: saved.rows[0] || null,
+          manualReviewRequired: true,
         });
       }
     } catch (error) {
@@ -3049,11 +3253,30 @@ router.post("/mpesa/stkpush-booking", requireAuth, async (req, res, next) => {
           credentialProfileId,
         ]
       );
+      const transaction = txResult.rows[0];
+
+      const outboxResult = await client.query(
+        `INSERT INTO mpesa_dispatch_outbox (transaction_id, payload)
+         VALUES ($1, $2::jsonb)
+         RETURNING id`,
+        [
+          transaction.id,
+          JSON.stringify({
+            phoneNumber: normalizedPhone,
+            amount,
+            environment: mpesaCreds.environment,
+            transactionType,
+            accountReference: mpesaCreds.accountReference,
+            transactionDesc: mpesaCreds.transactionDesc,
+          }),
+        ]
+      );
 
       return {
         reused: false,
         booking,
-        transaction: txResult.rows[0],
+        transaction,
+        outboxId: outboxResult.rows[0].id,
       };
     });
 
@@ -3072,35 +3295,39 @@ router.post("/mpesa/stkpush-booking", requireAuth, async (req, res, next) => {
       });
     }
 
-    const dispatchCreds = await getMpesaCredentialsFromProfile(
-      transaction.credential_profile_id
+    const dispatchResult = await dispatchMpesaOutboxItem(
+      creation.outboxId
     );
-
-    const responseData = await sendStkPush({
-      phoneNumber: normalizedPhone,
-      amount,
-      creds: dispatchCreds,
-    });
-    const newStatus = await recordStkResponse(transaction.id, responseData);
+    const responseData = dispatchResult?.responseData || {
+      _outcomeUnknown: true,
+      _transportError: "Dispatch is still processing. Check payment status.",
+    };
+    const newStatus = dispatchResult?.status || "pending";
 
     if (newStatus === "failed") {
       await query(
-        "UPDATE bookings SET payment_status = $1 WHERE id = $2",
-        ["failed", booking.id]
+        `UPDATE bookings
+         SET payment_status = 'failed'
+         WHERE id = $1
+           AND payment_status = 'pending'`,
+        [booking.id]
       );
-      return res.status(400).json({
-        error: responseData.CustomerMessage || "Failed to initiate M-Pesa payment",
-        bookingId: booking.id,
-        transactionId: transaction.id,
-        response: responseData,
-      });
     }
 
-    return res.status(201).json({
+    return res.status(newStatus === "failed" ? 400 : 201).json({
+      ...(newStatus === "failed"
+        ? {
+            error:
+              responseData?.CustomerMessage ||
+              "Failed to initiate M-Pesa payment",
+          }
+        : {}),
       bookingId: booking.id,
       transactionId: transaction.id,
       status: newStatus,
       response: responseData,
+      reconciliationRequired:
+        Boolean(dispatchResult?.reconciliationRequired),
     });
   } catch (error) {
     next(error);
@@ -3219,10 +3446,32 @@ router.post("/mpesa/stkpush-event-registration", requireAuth, async (req, res, n
           credentialProfileId,
         ]
       );
+      const transaction = txResult.rows[0];
+
+      const outboxResult = await client.query(
+        `INSERT INTO mpesa_dispatch_outbox (transaction_id, payload)
+         VALUES ($1, $2::jsonb)
+         RETURNING id`,
+        [
+          transaction.id,
+          JSON.stringify({
+            phoneNumber: normalizedPhone,
+            amount,
+            environment: mpesaCreds.environment,
+            transactionType,
+            accountReference:
+              registration.event_title || mpesaCreds.accountReference,
+            transactionDesc: `Event ${
+              registration.event_title || registration.id
+            }`.slice(0, 13),
+          }),
+        ]
+      );
 
       return {
-        transaction: txResult.rows[0],
+        transaction,
         reused: false,
+        outboxId: outboxResult.rows[0].id,
       };
     });
 
@@ -3244,37 +3493,39 @@ router.post("/mpesa/stkpush-event-registration", requireAuth, async (req, res, n
       });
     }
 
-    const dispatchCreds = await getMpesaCredentialsFromProfile(
-      transaction.credential_profile_id
+    const dispatchResult = await dispatchMpesaOutboxItem(
+      creation.outboxId
     );
-
-    const responseData = await sendStkPush({
-      phoneNumber: normalizedPhone,
-      amount,
-      accountReference: registration.event_title || undefined,
-      transactionDesc: `Event ${registration.event_title || registration.id}`,
-      creds: dispatchCreds,
-    });
-    const newStatus = await recordStkResponse(transaction.id, responseData);
+    const responseData = dispatchResult?.responseData || {
+      _outcomeUnknown: true,
+      _transportError: "Dispatch is still processing. Check payment status.",
+    };
+    const newStatus = dispatchResult?.status || "pending";
 
     if (newStatus === "failed") {
       await query(
-        "UPDATE event_registrations SET payment_status = $1 WHERE id = $2",
-        ["failed", registration.id]
+        `UPDATE event_registrations
+         SET payment_status = 'failed'
+         WHERE id = $1
+           AND payment_status = 'pending'`,
+        [registration.id]
       );
-      return res.status(400).json({
-        error: responseData.CustomerMessage || "Failed to initiate M-Pesa payment",
-        registrationId: registration.id,
-        transactionId: transaction.id,
-        response: responseData,
-      });
     }
 
-    return res.status(201).json({
+    return res.status(newStatus === "failed" ? 400 : 201).json({
+      ...(newStatus === "failed"
+        ? {
+            error:
+              responseData?.CustomerMessage ||
+              "Failed to initiate M-Pesa payment",
+          }
+        : {}),
       registrationId: registration.id,
       transactionId: transaction.id,
       status: newStatus,
       response: responseData,
+      reconciliationRequired:
+        Boolean(dispatchResult?.reconciliationRequired),
     });
   } catch (error) {
     next(error);

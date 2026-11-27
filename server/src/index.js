@@ -12,7 +12,10 @@ import {
   startMpesaNotificationWorker,
   stopMpesaNotificationWorker,
 } from "./utils/mpesaNotificationWorker.js";
-import { processStoredDarajaCallback } from "./routes/payments.js";
+import {
+  processStoredDarajaCallback,
+  retryMpesaDispatchOutbox,
+} from "./routes/payments.js";
 
 dotenv.config();
 
@@ -41,6 +44,25 @@ const start = async () => {
   startMpesaRecovery(processStoredDarajaCallback);
   startMpesaNotificationWorker();
 
+  let dispatchRecoveryRun = null;
+  const runMpesaDispatchRecovery = () => {
+    if (dispatchRecoveryRun) return;
+
+    dispatchRecoveryRun = retryMpesaDispatchOutbox()
+      .catch((error) =>
+        console.error("[M-Pesa dispatch recovery] Batch failed:", error)
+      )
+      .finally(() => {
+        dispatchRecoveryRun = null;
+      });
+  };
+
+  runMpesaDispatchRecovery();
+  const mpesaDispatchRecoveryTimer = setInterval(
+    runMpesaDispatchRecovery,
+    60_000
+  );
+
   // Resolve ended auctions (highest bid wins) on startup and every minute.
   const runAuctionSweep = () =>
     closeExpiredAuctions().catch((error) =>
@@ -61,8 +83,12 @@ const start = async () => {
 
     stopDigestScheduler();
     clearInterval(auctionTimer);
+    clearInterval(mpesaDispatchRecoveryTimer);
     const recoveryDrain = stopMpesaRecovery();
     const notificationDrain = stopMpesaNotificationWorker();
+    if (dispatchRecoveryRun) {
+      await dispatchRecoveryRun;
+    }
 
     try {
       await new Promise((resolve, reject) => {
