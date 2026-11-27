@@ -688,10 +688,9 @@ test("Daraja admin POST does not retry more than once", async () => {
     await assert.rejects(
       darajaAdminPost("/mpesa/test", {}, creds),
       (error) => {
-        assert.equal(error.status, 401);
-        assert.deepEqual(error.providerResponse, {
-          errorMessage: "Still unauthorized",
-        });
+        assert.equal(error.status, 502);
+        assert.equal(error.providerStatus, 401);
+        assert.equal(error.providerPath, "/mpesa/test");
         return true;
       }
     );
@@ -699,5 +698,42 @@ test("Daraja admin POST does not retry more than once", async () => {
     assert.equal(postCalls, 2);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("Daraja HTTP 401 is exposed as an upstream 502", async () => {
+  const { createDarajaHttpError } = await import(
+    "../src/routes/payments.js"
+  );
+
+  const error = createDarajaHttpError(
+    "/mpesa/c2b/v1/registerurl",
+    401,
+    {
+      errorCode: "401.003.01",
+      errorMessage: "Invalid Access Token",
+    }
+  );
+
+  assert.equal(error.status, 502);
+  assert.equal(error.providerStatus, 401);
+  assert.equal(error.providerCode, "401.003.01");
+  assert.match(error.message, /Invalid Access Token/);
+});
+
+test("Daraja provider failures never use the application's 401 status", async () => {
+  const { createDarajaHttpError } = await import(
+    "../src/routes/payments.js"
+  );
+
+  for (const status of [400, 401, 403, 404, 429, 500]) {
+    const error = createDarajaHttpError(
+      "/pulltransactions/v1/query",
+      status,
+      { errorMessage: "Provider rejected request" }
+    );
+
+    assert.equal(error.status, 502);
+    assert.equal(error.providerStatus, status);
   }
 });

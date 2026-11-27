@@ -45,6 +45,7 @@ export const createApp = () => {
 
   app.use(
     cors({
+      credentials: true,
       origin: (origin, callback) => {
         if (!origin) return callback(null, true);
         if (!isProduction) {
@@ -66,6 +67,27 @@ export const createApp = () => {
   );
   app.use(morgan(isProduction ? "combined" : "dev"));
   app.use(express.json({ limit: "1mb" }));
+  app.use((req, _res, next) => {
+    const cookies = {};
+    const raw = req.headers.cookie || "";
+
+    for (const part of raw.split(";")) {
+      const index = part.indexOf("=");
+      if (index < 0) continue;
+
+      const name = part.slice(0, index).trim();
+      const value = part.slice(index + 1).trim();
+
+      try {
+        cookies[name] = decodeURIComponent(value);
+      } catch {
+        cookies[name] = value;
+      }
+    }
+
+    req.cookies = cookies;
+    next();
+  });
   app.use("/uploads", express.static("uploads", { maxAge: "1d", etag: true }));
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");

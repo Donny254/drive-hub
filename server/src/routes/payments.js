@@ -2191,6 +2191,25 @@ router.post(
   }
 );
 
+export const createDarajaHttpError = (
+  path,
+  providerStatus,
+  providerData = {}
+) => {
+  const message =
+    providerData?.errorMessage ||
+    providerData?.ResponseDescription ||
+    `Daraja request failed with HTTP ${providerStatus}.`;
+
+  const error = new Error(String(message).slice(0, 500));
+  error.status = 502;
+  error.providerStatus = providerStatus;
+  error.providerCode = providerData?.errorCode || null;
+  error.providerPath = path;
+
+  return error;
+};
+
 export const darajaAdminPost = async (
   path,
   body,
@@ -2252,15 +2271,7 @@ export const darajaAdminPost = async (
   }
 
   if (!result.response.ok) {
-    const message =
-      result.data?.errorMessage ||
-      result.data?.ResponseDescription ||
-      `Daraja request failed with HTTP ${result.response.status}.`;
-
-    const error = new Error(String(message).slice(0, 500));
-    error.status = result.response.status;
-    error.providerResponse = result.data;
-    throw error;
+    throw createDarajaHttpError(path, result.response.status, result.data);
   }
 
   return result.data;
@@ -2503,12 +2514,16 @@ router.post("/mpesa/pull/query", requireAuth, requireRole("admin"), async (req, 
       });
     }
 
-    const data = await darajaAdminPost("/pulltransactions/v1/query", {
-      ShortCode: creds.shortcode,
-      StartDate: `${startDate} 00:00:00`,
-      EndDate: `${endDate} 23:59:59`,
-      OffSetValue: offsetValue,
-    });
+    const data = await darajaAdminPost(
+      "/pulltransactions/v1/query",
+      {
+        ShortCode: creds.shortcode,
+        StartDate: `${startDate} 00:00:00`,
+        EndDate: `${endDate} 23:59:59`,
+        OffSetValue: offsetValue,
+      },
+      creds
+    );
 
     const responseCode = String(
       data?.ResponseCode ??
