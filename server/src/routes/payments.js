@@ -2191,24 +2191,79 @@ router.post(
   }
 );
 
-const darajaAdminPost = async (path, body) => {
-  const creds = await getMpesaCredentials();
-  const accessToken = await getAccessToken(creds);
+export const darajaAdminPost = async (
+  path,
+  body,
+  suppliedCreds = null
+) => {
+  const creds = suppliedCreds || await getMpesaCredentials();
 
-  const response = await darajaFetch(
-    path,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
+  if (!creds.consumerKey || !creds.consumerSecret) {
+    throw new Error(
+      `M-Pesa ${creds.environment} consumer credentials are not configured.`
+    );
+  }
+
+  const send = async (token) => {
+    const response = await darajaFetch(
+      path,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    },
-    creds.baseUrl
-  );
+      creds.baseUrl
+    );
 
-  return response.json().catch(() => ({}));
+    const responseText = await response.text().catch(() => "");
+    let data = {};
+
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      throw new Error(
+        `Daraja returned invalid JSON during ${path} (HTTP ${response.status}).`
+      );
+    }
+
+    return { response, data };
+  };
+
+  let accessToken = await getAccessToken(creds);
+  let result = await send(accessToken);
+
+  const invalidToken =
+    result.response.status === 401 ||
+    String(result.data?.errorCode || "").trim() === "401.003.01";
+
+  if (invalidToken) {
+    invalidateAccessToken(creds, accessToken);
+
+    accessToken = await getAccessToken(creds, {
+      forceRefresh: true,
+      rejectedToken: accessToken,
+    });
+
+    result = await send(accessToken);
+  }
+
+  if (!result.response.ok) {
+    const message =
+      result.data?.errorMessage ||
+      result.data?.ResponseDescription ||
+      `Daraja request failed with HTTP ${result.response.status}.`;
+
+    const error = new Error(String(message).slice(0, 500));
+    error.status = result.response.status;
+    error.providerResponse = result.data;
+    throw error;
+  }
+
+  return result.data;
 };
 
 router.post("/mpesa/test-connection", requireAuth, requireRole("admin"), async (req, res) => {
@@ -2292,12 +2347,16 @@ router.post("/mpesa/register-url", requireAuth, requireRole("admin"), async (req
       return res.status(400).json({ error: "Set MPESA_CALLBACK_BASE_URL (https) to register webhook URLs" });
     }
 
-    const responseData = await darajaAdminPost("/mpesa/c2b/v1/registerurl", {
-      ShortCode: creds.shortcode,
-      ResponseType: "Completed",
-      ConfirmationURL: `${base}/c2b/confirmation`,
-      ValidationURL: `${base}/c2b/validation`,
-    });
+    const responseData = await darajaAdminPost(
+      "/mpesa/c2b/v1/registerurl",
+      {
+        ShortCode: creds.shortcode,
+        ResponseType: "Completed",
+        ConfirmationURL: `${base}/c2b/confirmation`,
+        ValidationURL: `${base}/c2b/validation`,
+      },
+      creds
+    );
 
     const responseCode = responseData.ResponseCode ?? responseData.responseCode;
     if (responseCode !== "0" && responseCode !== 0) {
@@ -2345,7 +2404,8 @@ router.post("/mpesa/pull/register", requireAuth, requireRole("admin"), async (re
         RequestType: "Pull",
         NominatedNumber: nominatedNumber,
         CallBackURL: `${base}/pull/result`,
-      }
+      },
+      creds
     );
 
     const responseCode = String(
