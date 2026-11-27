@@ -339,6 +339,79 @@ test("concurrent Daraja OAuth calls share one token request", async () => {
   }
 });
 
+test("forced token refresh does not reuse an in-flight rejected token", async () => {
+  const { getAccessToken } = await import("../src/routes/payments.js");
+
+  const originalFetch = globalThis.fetch;
+  let tokenCalls = 0;
+  let markFirstRequestStarted;
+  let resolveFirstResponse;
+  const firstRequestStarted = new Promise((resolve) => {
+    markFirstRequestStarted = resolve;
+  });
+  const firstResponse = new Promise((resolve) => {
+    resolveFirstResponse = resolve;
+  });
+
+  const creds = {
+    environment: "sandbox",
+    baseUrl: "https://sandbox.safaricom.co.ke",
+    consumerKey: `inflight-refresh-key-${randomUUID()}`,
+    consumerSecret: `inflight-refresh-secret-${randomUUID()}`,
+  };
+
+  globalThis.fetch = async (url) => {
+    if (!String(url).includes("/oauth/v1/generate")) {
+      throw new Error("Unexpected non-OAuth request");
+    }
+
+    tokenCalls += 1;
+    if (tokenCalls === 1) {
+      markFirstRequestStarted();
+      return firstResponse;
+    }
+
+    return new Response(
+      JSON.stringify({
+        access_token: "genuinely-fresh-token",
+        expires_in: "3599",
+      }),
+      { status: 200 }
+    );
+  };
+
+  try {
+    const firstTokenRequest = getAccessToken(creds);
+    await firstRequestStarted;
+
+    const forcedRefresh = getAccessToken(creds, {
+      forceRefresh: true,
+      rejectedToken: "inflight-rejected-token",
+    });
+
+    resolveFirstResponse(
+      new Response(
+        JSON.stringify({
+          access_token: "inflight-rejected-token",
+          expires_in: "3599",
+        }),
+        { status: 200 }
+      )
+    );
+
+    const [firstToken, refreshedToken] = await Promise.all([
+      firstTokenRequest,
+      forcedRefresh,
+    ]);
+
+    assert.equal(firstToken, "inflight-rejected-token");
+    assert.equal(refreshedToken, "genuinely-fresh-token");
+    assert.equal(tokenCalls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("Daraja authorized request refreshes once after HTTP 401", async () => {
   const { darajaAuthorizedFetch } = await import("../src/routes/payments.js");
 
@@ -385,6 +458,62 @@ test("Daraja authorized request refreshes once after HTTP 401", async () => {
     const response = await darajaAuthorizedFetch(
       "/test/protected",
       { method: "GET" },
+      creds
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(tokenCalls, 2);
+    assert.equal(apiCalls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Daraja authorized request refreshes for HTTP 400 invalid-token errors", async () => {
+  const { darajaAuthorizedFetch } = await import("../src/routes/payments.js");
+
+  const originalFetch = globalThis.fetch;
+  let tokenCalls = 0;
+  let apiCalls = 0;
+  const creds = {
+    environment: "sandbox",
+    baseUrl: "https://sandbox.safaricom.co.ke",
+    consumerKey: `authorized-400-key-${randomUUID()}`,
+    consumerSecret: `authorized-400-secret-${randomUUID()}`,
+  };
+
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("/oauth/v1/generate")) {
+      tokenCalls += 1;
+      return new Response(
+        JSON.stringify({
+          access_token: `authorized-400-token-${tokenCalls}`,
+          expires_in: "3599",
+        }),
+        { status: 200 }
+      );
+    }
+
+    apiCalls += 1;
+    if (apiCalls === 1) {
+      return new Response(
+        JSON.stringify({
+          errorCode: "400.003.01",
+          errorMessage: "Invalid Access Token",
+        }),
+        { status: 400 }
+      );
+    }
+
+    return new Response(JSON.stringify({ ResponseCode: "0" }), {
+      status: 200,
+    });
+  };
+
+  try {
+    const response = await darajaAuthorizedFetch(
+      "/test/protected",
+      { method: "POST", body: JSON.stringify({ value: 1 }) },
       creds
     );
 
@@ -640,6 +769,59 @@ test("Daraja admin POST refreshes once for API errorCode 401.003.01", async () =
   try {
     const result = await darajaAdminPost(
       "/pulltransactions/v1/register",
+      {},
+      creds
+    );
+
+    assert.deepEqual(result, { ResponseStatus: "1000" });
+    assert.equal(tokenCalls, 2);
+    assert.equal(postCalls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Daraja admin POST refreshes for HTTP 400 invalid-token errors", async () => {
+  const { darajaAdminPost } = await import("../src/routes/payments.js");
+  const originalFetch = globalThis.fetch;
+  let tokenCalls = 0;
+  let postCalls = 0;
+  const creds = {
+    environment: "sandbox",
+    baseUrl: "https://sandbox.safaricom.co.ke",
+    consumerKey: `admin-post-400-key-${randomUUID()}`,
+    consumerSecret: `admin-post-400-secret-${randomUUID()}`,
+  };
+
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("/oauth/v1/generate")) {
+      tokenCalls += 1;
+      return new Response(
+        JSON.stringify({
+          access_token: `admin-post-400-token-${tokenCalls}`,
+          expires_in: "3599",
+        }),
+        { status: 200 }
+      );
+    }
+
+    postCalls += 1;
+    return new Response(
+      JSON.stringify(
+        postCalls === 1
+          ? {
+              errorCode: "400.003.01",
+              errorMessage: "Invalid Access Token",
+            }
+          : { ResponseStatus: "1000" }
+      ),
+      { status: postCalls === 1 ? 400 : 200 }
+    );
+  };
+
+  try {
+    const result = await darajaAdminPost(
+      "/pulltransactions/v1/query",
       {},
       creds
     );
