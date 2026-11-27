@@ -435,7 +435,17 @@ export const getAccessToken = async (
   }
 
   if (tokenInflight.has(cacheKey)) {
-    return tokenInflight.get(cacheKey);
+    const pendingToken = await tokenInflight.get(cacheKey);
+
+    if (
+      !forceRefresh ||
+      !rejectedToken ||
+      pendingToken !== rejectedToken
+    ) {
+      return pendingToken;
+    }
+
+    // The pending token is the one Daraja rejected; obtain another token.
   }
 
   const pending = (async () => {
@@ -518,6 +528,35 @@ export const getAccessToken = async (
   }
 };
 
+export const isInvalidDarajaAccessToken = (status, data = {}) => {
+  const code = String(data?.errorCode || "").trim();
+  const message = String(
+    data?.errorMessage ||
+    data?.error_description ||
+    data?.error ||
+    data?.ResponseDescription ||
+    ""
+  );
+
+  return (
+    status === 401 ||
+    code === "400.003.01" ||
+    code === "401.003.01" ||
+    /invalid access token/i.test(message)
+  );
+};
+
+const isInvalidDarajaResponseToken = async (response) => {
+  if (response.status === 401) return true;
+
+  try {
+    const data = await response.clone().json();
+    return isInvalidDarajaAccessToken(response.status, data);
+  } catch {
+    return false;
+  }
+};
+
 export const darajaAuthorizedFetch = async (path, options, creds) => {
   const firstToken = await getAccessToken(creds);
 
@@ -534,10 +573,10 @@ export const darajaAuthorizedFetch = async (path, options, creds) => {
       creds.baseUrl
     );
 
-  let response = await makeRequest(firstToken);
+  const firstResponse = await makeRequest(firstToken);
 
-  if (response.status !== 401) {
-    return response;
+  if (!(await isInvalidDarajaResponseToken(firstResponse))) {
+    return firstResponse;
   }
 
   invalidateAccessToken(creds, firstToken);
@@ -2255,11 +2294,7 @@ export const darajaAdminPost = async (
   let accessToken = await getAccessToken(creds);
   let result = await send(accessToken);
 
-  const invalidToken =
-    result.response.status === 401 ||
-    String(result.data?.errorCode || "").trim() === "401.003.01";
-
-  if (invalidToken) {
+  if (isInvalidDarajaAccessToken(result.response.status, result.data)) {
     invalidateAccessToken(creds, accessToken);
 
     accessToken = await getAccessToken(creds, {
